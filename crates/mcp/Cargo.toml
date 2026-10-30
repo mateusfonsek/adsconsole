@@ -1,0 +1,50 @@
+[package]
+name = "adsconsole-mcp"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "adsconsole_mcp"
+
+[dependencies]
+adsconsole-core = { path = "../core" }
+adsconsole-google-ads = { path = "../google-ads" }
+adsconsole-meta-ads = { path = "../meta-ads" }
+rmcp.workspace = true
+schemars.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+rust_decimal.workspace = true
+chrono.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+axum.workspace = true
+tokio-util.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+base64.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+rust_decimal_macros.workspace = true
+tempfile.workspace = true
+rmcp = { workspace = true, features = ["client", "transport-streamable-http-client-reqwest"] }
+reqwest.workspace = true
+wiremock.workspace = true
+open.workspace = true
+
+# Roda os testes de argumentos e da confirmação do checklist em `cargo test`.
+[[example]]
+name = "google_checklist"
+test = true
+
+[[example]]
+name = "meta_checklist"
+test = true
+
+[[example]]
+name = "meta_connect"
+test = true

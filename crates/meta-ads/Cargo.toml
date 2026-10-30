@@ -1,0 +1,30 @@
+[package]
+name = "adsconsole-meta-ads"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "adsconsole_meta_ads"
+
+[dependencies]
+adsconsole-core = { path = "../core" }
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+rand.workspace = true
+base64.workspace = true
+chrono.workspace = true
+rust_decimal.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+wiremock.workspace = true
+tempfile.workspace = true

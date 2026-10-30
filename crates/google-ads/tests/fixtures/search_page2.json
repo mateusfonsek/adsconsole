@@ -1,0 +1,7 @@
+{
+  "results": [
+    { "campaign": { "resourceName": "customers/1/campaigns/4", "id": "4" } },
+    { "campaign": { "resourceName": "customers/1/campaigns/5", "id": "5" } }
+  ],
+  "totalResultsCount": "5"
+}

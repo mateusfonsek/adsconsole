@@ -1,0 +1,18 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Too many requests. Retry in 2 seconds.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
+        "errors": [
+          {
+            "errorCode": { "quotaError": "RESOURCE_TEMPORARILY_EXHAUSTED" },
+            "message": "Too many requests."
+          }
+        ]
+      }
+    ]
+  }
+}

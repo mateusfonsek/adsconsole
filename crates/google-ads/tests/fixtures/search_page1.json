@@ -1,0 +1,9 @@
+{
+  "results": [
+    { "campaign": { "resourceName": "customers/1/campaigns/1", "id": "1" } },
+    { "campaign": { "resourceName": "customers/1/campaigns/2", "id": "2" } },
+    { "campaign": { "resourceName": "customers/1/campaigns/3", "id": "3" } }
+  ],
+  "nextPageToken": "tok2",
+  "totalResultsCount": "5"
+}

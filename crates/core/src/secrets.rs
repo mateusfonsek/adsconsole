@@ -1,0 +1,366 @@
+use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
+use std::sync::{Arc, Mutex};
+
+use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
+use crate::error::CoreError;
+
+/// Segredo em memória: `Debug` mascarado e sem `Display`, para não vazar em logs.
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
+pub struct Secret(String);
+
+impl Secret {
+    pub fn new(value: impl Into<String>) -> Self {
+        Secret(value.into())
+    }
+
+    pub fn expose(&self) -> &str {
+        &self.0
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl std::fmt::Debug for Secret {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Secret(***)")
+    }
+}
+
+pub const KEYRING_SERVICE: &str = "adsconsole";
+
+const PROBE_KEY: &str = "__probe";
+const MCP_TOKEN_KEY: &str = "mcp_token";
+
+pub trait SecretStore: Send + Sync {
+    fn get(&self, key: &str) -> Result<Option<String>, CoreError>;
+    fn set(&self, key: &str, value: &str) -> Result<(), CoreError>;
+    /// Apagar uma chave inexistente é `Ok(())`.
+    fn delete(&self, key: &str) -> Result<(), CoreError>;
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SecretBackend {
+    Keychain,
+    File,
+}
+
+fn lock_error<T>(_: T) -> CoreError {
+    CoreError::Secret("Armazenamento de segredos indisponível (lock envenenado)".into())
+}
+
+#[derive(Default)]
+pub struct MemoryStore {
+    map: Mutex<BTreeMap<String, String>>,
+}
+
+impl SecretStore for MemoryStore {
+    fn get(&self, key: &str) -> Result<Option<String>, CoreError> {
+        Ok(self.map.lock().map_err(lock_error)?.get(key).cloned())
+    }
+    fn set(&self, key: &str, value: &str) -> Result<(), CoreError> {
+        self.map
+            .lock()
+            .map_err(lock_error)?
+            .insert(key.to_string(), value.to_string());
+        Ok(())
+    }
+    fn delete(&self, key: &str) -> Result<(), CoreError> {
+        self.map.lock().map_err(lock_error)?.remove(key);
+        Ok(())
+    }
+}
+
+/// Segredos em JSON `{chave: valor}` com permissão 0600 (unix) a cada escrita.
+pub struct FileStore {
+    path: PathBuf,
+    lock: Mutex<()>,
+}
+
+impl FileStore {
+    pub fn new(path: PathBuf) -> Self {
+        Self {
+            path,
+            lock: Mutex::new(()),
+        }
+    }
+
+    fn read(&self) -> Result<BTreeMap<String, String>, CoreError> {
+        match std::fs::read_to_string(&self.path) {
+            Ok(text) if text.trim().is_empty() => Ok(BTreeMap::new()),
+            Ok(text) => serde_json::from_str(&text).map_err(|e| {
+                CoreError::Secret(format!(
+                    "Arquivo de segredos {} ilegível: {e}",
+                    self.path.display()
+                ))
+            }),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(BTreeMap::new()),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    fn write(&self, map: &BTreeMap<String, String>) -> Result<(), CoreError> {
+        use std::io::Write;
+        if let Some(parent) = self.path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let json = serde_json::to_string_pretty(map)
+            .map_err(|e| CoreError::Secret(format!("Falha ao serializar segredos: {e}")))?;
+        // Escrita atômica: arquivo temporário irmão (0600) e rename por cima do destino.
+        let mut tmp_name = self.path.as_os_str().to_owned();
+        tmp_name.push(".tmp");
+        let tmp = PathBuf::from(tmp_name);
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let result = (|| -> std::io::Result<()> {
+            let mut file = options.open(&tmp)?;
+            // Garante 0600 também quando o temporário já existia com outra permissão.
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                file.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+            }
+            file.write_all(json.as_bytes())?;
+            file.sync_all()?;
+            std::fs::rename(&tmp, &self.path)
+        })();
+        if let Err(e) = result {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
+        Ok(())
+    }
+}
+
+impl SecretStore for FileStore {
+    fn get(&self, key: &str) -> Result<Option<String>, CoreError> {
+        let _guard = self.lock.lock().map_err(lock_error)?;
+        Ok(self.read()?.get(key).cloned())
+    }
+    fn set(&self, key: &str, value: &str) -> Result<(), CoreError> {
+        let _guard = self.lock.lock().map_err(lock_error)?;
+        let mut map = self.read()?;
+        map.insert(key.to_string(), value.to_string());
+        self.write(&map)
+    }
+    fn delete(&self, key: &str) -> Result<(), CoreError> {
+        let _guard = self.lock.lock().map_err(lock_error)?;
+        let mut map = self.read()?;
+        if map.remove(key).is_some() {
+            self.write(&map)?;
+        }
+        Ok(())
+    }
+}
+
+/// Segredos no keychain do sistema.
+pub struct KeyringStore {
+    service: String,
+}
+
+impl KeyringStore {
+    pub fn new(service: &str) -> Self {
+        Self {
+            service: service.to_string(),
+        }
+    }
+
+    fn entry(&self, key: &str) -> Result<keyring::Entry, CoreError> {
+        keyring::Entry::new(&self.service, key).map_err(keyring_error)
+    }
+}
+
+fn keyring_error(e: keyring::Error) -> CoreError {
+    CoreError::Secret(format!("Keychain indisponível: {e}"))
+}
+
+impl SecretStore for KeyringStore {
+    fn get(&self, key: &str) -> Result<Option<String>, CoreError> {
+        match self.entry(key)?.get_password() {
+            Ok(v) => Ok(Some(v)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(e) => Err(keyring_error(e)),
+        }
+    }
+    fn set(&self, key: &str, value: &str) -> Result<(), CoreError> {
+        self.entry(key)?.set_password(value).map_err(keyring_error)
+    }
+    fn delete(&self, key: &str) -> Result<(), CoreError> {
+        match self.entry(key)?.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(e) => Err(keyring_error(e)),
+        }
+    }
+}
+
+fn keychain_works(store: &KeyringStore) -> bool {
+    store.set(PROBE_KEY, "ok").is_ok()
+        && matches!(store.get(PROBE_KEY), Ok(Some(v)) if v == "ok")
+        && store.delete(PROBE_KEY).is_ok()
+}
+
+/// Usa o keychain se ele responder a um teste de escrita/leitura; senão cai
+/// para `data_dir/secrets.json` (o app avisa o usuário quando vier `File`).
+pub fn open_secret_store(data_dir: &Path) -> (Arc<dyn SecretStore>, SecretBackend) {
+    let keyring = KeyringStore::new(KEYRING_SERVICE);
+    if keychain_works(&keyring) {
+        (Arc::new(keyring), SecretBackend::Keychain)
+    } else {
+        (
+            Arc::new(FileStore::new(data_dir.join("secrets.json"))),
+            SecretBackend::File,
+        )
+    }
+}
+
+/// O token do ambiente vence e não é gravado; senão vale o token guardado;
+/// senão gera um novo (32 bytes, base64url sem padding) e grava. Token vazio ou só
+/// com espaços (no ambiente ou guardado) conta como ausente.
+pub fn ensure_mcp_token(
+    store: &dyn SecretStore,
+    env_token: Option<&str>,
+) -> Result<String, CoreError> {
+    if let Some(token) = env_token.filter(|t| !t.trim().is_empty()) {
+        return Ok(token.to_string());
+    }
+    if let Some(token) = store.get(MCP_TOKEN_KEY)?.filter(|t| !t.trim().is_empty()) {
+        return Ok(token);
+    }
+    let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+    store.set(MCP_TOKEN_KEY, &token)?;
+    Ok(token)
+}
+
+pub fn connection_secret_key(connection_id: &str, name: &str) -> String {
+    format!("conn/{connection_id}/{name}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn contract(s: &dyn SecretStore) {
+        assert_eq!(s.get("a").unwrap(), None);
+        s.set("a", "1").unwrap();
+        assert_eq!(s.get("a").unwrap(), Some("1".to_string()));
+        s.set("a", "2").unwrap();
+        assert_eq!(s.get("a").unwrap(), Some("2".to_string()));
+        s.delete("a").unwrap();
+        assert_eq!(s.get("a").unwrap(), None);
+        s.delete("a").unwrap();
+    }
+
+    #[test]
+    fn memory_and_file_store_contract() {
+        contract(&MemoryStore::default());
+        let dir = tempfile::tempdir().unwrap();
+        contract(&FileStore::new(dir.path().join("secrets.json")));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn file_store_is_0600() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        let s = FileStore::new(path.clone());
+        s.set("a", "1").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        s.set("b", "2").unwrap();
+        assert_eq!(
+            std::fs::metadata(&path).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+    }
+
+    #[test]
+    fn file_store_write_is_atomic_and_leaves_no_tmp() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        let s = FileStore::new(path.clone());
+        s.set("a", "1").unwrap();
+        s.set("b", "2").unwrap();
+        s.delete("a").unwrap();
+        assert!(!dir.path().join("secrets.json.tmp").exists());
+        let json: std::collections::BTreeMap<String, String> =
+            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(json.len(), 1);
+        assert_eq!(json["b"], "2");
+    }
+
+    #[test]
+    fn file_store_survives_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("secrets.json");
+        FileStore::new(path.clone()).set("a", "1").unwrap();
+        assert_eq!(
+            FileStore::new(path).get("a").unwrap(),
+            Some("1".to_string())
+        );
+    }
+
+    #[test]
+    fn token_generated_once_and_reused() {
+        let s = MemoryStore::default();
+        let t1 = ensure_mcp_token(&s, None).unwrap();
+        assert_eq!(t1.len(), 43);
+        assert_eq!(ensure_mcp_token(&s, None).unwrap(), t1);
+    }
+
+    #[test]
+    fn env_token_wins_and_is_not_stored() {
+        let s = MemoryStore::default();
+        assert_eq!(ensure_mcp_token(&s, Some("abc")).unwrap(), "abc");
+        assert_eq!(s.get("mcp_token").unwrap(), None);
+    }
+
+    #[test]
+    fn empty_tokens_count_as_absent() {
+        let s = MemoryStore::default();
+        for env in [Some(""), Some("  \t")] {
+            let t = ensure_mcp_token(&s, env).unwrap();
+            assert!(!t.trim().is_empty());
+        }
+        s.set("mcp_token", " ").unwrap();
+        let t = ensure_mcp_token(&s, None).unwrap();
+        assert!(!t.trim().is_empty());
+        assert_eq!(s.get("mcp_token").unwrap(), Some(t));
+    }
+
+    #[test]
+    fn secret_debug_is_masked() {
+        let s = Secret::new("ya29.abc");
+        assert_eq!(format!("{s:?}"), "Secret(***)");
+        assert_eq!(format!("{:?}", Some(s.clone())), "Some(Secret(***))");
+        assert_eq!(s.expose(), "ya29.abc");
+        assert!(!s.is_empty());
+        assert_eq!(serde_json::to_string(&s).unwrap(), "\"ya29.abc\"");
+    }
+
+    #[test]
+    fn connection_key_format() {
+        assert_eq!(
+            connection_secret_key("c1", "refresh_token"),
+            "conn/c1/refresh_token"
+        );
+    }
+
+    #[test]
+    #[ignore = "toca no keychain real"]
+    fn keyring_store_contract() {
+        contract(&KeyringStore::new("adsconsole-test"));
+    }
+}

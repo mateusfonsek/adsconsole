@@ -1,0 +1,29 @@
+[package]
+name = "adsconsole-google-ads"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "adsconsole_google_ads"
+
+[dependencies]
+adsconsole-core = { path = "../core" }
+reqwest.workspace = true
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+url.workspace = true
+sha2.workspace = true
+rand.workspace = true
+base64.workspace = true
+rust_decimal.workspace = true
+chrono.workspace = true
+imagesize.workspace = true
+schemars.workspace = true
+
+[dev-dependencies]
+wiremock.workspace = true
+tempfile.workspace = true

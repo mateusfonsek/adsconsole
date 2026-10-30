@@ -1,0 +1,6 @@
+{
+  "mutateOperationResponses": [
+    { "campaignBudgetResult": { "resourceName": "customers/1/campaignBudgets/10" } },
+    { "campaignResult": { "resourceName": "customers/1/campaigns/20" } }
+  ]
+}

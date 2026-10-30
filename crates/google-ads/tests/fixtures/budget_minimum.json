@@ -1,0 +1,33 @@
+{
+  "error": {
+    "code": 400,
+    "message": "Request contains an invalid argument.",
+    "status": "INVALID_ARGUMENT",
+    "details": [
+      {
+        "@type": "type.googleapis.com/google.ads.googleads.v26.errors.GoogleAdsFailure",
+        "errors": [
+          {
+            "errorCode": { "campaignBudgetError": "BUDGET_BELOW_PER_DAY_MINIMUM" },
+            "message": "Budget is below the minimum allowed per day.",
+            "trigger": { "int64Value": "1000000" },
+            "location": {
+              "fieldPathElements": [
+                { "fieldName": "operations", "index": 0 },
+                { "fieldName": "create" },
+                { "fieldName": "amount_micros" }
+              ]
+            },
+            "details": {
+              "budgetPerDayMinimumErrorDetails": {
+                "minimumBudgetAmountMicros": "25400000",
+                "budgetPerDayMinimumMicros": "25400000"
+              }
+            }
+          }
+        ],
+        "requestId": "req-budget-1"
+      }
+    ]
+  }
+}

@@ -1,0 +1,40 @@
+[workspace]
+members = ["crates/core", "crates/google-ads", "crates/meta-ads", "crates/mcp"]
+resolver = "3"
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.95"
+license = "AGPL-3.0-only"
+
+[workspace.dependencies]
+rmcp = { version = "3.5", default-features = false, features = ["server", "transport-streamable-http-server"] }
+axum = "0.8"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+rusqlite = { version = "0.40", features = ["bundled"] }
+keyring = "4.2"
+schemars = "1"
+rust_decimal = { version = "1", features = ["serde-with-float", "serde-with-str"] }
+rust_decimal_macros = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-appender = "0.2"
+regex = "1"
+async-trait = "0.1"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "6"
+base64 = "0.22"
+rand = "0.9"
+tempfile = "3"
+reqwest = { version = "0.13", features = ["json", "form", "multipart"] }
+wiremock = "0.6"
+url = "2"
+sha2 = "0.10"
+hmac = "0.12"
+imagesize = "0.13"
+open = "5"
