@@ -1,0 +1,29 @@
+[package]
+name = "adsconsole-app"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[lib]
+name = "adsconsole_app"
+
+[[bin]]
+name = "adsconsole"
+path = "src/main.rs"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+adsconsole-core = { path = "../core" }
+adsconsole-google-ads = { path = "../google-ads" }
+adsconsole-meta-ads = { path = "../meta-ads" }
+adsconsole-mcp = { path = "../mcp" }
+tauri = { version = "2", features = ["tray-icon"] }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
+specta = { version = "=2.0.0-rc.26", features = ["derive", "serde_json", "chrono"] }
+specta-typescript = "=0.0.13"

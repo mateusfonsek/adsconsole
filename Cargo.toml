@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/core", "crates/google-ads", "crates/meta-ads", "crates/mcp"]
+members = ["crates/core", "crates/google-ads", "crates/meta-ads", "crates/mcp", "crates/app"]
 resolver = "3"
 
 [workspace.package]

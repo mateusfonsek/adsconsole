@@ -1,0 +1,58 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans/400.css";
+@import "@fontsource/ibm-plex-sans/500.css";
+@import "@fontsource/ibm-plex-sans/600.css";
+@import "@fontsource/ibm-plex-mono/400.css";
+@import "@fontsource/ibm-plex-mono/500.css";
+@import "./tokens.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-surface: var(--surface);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-err: var(--err);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius-console: 6px;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+input,
+textarea,
+code,
+pre {
+  user-select: text;
+}
+
+/* Rótulo em mono maiúsculo, assinatura do visual. */
+.label-mono {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}

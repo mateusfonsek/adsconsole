@@ -1,0 +1,26 @@
+/* Paleta "Console": neutros quentes, monocromático, cor só para estado. */
+:root {
+  --bg: #faf9f7;
+  --fg: #1c1b19;
+  --muted: #8b867d;
+  --line: #e8e5df;
+  --line-strong: #d8d4cc;
+  --surface: #ffffff;
+  --ok: #2f7d4f;
+  --warn: #9a6700;
+  --err: #b42318;
+  color-scheme: light;
+}
+
+:root.dark {
+  --bg: #171614;
+  --fg: #ebe8e2;
+  --muted: #8f8a80;
+  --line: #2c2a26;
+  --line-strong: #3a3732;
+  --surface: #1d1c19;
+  --ok: #4fae74;
+  --warn: #d6a243;
+  --err: #f0786b;
+  color-scheme: dark;
+}
