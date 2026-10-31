@@ -46,6 +46,7 @@ pub trait SecretStore: Send + Sync {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[cfg_attr(feature = "specta", derive(specta::Type))]
 pub enum SecretBackend {
     Keychain,
     File,

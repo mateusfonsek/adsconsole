@@ -22,6 +22,7 @@ dependencies = [
  "adsconsole-google-ads",
  "adsconsole-mcp",
  "adsconsole-meta-ads",
+ "async-trait",
  "chrono",
  "reqwest",
  "serde",
@@ -34,6 +35,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -52,6 +54,7 @@ dependencies = [
  "schemars 1.2.3",
  "serde",
  "serde_json",
+ "specta",
  "tempfile",
  "thiserror 2.0.21",
  "tracing",
