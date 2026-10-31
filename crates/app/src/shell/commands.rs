@@ -387,6 +387,30 @@ pub fn open_data_dir(app: AppHandle, state: State<'_, AppState>) -> R<()> {
         .map_err(|e| AppError::new("OPEN_FAILED", e.to_string()))
 }
 
+#[derive(Debug, Clone, Serialize, specta::Type)]
+pub struct UpdateView {
+    pub version: String,
+    pub url: String,
+}
+
+/// Verifica agora se há versão nova (o app também verifica uma vez por dia).
+#[tauri::command]
+#[specta::specta]
+pub async fn check_update() -> Option<UpdateView> {
+    let http = reqwest::Client::new();
+    crate::core::jobs::check_update(
+        &http,
+        crate::core::jobs::GITHUB_API,
+        crate::core::settings::REPO,
+        env!("CARGO_PKG_VERSION"),
+    )
+    .await
+    .map(|u| UpdateView {
+        version: u.version,
+        url: u.url,
+    })
+}
+
 #[tauri::command]
 #[specta::specta]
 pub async fn quit_app(
@@ -446,6 +470,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             set_theme,
             set_autostart,
             open_data_dir,
+            check_update,
             quit_app,
         ])
 }

@@ -40,7 +40,8 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-dialog = "2"
 open.workspace = true
 tracing.workspace = true
+reqwest.workspace = true
 
 [dev-dependencies]
-reqwest.workspace = true
 tempfile.workspace = true
+wiremock.workspace = true

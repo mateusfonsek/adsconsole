@@ -45,6 +45,8 @@ export const commands = {
 	setTheme: (theme: Theme) => __TAURI_INVOKE<null>("set_theme", { theme }),
 	setAutostart: (enabled: boolean) => __TAURI_INVOKE<null>("set_autostart", { enabled }),
 	openDataDir: () => __TAURI_INVOKE<null>("open_data_dir"),
+	/**  Verifica agora se há versão nova (o app também verifica uma vez por dia). */
+	checkUpdate: () => __TAURI_INVOKE<UpdateView | null>("check_update"),
 	quitApp: (rejectPending: boolean) => __TAURI_INVOKE<QuitOutcome>("quit_app", { rejectPending }),
 };
 
@@ -387,6 +389,11 @@ export type UndoResult_Serialize = {
 	status: string,
 	/**  A mudança nova que desfaz a original. */
 	change_id: string | null,
+};
+
+export type UpdateView = {
+	version: string,
+	url: string,
 };
 
 export type WriteMode = "read_only" | "approval" | "direct";

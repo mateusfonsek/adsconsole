@@ -1,6 +1,7 @@
 //! Liga o núcleo ao Tauri: plugins, janela, barra de menu, eventos e comandos.
 
 pub mod commands;
+mod jobs;
 mod notify;
 pub mod quit;
 pub mod state;
@@ -85,7 +86,8 @@ pub fn start(app: &AppHandle) {
                 notices: services.rt.notices().to_vec(),
             });
             state.set_services(Some(services.clone()));
-            spawn_event_loop(app.clone(), services);
+            spawn_event_loop(app.clone(), services.clone());
+            jobs::spawn(app.clone(), services);
         }
         Err(issue) => {
             state.set_services(None);

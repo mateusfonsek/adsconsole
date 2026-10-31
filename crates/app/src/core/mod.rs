@@ -5,6 +5,7 @@ pub mod clients;
 pub mod connections;
 pub mod error;
 pub mod events;
+pub mod jobs;
 pub mod runtime;
 pub mod services;
 pub mod settings;
