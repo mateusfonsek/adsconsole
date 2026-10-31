@@ -1,5 +1,8 @@
 {
-  "app": { "name": "AdsConsole", "demo_banner": "Demo mode · sample data" },
+  "app": {
+    "name": "AdsConsole",
+    "demo_banner": "Demo mode · sample data"
+  },
   "nav": {
     "home": "Home",
     "connections": "Connections",
@@ -28,5 +31,59 @@
     "download": "Download",
     "dismiss": "Dismiss"
   },
-  "platform": { "google_ads": "Google Ads", "meta_ads": "Meta Ads" }
+  "platform": {
+    "google_ads": "Google Ads",
+    "meta_ads": "Meta Ads"
+  },
+  "home": {
+    "title": "Home",
+    "subtitle": "Everything runs on your computer. Nothing goes through AdsConsole servers.",
+    "steps_title": "Getting started",
+    "steps_hint": "Three steps for the AI to start working on your accounts.",
+    "step_connect": "Connect a platform",
+    "step_connect_hint": "Google Ads or Meta Ads, with your own app.",
+    "step_client": "Connect your AI client",
+    "step_client_hint": "Paste the ready-made snippet into Claude, Codex, Gemini or Cursor.",
+    "step_first_call": "First call received",
+    "step_first_call_hint": "Ask the AI something like \"list my campaigns\". This step checks itself.",
+    "go": "Go",
+    "done": "Done",
+    "mcps": "MCPs",
+    "server_running": "Running",
+    "server_error": "Error",
+    "paused": "Paused",
+    "connections": "Connections",
+    "connections_count_one": "{{count}} connection",
+    "connections_count_other": "{{count}} connections",
+    "reconnect_count_one": "{{count}} connection needs to reconnect",
+    "reconnect_count_other": "{{count}} connections need to reconnect",
+    "expiring_count_one": "{{count}} connection expires soon",
+    "expiring_count_other": "{{count}} connections expire soon",
+    "all_good": "All good",
+    "approvals": "Approvals",
+    "no_pending": "No pending approvals"
+  },
+  "settings": {
+    "title": "Settings",
+    "language": "Language",
+    "theme": "Theme",
+    "theme_system": "System",
+    "theme_light": "Light",
+    "theme_dark": "Dark",
+    "autostart": "Open at login",
+    "autostart_hint": "The MCPs are available as soon as you turn on your computer.",
+    "port": "Port",
+    "port_hint": "AI clients need the new port after you change it.",
+    "save_port": "Save port",
+    "secrets": "Secrets",
+    "secrets_keychain": "System keychain. Tokens and keys stay in the operating system vault.",
+    "secrets_file": "Local file readable only by your user (the keychain was not available).",
+    "data_dir": "Data folder",
+    "open_folder": "Open folder",
+    "updates": "Updates",
+    "check_updates": "Check now",
+    "up_to_date": "You are on the latest version.",
+    "version": "Version {{version}}",
+    "project": "Source code and license"
+  }
 }

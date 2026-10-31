@@ -1,19 +1,15 @@
 import { useEffect, useMemo, type ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nextProvider, useTranslation } from "react-i18next";
-import { commands, type Theme } from "./bindings";
+import { commands } from "./bindings";
+import { applyTheme } from "./lib/theme";
+import { Home } from "./pages/Home";
+import { Settings } from "./pages/Settings";
 import { createI18n, systemLang, type Lang } from "./i18n";
 import { useCmd } from "./lib/ipc";
 import { useRoute, type RouteName } from "./lib/route";
 import { AppShell } from "./components/layout/AppShell";
 import { PageHeader } from "./components/layout/PageHeader";
-
-/** Tema: `system` segue o sistema; os outros forçam a classe `dark`. */
-export function applyTheme(theme: Theme) {
-  const dark =
-    theme === "dark" || (theme === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
-  document.documentElement.classList.toggle("dark", dark);
-}
 
 function Placeholder({ name }: { name: RouteName }) {
   const { t } = useTranslation();
@@ -21,13 +17,13 @@ function Placeholder({ name }: { name: RouteName }) {
 }
 
 const PAGES: Record<RouteName, () => ReactNode> = {
-  home: () => <Placeholder name="home" />,
+  home: () => <Home />,
   connections: () => <Placeholder name="connections" />,
   mcps: () => <Placeholder name="mcps" />,
   tools: () => <Placeholder name="tools" />,
   approvals: () => <Placeholder name="approvals" />,
   history: () => <Placeholder name="history" />,
-  settings: () => <Placeholder name="settings" />,
+  settings: () => <Settings />,
 };
 
 function Root() {

@@ -1,5 +1,8 @@
 {
-  "app": { "name": "AdsConsole", "demo_banner": "Modo demo · dados de exemplo" },
+  "app": {
+    "name": "AdsConsole",
+    "demo_banner": "Modo demo · dados de exemplo"
+  },
   "nav": {
     "home": "Início",
     "connections": "Conexões",
@@ -28,5 +31,59 @@
     "download": "Baixar",
     "dismiss": "Dispensar"
   },
-  "platform": { "google_ads": "Google Ads", "meta_ads": "Meta Ads" }
+  "platform": {
+    "google_ads": "Google Ads",
+    "meta_ads": "Meta Ads"
+  },
+  "home": {
+    "title": "Início",
+    "subtitle": "Tudo roda no seu computador. Nada passa por servidores do AdsConsole.",
+    "steps_title": "Primeiros passos",
+    "steps_hint": "Três passos para a IA começar a trabalhar nas suas contas.",
+    "step_connect": "Conectar uma plataforma",
+    "step_connect_hint": "Google Ads ou Meta Ads, com o seu próprio app.",
+    "step_client": "Conectar seu cliente de IA",
+    "step_client_hint": "Cole o trecho pronto no Claude, Codex, Gemini ou Cursor.",
+    "step_first_call": "Primeira chamada recebida",
+    "step_first_call_hint": "Peça algo à IA, como \"liste minhas campanhas\". Este passo marca sozinho.",
+    "go": "Ir",
+    "done": "Feito",
+    "mcps": "MCPs",
+    "server_running": "Ligado",
+    "server_error": "Com erro",
+    "paused": "Pausado",
+    "connections": "Conexões",
+    "connections_count_one": "{{count}} conexão",
+    "connections_count_other": "{{count}} conexões",
+    "reconnect_count_one": "{{count}} conexão precisa reconectar",
+    "reconnect_count_other": "{{count}} conexões precisam reconectar",
+    "expiring_count_one": "{{count}} conexão vence em breve",
+    "expiring_count_other": "{{count}} conexões vencem em breve",
+    "all_good": "Tudo em ordem",
+    "approvals": "Aprovações",
+    "no_pending": "Nenhuma aprovação pendente"
+  },
+  "settings": {
+    "title": "Configurações",
+    "language": "Idioma",
+    "theme": "Tema",
+    "theme_system": "Sistema",
+    "theme_light": "Claro",
+    "theme_dark": "Escuro",
+    "autostart": "Abrir com o sistema",
+    "autostart_hint": "Os MCPs ficam disponíveis assim que você liga o computador.",
+    "port": "Porta",
+    "port_hint": "Os clientes de IA precisam da porta nova depois da troca.",
+    "save_port": "Salvar porta",
+    "secrets": "Segredos",
+    "secrets_keychain": "Keychain do sistema. Tokens e chaves ficam no cofre do sistema operacional.",
+    "secrets_file": "Arquivo local legível só pelo seu usuário (o keychain não estava disponível).",
+    "data_dir": "Pasta de dados",
+    "open_folder": "Abrir pasta",
+    "updates": "Atualizações",
+    "check_updates": "Verificar agora",
+    "up_to_date": "Você está na versão mais recente.",
+    "version": "Versão {{version}}",
+    "project": "Código-fonte e licença"
+  }
 }
