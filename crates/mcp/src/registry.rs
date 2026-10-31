@@ -22,6 +22,11 @@ impl ToolRegistry {
         Ok(Self { specs, index })
     }
 
+    /// Todas, em ordem de registro (inclui as ocultas).
+    pub fn specs(&self) -> &[ToolSpec] {
+        &self.specs
+    }
+
     /// Inclui as ocultas.
     pub fn get(&self, name: &str) -> Option<&ToolSpec> {
         self.index.get(name).map(|&i| &self.specs[i])

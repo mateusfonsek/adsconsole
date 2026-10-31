@@ -4,5 +4,6 @@ pub mod changes;
 pub mod connections;
 pub mod error;
 pub mod runtime;
+pub mod settings;
 
 pub use error::AppError;
