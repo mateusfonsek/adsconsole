@@ -153,5 +153,68 @@
       "token_hint": "System User or user token. It stays only in the keychain.",
       "save_token": "Connect with the token"
     }
+  },
+  "mcps": {
+    "title": "MCPs",
+    "subtitle": "Local servers your AI client uses. They only accept calls from this computer with the token.",
+    "tools_count_one": "{{count}} tool",
+    "tools_count_other": "{{count}} tools",
+    "mode": "mode: {{mode}}",
+    "paused": "Paused: the AI gets \"MCP paused\"",
+    "address": "Address",
+    "port": "Port",
+    "save_port": "Save port",
+    "token": "Token",
+    "show_token": "Show token",
+    "hide_token": "Hide token",
+    "copy_token": "Copy token",
+    "connect_client": "Connect your AI client",
+    "platform": "Platform",
+    "copy_snippet": "Copy snippet",
+    "copied_with_token": "Copied with the token",
+    "server_error": "The MCP server is not running"
+  },
+  "clients": {
+    "claude_code": "Claude Code",
+    "claude_desktop": "Claude Desktop",
+    "codex": "Codex",
+    "gemini_cli": "Gemini CLI",
+    "cursor": "Cursor",
+    "where": {
+      "terminal": "Paste it in the terminal. The copied command includes the token.",
+      "claude_desktop": "Paste it into claude_desktop_config.json (Settings → Developer → Edit config) and restart Claude Desktop. Requires Node.js.",
+      "codex": "Paste it into ~/.codex/config.toml.",
+      "cursor": "Paste it into ~/.cursor/mcp.json and restart Cursor."
+    }
+  },
+  "modes": {
+    "read_only": "Read only",
+    "approval": "Approval",
+    "direct": "Direct"
+  },
+  "tools": {
+    "title": "Tools",
+    "subtitle": "What the AI can do on each platform. Applies right away, no restart.",
+    "write_mode": "Write mode",
+    "write_mode_hint": "Approval: every change waits for your OK in AdsConsole. Direct: applies without asking.",
+    "wait": "How long the AI waits for approval (seconds)",
+    "wait_hint": "After that the request stays in the queue and the AI checks the result later.",
+    "destructive": "Destructive",
+    "groups": {
+      "read": "Read",
+      "create": "Create",
+      "edit": "Edit",
+      "media": "Media",
+      "history": "History and undo",
+      "escape": "Raw API calls"
+    },
+    "group_hint": {
+      "read": "Accounts, campaigns, metrics and reports.",
+      "create": "Campaigns, ad sets, ads and audiences (created paused).",
+      "edit": "Status, budgets, bids and copy.",
+      "media": "Image and video upload.",
+      "history": "Look up changes and undo.",
+      "escape": "Direct API access for uncovered cases. Off by default."
+    }
   }
 }

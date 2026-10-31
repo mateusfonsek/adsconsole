@@ -5,6 +5,8 @@ import { commands } from "./bindings";
 import { applyTheme } from "./lib/theme";
 import { Connections } from "./pages/Connections";
 import { Home } from "./pages/Home";
+import { Mcps } from "./pages/Mcps";
+import { Tools } from "./pages/Tools";
 import { Settings } from "./pages/Settings";
 import { createI18n, systemLang, type Lang } from "./i18n";
 import { useCmd } from "./lib/ipc";
@@ -20,8 +22,8 @@ function Placeholder({ name }: { name: RouteName }) {
 const PAGES: Record<RouteName, () => ReactNode> = {
   home: () => <Home />,
   connections: () => <Connections />,
-  mcps: () => <Placeholder name="mcps" />,
-  tools: () => <Placeholder name="tools" />,
+  mcps: () => <Mcps />,
+  tools: () => <Tools />,
   approvals: () => <Placeholder name="approvals" />,
   history: () => <Placeholder name="history" />,
   settings: () => <Settings />,

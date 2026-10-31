@@ -153,5 +153,68 @@
       "token_hint": "Token de System User ou de usuário. Fica só no keychain.",
       "save_token": "Conectar com o token"
     }
+  },
+  "mcps": {
+    "title": "MCPs",
+    "subtitle": "Servidores locais que o seu cliente de IA usa. Só aceitam chamadas deste computador com o token.",
+    "tools_count_one": "{{count}} ferramenta",
+    "tools_count_other": "{{count}} ferramentas",
+    "mode": "modo: {{mode}}",
+    "paused": "Pausado: a IA recebe \"MCP pausado\"",
+    "address": "Endereço",
+    "port": "Porta",
+    "save_port": "Salvar porta",
+    "token": "Token",
+    "show_token": "Mostrar token",
+    "hide_token": "Ocultar token",
+    "copy_token": "Copiar token",
+    "connect_client": "Conectar seu cliente de IA",
+    "platform": "Plataforma",
+    "copy_snippet": "Copiar trecho",
+    "copied_with_token": "Copiado com o token",
+    "server_error": "O servidor MCP não está rodando"
+  },
+  "clients": {
+    "claude_code": "Claude Code",
+    "claude_desktop": "Claude Desktop",
+    "codex": "Codex",
+    "gemini_cli": "Gemini CLI",
+    "cursor": "Cursor",
+    "where": {
+      "terminal": "Cole no terminal. O comando copiado já leva o token.",
+      "claude_desktop": "Cole em claude_desktop_config.json (Configurações → Desenvolvedor → Editar configuração) e reinicie o Claude Desktop. Precisa do Node.js.",
+      "codex": "Cole em ~/.codex/config.toml.",
+      "cursor": "Cole em ~/.cursor/mcp.json e reinicie o Cursor."
+    }
+  },
+  "modes": {
+    "read_only": "Só leitura",
+    "approval": "Aprovação",
+    "direct": "Direta"
+  },
+  "tools": {
+    "title": "Ferramentas",
+    "subtitle": "O que a IA pode fazer em cada plataforma. Vale na hora, sem reiniciar.",
+    "write_mode": "Modo de escrita",
+    "write_mode_hint": "Aprovação: cada mudança espera o seu ok no AdsConsole. Direta: aplica sem perguntar.",
+    "wait": "Quanto tempo a IA espera a aprovação (segundos)",
+    "wait_hint": "Depois disso o pedido continua na fila e a IA consulta o resultado mais tarde.",
+    "destructive": "Destrutiva",
+    "groups": {
+      "read": "Leitura",
+      "create": "Criação",
+      "edit": "Edição",
+      "media": "Mídia",
+      "history": "Histórico e desfazer",
+      "escape": "Chamadas livres à API"
+    },
+    "group_hint": {
+      "read": "Contas, campanhas, métricas e relatórios.",
+      "create": "Campanhas, conjuntos, anúncios e públicos (nascem pausados).",
+      "edit": "Status, orçamentos, lances e textos.",
+      "media": "Envio de imagens e vídeos.",
+      "history": "Consultar mudanças e desfazer.",
+      "escape": "Acesso direto à API para casos não cobertos. Desligado por padrão."
+    }
   }
 }
