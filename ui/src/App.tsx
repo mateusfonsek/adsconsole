@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { commands } from "./bindings";
 import { applyTheme } from "./lib/theme";
+import { Connections } from "./pages/Connections";
 import { Home } from "./pages/Home";
 import { Settings } from "./pages/Settings";
 import { createI18n, systemLang, type Lang } from "./i18n";
@@ -18,7 +19,7 @@ function Placeholder({ name }: { name: RouteName }) {
 
 const PAGES: Record<RouteName, () => ReactNode> = {
   home: () => <Home />,
-  connections: () => <Placeholder name="connections" />,
+  connections: () => <Connections />,
   mcps: () => <Placeholder name="mcps" />,
   tools: () => <Placeholder name="tools" />,
   approvals: () => <Placeholder name="approvals" />,
