@@ -1,0 +1,32 @@
+{
+  "app": { "name": "AdsConsole", "demo_banner": "Modo demo · dados de exemplo" },
+  "nav": {
+    "home": "Início",
+    "connections": "Conexões",
+    "mcps": "MCPs",
+    "tools": "Ferramentas",
+    "approvals": "Aprovações",
+    "history": "Histórico",
+    "settings": "Configurações",
+    "pending_count_one": "{{count}} aprovação pendente",
+    "pending_count_other": "{{count}} aprovações pendentes"
+  },
+  "common": {
+    "loading": "Carregando…",
+    "save": "Salvar",
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "retry": "Tentar de novo",
+    "error_title": "Algo deu errado",
+    "on": "Ligado",
+    "off": "Desligado",
+    "open": "Abrir",
+    "remove": "Remover",
+    "update_available": "Versão {{version}} disponível",
+    "download": "Baixar",
+    "dismiss": "Dispensar"
+  },
+  "platform": { "google_ads": "Google Ads", "meta_ads": "Meta Ads" }
+}
