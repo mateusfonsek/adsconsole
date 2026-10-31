@@ -2,6 +2,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use adsconsole_core::Platform;
@@ -10,7 +11,7 @@ use axum::extract::{Request, State};
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rmcp::transport::streamable_http_server::session::local::LocalSessionManager;
 use rmcp::transport::{StreamableHttpServerConfig, StreamableHttpService};
 use serde_json::json;
@@ -27,6 +28,8 @@ pub struct ServerOptions {
     /// 0 escolhe uma porta livre (usado nos testes).
     pub port: u16,
     pub token: String,
+    /// Aceita `port: 0` (porta livre escolhida pelo sistema); só os testes usam.
+    pub allow_ephemeral_port: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -39,17 +42,30 @@ pub enum StartError {
         "O token do MCP está vazio. Defina um token em ADSCONSOLE_TOKEN ou deixe o AdsConsole gerar um."
     )]
     EmptyToken,
+    #[error("Porta inválida: {0}. Use um número de 1 a 65535.")]
+    InvalidPort(u16),
+    #[error("Duas instâncias do MCP de {} no mesmo servidor.", .0.display_name())]
+    DuplicatePlatform(Platform),
     #[error("Falha ao iniciar o servidor MCP: {0}")]
     Io(#[from] std::io::Error),
 }
 
 pub struct RunningServer {
     pub addr: SocketAddr,
+    last_request: Arc<AtomicI64>,
     cancel: CancellationToken,
     tasks: Vec<JoinHandle<()>>,
 }
 
 impl RunningServer {
+    /// Horário da última requisição com token válido, em qualquer endpoint.
+    pub fn last_request_at(&self) -> Option<DateTime<Utc>> {
+        match self.last_request.load(Ordering::Relaxed) {
+            0 => None,
+            ms => DateTime::from_timestamp_millis(ms),
+        }
+    }
+
     /// Fecha as sessões MCP, para de aceitar conexões e espera o servidor terminar.
     pub async fn shutdown(mut self) {
         self.cancel.cancel();
@@ -70,6 +86,7 @@ impl Drop for RunningServer {
 struct Guard {
     token: String,
     config: SharedConfig,
+    last_request: Arc<AtomicI64>,
 }
 
 pub async fn start(
@@ -80,6 +97,14 @@ pub async fn start(
     // Token vazio aceitaria `Authorization: Bearer ` de qualquer processo local.
     if opts.token.trim().is_empty() {
         return Err(StartError::EmptyToken);
+    }
+    if opts.port == 0 && !opts.allow_ephemeral_port {
+        return Err(StartError::InvalidPort(0));
+    }
+    for (i, e) in engines.iter().enumerate() {
+        if engines[..i].iter().any(|o| o.platform() == e.platform()) {
+            return Err(StartError::DuplicatePlatform(e.platform()));
+        }
     }
     let listener = tokio::net::TcpListener::bind((Ipv4Addr::LOCALHOST, opts.port))
         .await
@@ -101,9 +126,11 @@ pub async fn start(
             );
         router = router.nest_service(engine.platform().endpoint(), svc);
     }
+    let last_request = Arc::new(AtomicI64::new(0));
     let guard = Arc::new(Guard {
         token: opts.token,
         config,
+        last_request: last_request.clone(),
     });
     let app = router.layer(middleware::from_fn_with_state(guard, check_access));
 
@@ -123,6 +150,7 @@ pub async fn start(
     tracing::info!(%addr, "servidor MCP ouvindo");
     Ok(RunningServer {
         addr,
+        last_request,
         cancel,
         tasks,
     })
@@ -165,6 +193,9 @@ async fn check_access(State(guard): State<Arc<Guard>>, req: Request, next: Next)
             .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
         return resp;
     }
+    guard
+        .last_request
+        .store(Utc::now().timestamp_millis(), Ordering::Relaxed);
     if let Some(p) = platform_of(req.uri().path()) {
         let enabled = guard
             .config
@@ -220,6 +251,7 @@ mod tests {
             let opts = ServerOptions {
                 port: 0,
                 token: token.into(),
+                allow_ephemeral_port: true,
             };
             let err = start(Vec::new(), config.clone(), opts).await.err();
             assert!(matches!(err, Some(StartError::EmptyToken)), "{err:?}");

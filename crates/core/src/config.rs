@@ -91,10 +91,17 @@ impl Config {
             Err(e) => return Err(e.into()),
         };
         match serde_json::from_slice::<Config>(&text) {
-            Ok(config) => Ok(LoadedConfig {
-                config,
-                warning: None,
-            }),
+            Ok(mut config) => {
+                let mut warning = None;
+                if config.port == 0 {
+                    config.port = Config::default().port;
+                    warning = Some(format!(
+                        "config.json tinha a porta 0; usando a padrão {}.",
+                        config.port
+                    ));
+                }
+                Ok(LoadedConfig { config, warning })
+            }
             Err(err) => {
                 let stamp = chrono::Utc::now().format("%Y%m%dT%H%M%S");
                 let file = path.file_name().map(|n| n.to_string_lossy().into_owned());
@@ -161,6 +168,16 @@ mod tests {
         assert!(g.enabled);
         assert_eq!(g.approval_wait_secs, 120);
         assert_eq!(c.port, 7458);
+    }
+
+    #[test]
+    fn port_zero_falls_back_to_default() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("config.json");
+        std::fs::write(&p, r#"{"port":0}"#).unwrap();
+        let l = Config::load(&p).unwrap();
+        assert_eq!(l.config.port, 7458);
+        assert!(l.warning.is_some());
     }
 
     #[test]

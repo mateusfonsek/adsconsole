@@ -69,6 +69,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         ServerOptions {
             port,
             token: token.clone(),
+            allow_ephemeral_port: false,
         },
     )
     .await?;

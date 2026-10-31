@@ -67,6 +67,7 @@ async fn spawn(mode: WriteMode) -> Harness {
         ServerOptions {
             port: 0,
             token: TOKEN.into(),
+            allow_ephemeral_port: true,
         },
     )
     .await
@@ -311,6 +312,7 @@ async fn port_in_use_is_reported() {
         ServerOptions {
             port,
             token: TOKEN.into(),
+            allow_ephemeral_port: true,
         },
     )
     .await
