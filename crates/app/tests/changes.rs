@@ -136,7 +136,8 @@ async fn history_exposes_orphans_and_undo() {
     let applied = history.iter().find(|c| c.status == "applied").unwrap();
     assert!(applied.reversible);
     let undone = s.svc.undo(&applied.id).await.unwrap();
-    assert_eq!(undone["status"], "applied", "{undone}");
+    assert_eq!(undone.status, "applied", "{undone:?}");
+    assert!(undone.change_id.is_some());
     assert!(s.svc.get(&applied.id).unwrap().undone_by.is_some());
 }
 

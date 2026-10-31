@@ -13,6 +13,7 @@ pub struct AppError {
     pub code: String,
     pub message: String,
     pub field: Option<String>,
+    #[specta(type = Option<specta_typescript::Unknown>)]
     pub details: Option<Value>,
 }
 

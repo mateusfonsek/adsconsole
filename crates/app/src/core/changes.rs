@@ -24,8 +24,11 @@ pub struct ChangeView {
     pub status: String,
     pub reversible: bool,
     pub created_at: DateTime<Utc>,
+    #[specta(type = Option<specta_typescript::Unknown>)]
     pub before: Option<Value>,
+    #[specta(type = Option<specta_typescript::Unknown>)]
     pub after: Option<Value>,
+    #[specta(type = Option<specta_typescript::Unknown>)]
     pub error: Option<Value>,
     /// Objetos criados por uma mudança que falhou no meio (para apagar à mão).
     pub orphaned_ids: Vec<String>,
@@ -51,6 +54,14 @@ pub struct HistoryFilter {
     pub since: Option<DateTime<Utc>>,
     pub limit: u32,
     pub offset: u32,
+}
+
+/// Resultado de desfazer: `applied` (desfeito) ou `pending` (aguarda aprovação).
+#[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
+pub struct UndoResult {
+    pub status: String,
+    /// A mudança nova que desfaz a original.
+    pub change_id: Option<String>,
 }
 
 pub struct ChangesService {
@@ -145,13 +156,17 @@ impl ChangesService {
         Ok(n)
     }
 
-    pub async fn undo(&self, id: &str) -> Result<Value, AppError> {
+    pub async fn undo(&self, id: &str) -> Result<UndoResult, AppError> {
         let c = self.load(id)?;
-        Ok(self
+        let out = self
             .rt
             .engine(c.platform)
             .undo(id, false, Some("app".into()))
-            .await?)
+            .await?;
+        Ok(UndoResult {
+            status: out["status"].as_str().unwrap_or("applied").to_string(),
+            change_id: out["change_id"].as_str().map(str::to_string),
+        })
     }
 
     fn load(&self, id: &str) -> Result<ChangeRecord, AppError> {

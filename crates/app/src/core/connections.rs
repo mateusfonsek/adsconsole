@@ -39,7 +39,7 @@ const MAX_CLIENT_JSON: u64 = 64 * 1024;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ConnStatusView {
     Ok,
-    ExpiringSoon { days: i64 },
+    ExpiringSoon { days: i32 },
     NeedsReconnect,
 }
 
@@ -388,7 +388,7 @@ fn view(c: ConnectionMeta, accounts: u32, now: DateTime<Utc>) -> ConnectionView 
         (_, Some(at)) if at <= now => ConnStatusView::NeedsReconnect,
         (_, Some(at)) if (at - now).num_days() < EXPIRY_WARNING_DAYS => {
             ConnStatusView::ExpiringSoon {
-                days: (at - now).num_days(),
+                days: (at - now).num_days() as i32,
             }
         }
         _ => ConnStatusView::Ok,

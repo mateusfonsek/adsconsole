@@ -52,6 +52,8 @@ pub struct AppSettingsView {
     pub data_dir: String,
     pub version: String,
     pub repo_url: String,
+    /// Modo demo de desenvolvimento (`--demo`).
+    pub demo: bool,
 }
 
 pub struct SettingsService {
@@ -180,6 +182,7 @@ impl SettingsService {
             data_dir: self.rt.data_dir().display().to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
             repo_url: format!("https://github.com/{REPO}"),
+            demo: false,
         }
     }
 
