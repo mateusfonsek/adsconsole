@@ -44,7 +44,8 @@ pub trait SecretStore: Send + Sync {
     fn delete(&self, key: &str) -> Result<(), CoreError>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SecretBackend {
     Keychain,
     File,
@@ -203,23 +204,69 @@ impl SecretStore for KeyringStore {
     }
 }
 
-fn keychain_works(store: &KeyringStore) -> bool {
-    store.set(PROBE_KEY, "ok").is_ok()
-        && matches!(store.get(PROBE_KEY), Ok(Some(v)) if v == "ok")
-        && store.delete(PROBE_KEY).is_ok()
+/// Escreve, lê e apaga uma chave de teste. A chave é apagada mesmo se a leitura falhar.
+fn keychain_works(store: &dyn SecretStore) -> bool {
+    if store.set(PROBE_KEY, "ok").is_err() {
+        return false;
+    }
+    let read = matches!(store.get(PROBE_KEY), Ok(Some(v)) if v == "ok");
+    store.delete(PROBE_KEY).is_ok() && read
+}
+
+/// O keychain do sistema responde a um teste de escrita/leitura.
+pub fn keychain_available() -> bool {
+    keychain_works(&KeyringStore::new(KEYRING_SERVICE))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum SecretStoreError {
+    #[error(
+        "O keychain do sistema não respondeu. Os segredos do AdsConsole estão nele; tente de novo ou passe a usar um arquivo."
+    )]
+    KeychainUnavailable,
 }
 
 /// Usa o keychain se ele responder a um teste de escrita/leitura; senão cai
 /// para `data_dir/secrets.json` (o app avisa o usuário quando vier `File`).
 pub fn open_secret_store(data_dir: &Path) -> (Arc<dyn SecretStore>, SecretBackend) {
-    let keyring = KeyringStore::new(KEYRING_SERVICE);
-    if keychain_works(&keyring) {
-        (Arc::new(keyring), SecretBackend::Keychain)
-    } else {
-        (
-            Arc::new(FileStore::new(data_dir.join("secrets.json"))),
-            SecretBackend::File,
-        )
+    match open_secret_store_with(data_dir, None, &keychain_available) {
+        Ok(r) => r,
+        // Sem backend lembrado, a escolha nunca falha.
+        Err(SecretStoreError::KeychainUnavailable) => file_store(data_dir),
+    }
+}
+
+/// Como `open_secret_store`, respeitando o backend já escolhido antes: um keychain
+/// lembrado que não responde é erro (cair para o arquivo trocaria o token MCP).
+pub fn open_secret_store_with(
+    data_dir: &Path,
+    remembered: Option<SecretBackend>,
+    keychain_ok: &dyn Fn() -> bool,
+) -> Result<(Arc<dyn SecretStore>, SecretBackend), SecretStoreError> {
+    choose_store(data_dir, remembered, keychain_ok, || {
+        Arc::new(KeyringStore::new(KEYRING_SERVICE))
+    })
+}
+
+fn file_store(data_dir: &Path) -> (Arc<dyn SecretStore>, SecretBackend) {
+    (
+        Arc::new(FileStore::new(data_dir.join("secrets.json"))),
+        SecretBackend::File,
+    )
+}
+
+fn choose_store(
+    data_dir: &Path,
+    remembered: Option<SecretBackend>,
+    keychain_ok: &dyn Fn() -> bool,
+    keychain: impl FnOnce() -> Arc<dyn SecretStore>,
+) -> Result<(Arc<dyn SecretStore>, SecretBackend), SecretStoreError> {
+    match remembered {
+        Some(SecretBackend::File) => Ok(file_store(data_dir)),
+        Some(SecretBackend::Keychain) if keychain_ok() => Ok((keychain(), SecretBackend::Keychain)),
+        Some(SecretBackend::Keychain) => Err(SecretStoreError::KeychainUnavailable),
+        None if keychain_ok() => Ok((keychain(), SecretBackend::Keychain)),
+        None => Ok(file_store(data_dir)),
     }
 }
 
@@ -355,6 +402,69 @@ mod tests {
         assert_eq!(
             connection_secret_key("c1", "refresh_token"),
             "conn/c1/refresh_token"
+        );
+    }
+
+    fn mem() -> Arc<dyn SecretStore> {
+        Arc::new(MemoryStore::default())
+    }
+
+    #[test]
+    fn first_run_picks_keychain_when_ok() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, b) = choose_store(dir.path(), None, &|| true, mem).unwrap();
+        assert_eq!(b, SecretBackend::Keychain);
+    }
+
+    #[test]
+    fn first_run_picks_file_when_keychain_fails() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_, b) = choose_store(dir.path(), None, &|| false, mem).unwrap();
+        assert_eq!(b, SecretBackend::File);
+    }
+
+    #[test]
+    fn remembered_keychain_never_falls_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let r = choose_store(dir.path(), Some(SecretBackend::Keychain), &|| false, mem);
+        assert!(matches!(r, Err(SecretStoreError::KeychainUnavailable)));
+    }
+
+    #[test]
+    fn remembered_file_skips_probe() {
+        let dir = tempfile::tempdir().unwrap();
+        let probe = || -> bool { panic!("não deveria testar o keychain") };
+        let (_, b) = choose_store(dir.path(), Some(SecretBackend::File), &probe, mem).unwrap();
+        assert_eq!(b, SecretBackend::File);
+    }
+
+    /// Grava e apaga normalmente, mas a leitura sempre falha.
+    #[derive(Default)]
+    struct BrokenGet(MemoryStore);
+    impl SecretStore for BrokenGet {
+        fn get(&self, _: &str) -> Result<Option<String>, CoreError> {
+            Err(CoreError::Secret("falha".into()))
+        }
+        fn set(&self, k: &str, v: &str) -> Result<(), CoreError> {
+            self.0.set(k, v)
+        }
+        fn delete(&self, k: &str) -> Result<(), CoreError> {
+            self.0.delete(k)
+        }
+    }
+
+    #[test]
+    fn probe_key_removed_even_if_get_fails() {
+        let s = BrokenGet::default();
+        assert!(!keychain_works(&s));
+        assert_eq!(s.0.get(PROBE_KEY).unwrap(), None);
+    }
+
+    #[test]
+    fn backend_serializes_snake_case() {
+        assert_eq!(
+            serde_json::to_string(&SecretBackend::Keychain).unwrap(),
+            "\"keychain\""
         );
     }
 

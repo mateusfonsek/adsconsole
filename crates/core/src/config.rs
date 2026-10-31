@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::error::CoreError;
 use crate::paths::EnvOverrides;
 use crate::platform::Platform;
+use crate::secrets::SecretBackend;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -54,12 +55,28 @@ impl Default for ServerSettings {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Theme {
+    #[default]
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
     pub port: u16,
     pub autostart: bool,
     pub servers: BTreeMap<Platform, ServerSettings>,
+    /// Escolhido na primeira execução; depois disso não muda sozinho.
+    pub secret_backend: Option<SecretBackend>,
+    /// `None`: segue o idioma do sistema.
+    pub language: Option<String>,
+    pub theme: Theme,
+    /// Algum cliente de IA já chamou o MCP (primeiros passos do app).
+    pub client_seen: bool,
 }
 
 impl Default for Config {
@@ -68,6 +85,10 @@ impl Default for Config {
             port: 7458,
             autostart: false,
             servers: BTreeMap::new(),
+            secret_backend: None,
+            language: None,
+            theme: Theme::System,
+            client_seen: false,
         }
     }
 }
@@ -178,6 +199,24 @@ mod tests {
         let l = Config::load(&p).unwrap();
         assert_eq!(l.config.port, 7458);
         assert!(l.warning.is_some());
+    }
+
+    #[test]
+    fn config_roundtrip_new_fields() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("config.json");
+        let c = Config {
+            secret_backend: Some(crate::secrets::SecretBackend::File),
+            language: Some("en".into()),
+            theme: Theme::Dark,
+            client_seen: true,
+            ..Config::default()
+        };
+        c.save(&p).unwrap();
+        let l = Config::load(&p).unwrap().config;
+        assert_eq!(l, c);
+        assert_eq!(Config::default().theme, Theme::System);
+        assert!(!Config::default().client_seen);
     }
 
     #[test]
