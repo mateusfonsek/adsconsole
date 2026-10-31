@@ -27,3 +27,9 @@ tokio.workspace = true
 tauri-specta = { version = "=2.0.0-rc.26", features = ["derive", "typescript"] }
 specta = { version = "=2.0.0-rc.26", features = ["derive", "serde_json", "chrono"] }
 specta-typescript = "=0.0.13"
+thiserror.workspace = true
+chrono.workspace = true
+
+[dev-dependencies]
+reqwest.workspace = true
+tempfile.workspace = true

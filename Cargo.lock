@@ -22,6 +22,8 @@ dependencies = [
  "adsconsole-google-ads",
  "adsconsole-mcp",
  "adsconsole-meta-ads",
+ "chrono",
+ "reqwest",
  "serde",
  "serde_json",
  "specta",
@@ -29,6 +31,8 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-specta",
+ "tempfile",
+ "thiserror 2.0.21",
  "tokio",
 ]
 
