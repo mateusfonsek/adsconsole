@@ -279,5 +279,21 @@
       "rejected": "Recusada",
       "expired": "Expirou"
     }
+  },
+  "boot": {
+    "keychain_title": "O keychain do sistema não respondeu",
+    "keychain_desc": "Os tokens e chaves do AdsConsole estão no keychain. Sem ele, o app não consegue abrir as conexões nem o MCP.",
+    "keychain_retry_hint": "Desbloqueie o keychain (ou permita o acesso, se o sistema perguntar) e tente de novo.",
+    "use_file": "Usar arquivo",
+    "use_file_warning": "Passar a usar um arquivo local guarda os segredos num arquivo legível só pelo seu usuário. As conexões precisam ser refeitas e o token do MCP muda: reconfigure os clientes de IA depois.",
+    "fatal_title": "O AdsConsole não conseguiu abrir",
+    "fatal_desc": "Erro ao abrir a pasta de dados ou o banco local."
+  },
+  "quit": {
+    "title": "Sair do AdsConsole?",
+    "pending_one": "{{count}} aprovação pendente será recusada. Sair mesmo assim?",
+    "pending_other": "{{count}} aprovações pendentes serão recusadas. Sair mesmo assim?",
+    "confirm": "Recusar e sair",
+    "review": "Revisar antes"
   }
 }

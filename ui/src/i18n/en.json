@@ -279,5 +279,21 @@
       "rejected": "Rejected",
       "expired": "Expired"
     }
+  },
+  "boot": {
+    "keychain_title": "The system keychain did not respond",
+    "keychain_desc": "AdsConsole tokens and keys live in the keychain. Without it, the app cannot open the connections or the MCP.",
+    "keychain_retry_hint": "Unlock the keychain (or allow access if the system asks) and try again.",
+    "use_file": "Use a file",
+    "use_file_warning": "Switching to a local file keeps secrets in a file readable only by your user. Connections must be redone and the MCP token changes: reconfigure your AI clients afterwards.",
+    "fatal_title": "AdsConsole could not open",
+    "fatal_desc": "Error opening the data folder or the local database."
+  },
+  "quit": {
+    "title": "Quit AdsConsole?",
+    "pending_one": "{{count}} pending approval will be rejected. Quit anyway?",
+    "pending_other": "{{count}} pending approvals will be rejected. Quit anyway?",
+    "confirm": "Reject and quit",
+    "review": "Review first"
   }
 }
