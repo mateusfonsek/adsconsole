@@ -1,85 +1,70 @@
 # AdsConsole
 
-Servidores MCP para Google Ads e Meta Ads que rodam no seu computador. Um agente de IA (Claude Code, Claude Desktop ou outro cliente MCP) lê contas, campanhas e métricas e propõe mudanças. Cada escrita passa pela sua aprovação.
+App desktop que liga o seu agente de IA (Claude Code, Claude Desktop, Codex, Gemini CLI, Cursor) às suas contas de Google Ads e Meta Ads. A IA lê contas, campanhas e métricas e propõe mudanças. Cada escrita passa pela sua aprovação no app.
 
 - **Local:** não existe servidor do AdsConsole. Credenciais ficam no keychain do sistema e dados num banco SQLite local.
 - **Suas credenciais:** você usa o seu próprio app da Meta e o seu próprio projeto do Google Cloud.
-- **Escritas controladas:** cada plataforma tem um modo de escrita (`read_only`, `approval` ou `direct`). O padrão é `approval`.
+- **Escritas controladas:** cada plataforma tem um modo de escrita (só leitura, aprovação ou direta). O padrão é aprovação, com histórico e desfazer.
 
-## Requisitos
+## Instalar
 
-- Rust 1.95 (o `rust-toolchain.toml` instala a versão certa via `rustup`).
-- Um projeto no Google Cloud com a Google Ads API ativada e um cliente OAuth do tipo **App para computador** (baixe o JSON do cliente).
-- Um app na Meta for Developers com o caso de uso **Login do Facebook para Empresas** (você vai precisar do App ID, do App Secret e do `config_id` da configuração de login).
+Baixe o instalador da [última release](../../releases/latest):
 
-## Conectar as contas
+- **macOS:** `.dmg` (Apple Silicon ou Intel). O app ainda não é assinado: na primeira vez, clique com o botão direito no AdsConsole e escolha **Abrir**.
+- **Windows:** `.msi` ou `.exe`. Em "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
+- **Linux:** `.AppImage` (dê permissão de execução) ou `.deb`.
 
-As conexões ficam na pasta de dados do AdsConsole (`ADSCONSOLE_DATA_DIR` ou a pasta padrão do sistema, por exemplo `~/Library/Application Support/adsconsole` no macOS).
+O app avisa quando sair uma versão nova.
 
-**Google Ads**
+## Primeiros passos
 
-```sh
-cargo run -p adsconsole-mcp --example google_connect -- caminho/client.json "Minha conta" \
-    [--login-customer-id N] [--access-level test|explorer|basic|standard]
-```
+1. **Conectar uma plataforma.** Em **Conexões**, o assistente do Google pede o JSON do cliente OAuth (tipo **App para computador**, num projeto com a Google Ads API ativada). O da Meta pede App ID, App Secret e o `config_id` do Login do Facebook para Empresas. Os dois têm links diretos para cada tela de configuração.
+2. **Conectar o cliente de IA.** Em **MCPs**, escolha o cliente e copie o trecho pronto (o comando ou o JSON já levam o endereço e o token).
+3. **Usar.** Peça algo à IA, como "liste minhas campanhas". Quando ela pedir uma mudança, o sistema avisa e você aprova ou recusa em **Aprovações**.
 
-Abre o login do Google no navegador e lista as contas acessíveis.
-
-**Meta Ads**
-
-```sh
-cargo run -p adsconsole-mcp --example meta_connect -- "Minha conta" --login <app_id> <config_id> [--relay <url>]
-```
-
-O App Secret é lido de `META_APP_SECRET` ou digitado no terminal, nunca passado como argumento. Também é possível conectar com um token de acesso já existente: `--token [--app-id <id>]`, com o token em `META_ACCESS_TOKEN` ou digitado.
-
-Com o app da Meta publicado (modo Ativo), a Meta não aceita `localhost` como retorno do login. Nesse caso, publique a página de retorno (veja [Páginas que você precisa publicar](#páginas-que-você-precisa-publicar)) e passe o endereço em `--relay`.
-
-## Rodar os servidores
-
-```sh
-cargo run -p adsconsole-mcp --example google_server
-cargo run -p adsconsole-mcp --example meta_server
-```
-
-Cada servidor imprime o endereço (`http://127.0.0.1:7458/mcp/google-ads` ou `/mcp/meta-ads`) e o token de acesso. A porta padrão é 7458; para rodar os dois ao mesmo tempo, dê outra porta a um deles com `ADSCONSOLE_PORT`.
-
-No modo `approval`, os pedidos de escrita aparecem no terminal do servidor: `pendentes`, `aprovar <id>` ou `recusar <id>`.
-
-Para usar no Claude Code:
-
-```sh
-claude mcp add --transport http adsconsole-google http://127.0.0.1:7458/mcp/google-ads \
-    --header "Authorization: Bearer <token>"
-```
-
-## Configuração
-
-`config.json` na pasta de dados (opcional):
-
-```json
-{
-  "servers": {
-    "google_ads": { "write_mode": "approval" },
-    "meta_ads": { "write_mode": "read_only" }
-  }
-}
-```
-
-Variáveis de ambiente: `ADSCONSOLE_DATA_DIR`, `ADSCONSOLE_PORT`, `ADSCONSOLE_TOKEN`.
+O AdsConsole fica na barra de menu (ou bandeja) com o número de aprovações pendentes. Fechar a janela não para os MCPs.
 
 ## Páginas que você precisa publicar
 
 A Meta e o Google pedem URLs públicas para o seu app. Os modelos estão em [`docs/templates/`](docs/templates/):
 
 - [`privacy-policy.md`](docs/templates/privacy-policy.md): política de privacidade. Preencha os campos `{{ }}`, publique em qualquer site seu e cole a URL na Meta (URL da Política de Privacidade e instruções de exclusão de dados) e no Google Cloud (Branding da tela de consentimento).
-- [`meta-oauth-relay.html`](docs/templates/meta-oauth-relay.html): página de retorno do login da Meta, necessária com o app publicado. Publique num endereço `https`, cadastre-o em "URIs de redirecionamento do OAuth válidos" do app e use em `--relay`.
+- [`meta-oauth-relay.html`](docs/templates/meta-oauth-relay.html): página de retorno do login da Meta, necessária com o app publicado (modo Ativo), porque a Meta não aceita `localhost` nesse modo. Publique num endereço `https`, cadastre-o em "URIs de redirecionamento do OAuth válidos" do app e informe no assistente da Meta.
+
+## Configuração avançada
+
+A pasta de dados (`~/Library/Application Support/adsconsole` no macOS) guarda o `config.json`, o banco local e os logs. O app edita tudo pelas telas, mas variáveis de ambiente têm prioridade: `ADSCONSOLE_DATA_DIR`, `ADSCONSOLE_PORT`, `ADSCONSOLE_TOKEN`.
 
 ## Desenvolvimento
 
+Requisitos: Rust 1.95 (o `rust-toolchain.toml` instala a versão certa via `rustup`) e Node 22. No Linux, as dependências do Tauri: `libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxdo-dev patchelf`.
+
+```sh
+npm --prefix ui ci
+cd crates/app && npx --prefix ../../ui tauri dev               # app com recarga
+cd crates/app && npx --prefix ../../ui tauri dev -- -- --demo  # dados de exemplo, nada sai do computador
+```
+
+Testes:
+
 ```sh
 cargo test --workspace
+npm --prefix ui test
+npm --prefix ui run build && npm --prefix ui run e2e
 ```
+
+Depois de mudar um comando em `crates/app`, regenere os tipos da UI com `npm --prefix ui run bindings`.
+
+Exemplos de linha de comando (úteis para testar contra contas reais sem o app):
+
+```sh
+cargo run -p adsconsole-mcp --example google_connect -- caminho/client.json "Minha conta"
+cargo run -p adsconsole-mcp --example meta_connect -- "Minha conta" --login <app_id> <config_id> [--relay <url>]
+cargo run -p adsconsole-mcp --example google_server
+cargo run -p adsconsole-mcp --example meta_server
+```
+
+Para publicar uma versão, siga o [`RELEASING.md`](RELEASING.md).
 
 ## Licença
 

@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            args: --target aarch64-apple-darwin
+            target: aarch64-apple-darwin
+          - os: macos-latest
+            args: --target x86_64-apple-darwin
+            target: x86_64-apple-darwin
+          - os: windows-latest
+            args: ""
+            target: ""
+          - os: ubuntu-22.04
+            args: ""
+            target: ""
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependências do Tauri (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev libxdo-dev patchelf
+      - uses: dtolnay/rust-toolchain@1.95
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - run: npm --prefix ui ci
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ADSCONSOLE_REPO: ${{ github.repository }}
+        with:
+          projectPath: crates/app
+          tauriScript: npx --prefix ../../ui tauri
+          args: ${{ matrix.args }}
+          tagName: ${{ github.ref_name }}
+          releaseName: AdsConsole ${{ github.ref_name }}
+          releaseDraft: true
+          prerelease: false
+          releaseBody: |
+            Instaladores do AdsConsole ${{ github.ref_name }} para macOS (Apple Silicon e Intel), Windows e Linux.
+
+            O app ainda não é assinado. Na primeira abertura:
+            - macOS: clique com o botão direito no AdsConsole e escolha Abrir.
+            - Windows: em "O Windows protegeu o computador", clique em Mais informações → Executar assim mesmo.
+            - Linux: use o .AppImage (dê permissão de execução) ou instale o .deb.
