@@ -74,13 +74,25 @@ fn map(ev: EngineEvent) -> AppEvent {
     }
 }
 
-/// Texto ao lado do ícone da barra de menu: o número de aprovações pendentes.
-pub fn tray_title(pending: u32) -> Option<String> {
-    match pending {
+/// Texto ao lado do ícone da barra de menu: o número de aprovações pendentes, com `!`
+/// na frente quando alguma conexão precisa reconectar.
+pub fn tray_title(pending: u32, needs_reconnect: bool) -> Option<String> {
+    let count = match pending {
         0 => None,
         1..=99 => Some(pending.to_string()),
         _ => Some("99+".to_string()),
+    };
+    match (needs_reconnect, count) {
+        (true, Some(n)) => Some(format!("! {n}")),
+        (true, None) => Some("!".to_string()),
+        (false, n) => n,
     }
+}
+
+/// Saída pedida pelo sistema (Cmd+Q, Dock, logout: `code` é `None`) com aprovações
+/// pendentes é segurada para a UI pedir confirmação. `app.exit(code)` sempre passa.
+pub fn block_exit(code: Option<i32>, pending: u32) -> bool {
+    code.is_none() && pending > 0
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]

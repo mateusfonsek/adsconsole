@@ -38,15 +38,21 @@ pub fn refresh(app: &AppHandle) {
     if let Ok(menu) = build_menu(app) {
         let _ = tray.set_menu(Some(menu));
     }
-    let pending = app
-        .state::<AppState>()
-        .services()
-        .ok()
+    let services = app.state::<AppState>().services().ok();
+    let pending = services
+        .as_ref()
         .and_then(|s| s.changes.pending().ok())
         .map_or(0, |p| p.len() as u32);
+    let reconnect = services
+        .as_ref()
+        .and_then(|s| s.connections.list().ok())
+        .is_some_and(|l| {
+            l.iter()
+                .any(|c| c.status == crate::core::connections::ConnStatusView::NeedsReconnect)
+        });
     #[cfg(target_os = "macos")]
-    let _ = tray.set_title(tray_title(pending));
-    let tooltip = match tray_title(pending) {
+    let _ = tray.set_title(tray_title(pending, reconnect));
+    let tooltip = match tray_title(pending, reconnect) {
         Some(n) => format!("AdsConsole · {n}"),
         None => "AdsConsole".to_string(),
     };

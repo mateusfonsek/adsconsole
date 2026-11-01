@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { commands, type PendingView } from "../bindings";
 import { useAction, useCmd } from "../lib/ipc";
@@ -94,17 +94,47 @@ function Detail({ p }: { p: PendingView }) {
   );
 }
 
+/** Pedido que saiu da fila com o detalhe aberto: continua na tela, só para leitura. */
+function ClosedDetail({ id }: { id: string }) {
+  const { t } = useTranslation();
+  const c = useCmd(["get_change", id], () => commands.getChange(id)).data;
+  if (!c) return null;
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <span className="label-mono">{t(`platform.${c.platform}`)}</span>
+        <h2 className="mt-1 text-[17px] font-semibold tracking-tight">{c.summary}</h2>
+      </div>
+      <ChangeDiff
+        before={c.before}
+        after={c.after}
+        labels={{ field: t("diff.field"), before: t("diff.before"), after: t("diff.after"), empty: t("diff.empty") }}
+      />
+      <Notice tone="muted">
+        {c.status === "expired"
+          ? t("approvals.expired")
+          : t("approvals.closed", { status: t(`history.status_names.${c.status}`, c.status) })}
+      </Notice>
+    </div>
+  );
+}
+
 export function Approvals() {
   const { t, i18n } = useTranslation();
   const route = useRoute();
   const pending = useCmd(["list_pending"], () => commands.listPending());
   const list = pending.data ?? [];
-  const selected = list.find((p) => p.change.id === route.param) ?? list[0];
+  // O pedido aberto fica na URL: se ele sair da fila, a tela não troca sozinha por outro.
+  const selectedId = route.param ?? list[0]?.change.id;
+  const selected = list.find((p) => p.change.id === selectedId);
+  useEffect(() => {
+    if (!route.param && list[0]) navigate("approvals", list[0].change.id);
+  }, [route.param, list]);
 
   return (
     <>
       <PageHeader title={t("approvals.title")} subtitle={t("approvals.subtitle")} />
-      {pending.data && !list.length ? (
+      {pending.data && !list.length && !selectedId ? (
         <Card className="px-5 py-10 text-center">
           <p className="text-[13px] font-medium">{t("approvals.empty")}</p>
           <p className="mt-1 text-xs text-muted">{t("approvals.empty_hint")}</p>
@@ -133,9 +163,9 @@ export function Approvals() {
               );
             })}
           </ul>
-          {selected && (
+          {selectedId && (
             <Card className="min-w-0 flex-1 p-5">
-              <Detail key={selected.change.id} p={selected} />
+              {selected ? <Detail key={selected.change.id} p={selected} /> : <ClosedDetail key={selectedId} id={selectedId} />}
             </Card>
           )}
         </div>

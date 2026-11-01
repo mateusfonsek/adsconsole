@@ -241,7 +241,8 @@
     "tool": "Tool",
     "decided": "Decided",
     "approved_ok": "Approved and applied.",
-    "rejected_ok": "Rejected."
+    "rejected_ok": "Rejected.",
+    "closed": "This request is no longer in the queue: {{status}}."
   },
   "history": {
     "title": "History",

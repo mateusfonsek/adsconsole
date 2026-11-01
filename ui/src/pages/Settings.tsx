@@ -34,12 +34,14 @@ export function Settings() {
   const setTheme = useAction((theme: Theme) => commands.setTheme(theme), ["get_app_settings"]);
   const setAutostart = useAction((on: boolean) => commands.setAutostart(on), ["get_app_settings"]);
   const savePort = useAction((p: number) => commands.setPort(p), ["get_app_settings", "server_status"]);
+  const server = useCmd(["server_status"], () => commands.serverStatus());
+  const [portFailure, setPortFailure] = useState<string | null>(null);
   const check = useAction(() => commands.checkUpdate());
 
   const s = app.data;
   if (!s) return <PageHeader title={t("settings.title")} />;
 
-  const portError = savePort.error?.message ?? null;
+  const portError = savePort.error?.message ?? portFailure;
   const port = portDraft ?? String(s.port);
 
   return (
@@ -91,8 +93,19 @@ export function Settings() {
             onChange={(e) => setPortDraft(e.target.value.replace(/\D/g, ""))}
           />
           <Button
-            disabled={!port || Number(port) === s.port || savePort.isPending}
-            onClick={() => savePort.mutate(Number(port), { onSuccess: () => setPortDraft(null) })}
+            disabled={!port || (Number(port) === s.port && server.data?.state.kind !== "error") || savePort.isPending}
+            onClick={() =>
+              savePort.mutate(Number(port), {
+                onSuccess: (st) => {
+                  if (st.kind === "error") {
+                    setPortFailure(st.error.message);
+                  } else {
+                    setPortFailure(null);
+                    setPortDraft(null);
+                  }
+                },
+              })
+            }
           >
             {t("settings.save_port")}
           </Button>

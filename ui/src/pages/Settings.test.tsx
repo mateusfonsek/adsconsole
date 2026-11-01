@@ -3,6 +3,16 @@ import userEvent from "@testing-library/user-event";
 import { Settings } from "./Settings";
 import { renderWithApp } from "../test/render";
 
+const server = {
+  state: { kind: "running", port: 7458 },
+  google_enabled: true,
+  meta_enabled: true,
+  google_tools: 1,
+  meta_tools: 1,
+  google_write_mode: "approval",
+  meta_write_mode: "approval",
+};
+
 const app = {
   language: "pt",
   theme: "system",
@@ -19,6 +29,7 @@ test("trocar o idioma chama set_language e traduz a tela", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Settings />, {
     get_app_settings: app,
+    server_status: server,
     set_language: (a: Record<string, unknown>) => {
       calls.push(a.language);
       return null;
@@ -32,6 +43,7 @@ test("trocar o idioma chama set_language e traduz a tela", async () => {
 test("erro de porta aparece no campo", async () => {
   renderWithApp(<Settings />, {
     get_app_settings: app,
+    server_status: server,
     set_port: () => {
       throw { code: "PORT_IN_USE", message: "A porta 7459 já está em uso.", field: null };
     },
@@ -45,7 +57,7 @@ test("erro de porta aparece no campo", async () => {
 });
 
 test("mostra o backend de segredos e a pasta de dados", async () => {
-  renderWithApp(<Settings />, { get_app_settings: app });
+  renderWithApp(<Settings />, { get_app_settings: app, server_status: server });
   expect(await screen.findByText(/Keychain do sistema/)).toBeInTheDocument();
   expect(screen.getByText(app.data_dir)).toBeInTheDocument();
 });

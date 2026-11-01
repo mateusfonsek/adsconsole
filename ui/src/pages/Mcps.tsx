@@ -61,6 +61,8 @@ export function Mcps() {
     ["server_status"],
   );
   const savePort = useAction((port: number) => commands.setPort(port), ["server_status", "get_app_settings"]);
+  // `set_port` devolve Ok com o estado de erro quando a porta nova falha (a antiga volta).
+  const [portFailure, setPortFailure] = useState<string | null>(null);
 
   const s = status.data;
   if (!s) return <PageHeader title={t("mcps.title")} subtitle={t("mcps.subtitle")} />;
@@ -132,13 +134,25 @@ export function Mcps() {
           />
           <Button
             size="sm"
-            disabled={!portValue || Number(portValue) === port || savePort.isPending}
-            onClick={() => savePort.mutate(Number(portValue), { onSuccess: () => setPortDraft(null) })}
+            disabled={!portValue || (Number(portValue) === port && s.state.kind !== "error") || savePort.isPending}
+            onClick={() =>
+              savePort.mutate(Number(portValue), {
+                onSuccess: (st) => {
+                  if (st.kind === "error") {
+                    setPortFailure(st.error.message);
+                  } else {
+                    setPortFailure(null);
+                    setPortDraft(null);
+                  }
+                },
+              })
+            }
           >
             {t("mcps.save_port")}
           </Button>
         </div>
         {savePort.error && <ErrorNote message={savePort.error.message} code={savePort.error.code} />}
+        {portFailure && <ErrorNote message={portFailure} />}
         <div className="flex items-center gap-2">
           <span className="label-mono w-20">{t("mcps.token")}</span>
           <code className="min-w-0 flex-1 truncate font-mono text-xs">{token ?? "••••••••••••••••"}</code>

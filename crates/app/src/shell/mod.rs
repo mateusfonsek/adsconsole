@@ -68,7 +68,20 @@ pub fn run(builder: Builder<tauri::Wry>, demo: bool) {
         })
         .build(tauri::generate_context!());
     match result {
-        Ok(app) => app.run(|_, _| {}),
+        Ok(app) => app.run(|app, event| {
+            if let tauri::RunEvent::ExitRequested { code, api, .. } = event {
+                let pending = app
+                    .state::<AppState>()
+                    .services()
+                    .ok()
+                    .and_then(|s| s.changes.pending().ok())
+                    .map_or(0, |p| p.len() as u32);
+                if crate::core::events::block_exit(code, pending) {
+                    api.prevent_exit();
+                    quit::request(app);
+                }
+            }
+        }),
         Err(e) => {
             eprintln!("o AdsConsole parou com erro: {e}");
             std::process::exit(1);
@@ -116,8 +129,21 @@ fn spawn_event_loop(app: AppHandle, services: Arc<Services>) {
     let lang = move |s: &Services| s.settings.app().language;
     tauri::async_runtime::spawn(async move {
         while let Some(ev) = rx.recv().await {
-            if let AppEvent::ApprovalRequested { summary, .. } = &ev {
-                notify::show(&app, &lang(&services), notify::Notice::Approval { summary });
+            if let AppEvent::ApprovalRequested {
+                summary, change_id, ..
+            } = &ev
+            {
+                // O desfazer pedido no próprio app é aprovado na hora: não notifica.
+                let from_app = services
+                    .rt
+                    .db()
+                    .get_change(change_id)
+                    .ok()
+                    .flatten()
+                    .is_some_and(|c| c.requested_by.as_deref() == Some(crate::core::changes::APP));
+                if !from_app {
+                    notify::show(&app, &lang(&services), notify::Notice::Approval { summary });
+                }
             }
             emit(&app, ev);
         }

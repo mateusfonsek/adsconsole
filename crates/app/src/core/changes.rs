@@ -64,6 +64,9 @@ pub struct UndoResult {
     pub change_id: Option<String>,
 }
 
+/// `requested_by` das mudanças pedidas pelo próprio usuário no app.
+pub const APP: &str = "app";
+
 pub struct ChangesService {
     rt: Arc<Runtime>,
 }
@@ -156,13 +159,30 @@ impl ChangesService {
         Ok(n)
     }
 
+    /// Desfazer pedido pelo próprio usuário no app já é a decisão dele: no modo aprovação
+    /// o pedido do desfazer é aprovado na hora, sem esperar nem notificar.
     pub async fn undo(&self, id: &str) -> Result<UndoResult, AppError> {
         let c = self.load(id)?;
-        let out = self
-            .rt
-            .engine(c.platform)
-            .undo(id, false, Some("app".into()))
-            .await?;
+        let engine = self.rt.engine(c.platform).clone();
+        let mut events = engine.subscribe();
+        let (db, target, approver) = (self.rt.db().clone(), id.to_string(), engine.clone());
+        let auto = tokio::spawn(async move {
+            while let Ok(ev) = events.recv().await {
+                if let adsconsole_mcp::engine::EngineEvent::ApprovalRequested { change_id, .. } = ev
+                    && db
+                        .get_change(&change_id)
+                        .ok()
+                        .flatten()
+                        .is_some_and(|r| r.undo_of.as_deref() == Some(target.as_str()))
+                {
+                    let _ = approver.approve(&change_id).await;
+                    return;
+                }
+            }
+        });
+        let out = engine.undo(id, false, Some(APP.into())).await;
+        auto.abort();
+        let out = out?;
         Ok(UndoResult {
             status: out["status"].as_str().unwrap_or("applied").to_string(),
             change_id: out["change_id"].as_str().map(str::to_string),

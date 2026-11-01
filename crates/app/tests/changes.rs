@@ -200,3 +200,52 @@ async fn undo_conflict_reports_state() {
     assert_eq!(err.code, "UNDO_CONFLICT");
     assert!(err.details.is_some());
 }
+
+#[tokio::test]
+async fn undo_from_app_does_not_wait_for_approval() {
+    let dir = tempfile::tempdir().unwrap();
+    write_config(dir.path(), |c| {
+        c.port = free_port();
+        c.servers.insert(
+            Platform::GoogleAds,
+            ServerSettings {
+                write_mode: WriteMode::Approval,
+                approval_wait_secs: 120,
+                ..ServerSettings::default()
+            },
+        );
+    });
+    let (opts, _) = options(dir.path(), true);
+    let rt = Arc::new(Runtime::boot(opts).await.unwrap());
+    rt.engine(Platform::GoogleAds)
+        .refresh_accounts()
+        .await
+        .unwrap();
+    let svc = ChangesService::new(rt.clone());
+    // Cria e aprova uma campanha (a aprovação acontece em paralelo à chamada da IA).
+    let engine = rt.engine(Platform::GoogleAds).clone();
+    let call = tokio::spawn(async move {
+        engine
+            .call_tool(
+                "create_campaign",
+                json!({"account_id": "111", "name": "x", "daily_budget": 30}),
+                Some("ia".into()),
+            )
+            .await
+    });
+    let id = loop {
+        if let Some(p) = svc.pending().unwrap().first() {
+            break p.change.id.clone();
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    };
+    svc.approve(&id).await.unwrap();
+    call.await.unwrap().unwrap();
+
+    let undone = tokio::time::timeout(std::time::Duration::from_secs(5), svc.undo(&id))
+        .await
+        .expect("o desfazer pelo app não pode esperar a aprovação")
+        .unwrap();
+    assert_eq!(undone.status, "applied", "{undone:?}");
+    assert!(svc.pending().unwrap().is_empty());
+}

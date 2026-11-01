@@ -59,6 +59,6 @@ jobs:
             Instaladores do AdsConsole ${{ github.ref_name }} para macOS (Apple Silicon e Intel), Windows e Linux.
 
             O app ainda não é assinado. Na primeira abertura:
-            - macOS: clique com o botão direito no AdsConsole e escolha Abrir.
+            - macOS: abra Ajustes do Sistema → Privacidade e Segurança e clique em Abrir Mesmo Assim ao lado do AdsConsole (macOS 14 ou anterior: botão direito no app → Abrir).
             - Windows: em "O Windows protegeu o computador", clique em Mais informações → Executar assim mesmo.
             - Linux: use o .AppImage (dê permissão de execução) ou instale o .deb.

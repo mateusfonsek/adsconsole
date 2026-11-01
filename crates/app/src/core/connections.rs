@@ -341,10 +341,30 @@ impl ConnectionsService {
         {
             old.cancel();
         }
+        let before = self.connection_ids();
         tokio::select! {
             r = fut => r,
-            _ = token.cancelled() => Err(AppError::new("LOGIN_CANCELLED", "Login cancelado.")),
+            _ = token.cancelled() => {
+                // O login pode já ter gravado a conexão (cancelado enquanto listava as
+                // contas): o que apareceu durante a espera é desfeito.
+                for id in self.connection_ids().difference(&before) {
+                    if let Ok(meta) = self.get(id)
+                        && let Err(e) = self.ops.remove(&meta)
+                    {
+                        tracing::warn!(error = %e, "falha ao desfazer a conexão cancelada");
+                    }
+                }
+                Err(AppError::new("LOGIN_CANCELLED", "Login cancelado."))
+            }
         }
+    }
+
+    fn connection_ids(&self) -> std::collections::BTreeSet<String> {
+        [Platform::GoogleAds, Platform::MetaAds]
+            .into_iter()
+            .flat_map(|p| self.rt.db().list_connections(p).unwrap_or_default())
+            .map(|c| c.connection_id)
+            .collect()
     }
 
     async fn after_change(&self, meta: ConnectionMeta) -> Result<ConnectionView, AppError> {

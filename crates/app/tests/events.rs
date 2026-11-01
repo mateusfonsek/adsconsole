@@ -3,7 +3,9 @@ mod common;
 use std::sync::Arc;
 
 use adsconsole_app::core::changes::ChangesService;
-use adsconsole_app::core::events::{AppEvent, QuitOutcome, bridge, prepare_quit, tray_title};
+use adsconsole_app::core::events::{
+    AppEvent, QuitOutcome, block_exit, bridge, prepare_quit, tray_title,
+};
 use adsconsole_app::core::runtime::Runtime;
 use adsconsole_core::Platform;
 use adsconsole_core::config::{ServerSettings, WriteMode};
@@ -71,9 +73,23 @@ async fn bridge_maps_engine_events() {
 
 #[test]
 fn tray_title_counts() {
-    assert_eq!(tray_title(0), None);
-    assert_eq!(tray_title(3), Some("3".to_string()));
-    assert_eq!(tray_title(120), Some("99+".to_string()));
+    assert_eq!(tray_title(0, false), None);
+    assert_eq!(tray_title(3, false), Some("3".to_string()));
+    assert_eq!(tray_title(120, false), Some("99+".to_string()));
+}
+
+#[test]
+fn tray_title_marks_reconnect() {
+    assert_eq!(tray_title(0, true), Some("!".to_string()));
+    assert_eq!(tray_title(2, true), Some("! 2".to_string()));
+}
+
+#[test]
+fn exit_blocked_only_for_user_quit_with_pending() {
+    // `None`: saída pedida pelo sistema/usuário (Cmd+Q, Dock); `Some`: app.exit(code).
+    assert!(block_exit(None, 2));
+    assert!(!block_exit(None, 0));
+    assert!(!block_exit(Some(0), 2));
 }
 
 #[tokio::test]

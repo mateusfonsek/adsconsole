@@ -44,3 +44,27 @@ test("fila vazia mostra o estado vazio", async () => {
   renderWithApp(<Approvals />, { list_pending: [] });
   expect(await screen.findByText("Nada esperando aprovação.")).toBeInTheDocument();
 });
+
+test("o pedido aberto que sai da fila continua na tela, sem trocar por outro", async () => {
+  let call = 0;
+  window.location.hash = "#/approvals/c1";
+  const a = pendingFixture("c1", { change: changeFixture("c1", { summary: "Pedido A" }) });
+  const b = pendingFixture("c2", { change: changeFixture("c2", { summary: "Pedido B" }) });
+  const { qc } = renderWithApp(<Approvals />, {
+    list_pending: () => (call++ === 0 ? [a, b] : [b]),
+    get_change: changeFixture("c1", { summary: "Pedido A", status: "expired" }),
+  });
+  expect(await screen.findByRole("heading", { name: "Pedido A" })).toBeInTheDocument();
+  await qc.invalidateQueries({ queryKey: ["list_pending"] });
+  await waitFor(() => expect(call).toBeGreaterThan(1));
+  expect(await screen.findByText("Expirou: a IA recebeu \"não aprovado\".")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Pedido A" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Pedido B" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Aprovar" })).not.toBeInTheDocument();
+});
+
+test("sem pedido na URL, fixa o primeiro na URL", async () => {
+  window.location.hash = "#/approvals";
+  renderWithApp(<Approvals />, { list_pending: [pendingFixture("c1"), pendingFixture("c2")] });
+  await waitFor(() => expect(window.location.hash).toBe("#/approvals/c1"));
+});

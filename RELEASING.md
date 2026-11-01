@@ -8,7 +8,7 @@
 
 ## Checklist manual (macOS, Windows e Linux)
 
-- [ ] Instalar e abrir pela primeira vez (aviso do Gatekeeper no macOS, SmartScreen no Windows).
+- [ ] Instalar e abrir pela primeira vez num Mac limpo com o `.dmg` baixado da release (Gatekeeper: Ajustes → Privacidade e Segurança → Abrir Mesmo Assim; não pode aparecer "danificado") e no Windows (SmartScreen).
 - [ ] Conectar Google Ads com um projeto real (assistente, JSON do cliente, login no navegador).
 - [ ] Conectar Meta Ads com um app real, por login e por token.
 - [ ] Pedir uma escrita pela IA no modo aprovação: chega a notificação, o contador aparece na barra de menu, aprovar aplica.

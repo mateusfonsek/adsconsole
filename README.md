@@ -10,7 +10,7 @@ App desktop que liga o seu agente de IA (Claude Code, Claude Desktop, Codex, Gem
 
 Baixe o instalador da [última release](../../releases/latest):
 
-- **macOS:** `.dmg` (Apple Silicon ou Intel). O app ainda não é assinado: na primeira vez, clique com o botão direito no AdsConsole e escolha **Abrir**.
+- **macOS:** `.dmg` (Apple Silicon ou Intel). O app ainda não tem assinatura da Apple. Na primeira abertura o macOS bloqueia: abra **Ajustes do Sistema → Privacidade e Segurança** e clique em **Abrir Mesmo Assim** ao lado do AdsConsole (no macOS 14 ou anterior, basta clicar com o botão direito no app e escolher **Abrir**).
 - **Windows:** `.msi` ou `.exe`. Em "O Windows protegeu o computador", clique em **Mais informações → Executar assim mesmo**.
 - **Linux:** `.AppImage` (dê permissão de execução) ou `.deb`.
 

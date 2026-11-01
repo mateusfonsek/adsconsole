@@ -241,7 +241,8 @@
     "tool": "Ferramenta",
     "decided": "Decidido",
     "approved_ok": "Aprovada e aplicada.",
-    "rejected_ok": "Recusada."
+    "rejected_ok": "Recusada.",
+    "closed": "Este pedido não está mais na fila: {{status}}."
   },
   "history": {
     "title": "Histórico",

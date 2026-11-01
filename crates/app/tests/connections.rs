@@ -18,6 +18,9 @@ use tokio::sync::Notify;
 /// Conexões de mentira: o login da Meta espera até alguém soltar o `Notify`.
 struct FakeConnections {
     release: Arc<Notify>,
+    /// Banco onde o "login" grava a conexão antes de travar (simula listar contas).
+    db: Option<Arc<adsconsole_core::db::Db>>,
+    removed: Arc<std::sync::Mutex<Vec<String>>>,
 }
 
 #[async_trait]
@@ -34,6 +37,15 @@ impl PlatformConnections for FakeConnections {
         _: MetaLoginRequest,
         _: OpenFn,
     ) -> Result<ConnectionMeta, AppError> {
+        if let Some(db) = &self.db {
+            db.upsert_connection(&meta(
+                "m_new",
+                Platform::MetaAds,
+                ConnectionStatus::Ok,
+                None,
+            ))
+            .unwrap();
+        }
         self.release.notified().await;
         Err(AppError::new("INTERNAL", "não deveria terminar"))
     }
@@ -43,7 +55,11 @@ impl PlatformConnections for FakeConnections {
     async fn reconnect(&self, _: &ConnectionMeta, _: OpenFn) -> Result<ConnectionMeta, AppError> {
         Err(AppError::new("INTERNAL", "não usado"))
     }
-    fn remove(&self, _: &ConnectionMeta) -> Result<(), AppError> {
+    fn remove(&self, m: &ConnectionMeta) -> Result<(), AppError> {
+        self.removed.lock().unwrap().push(m.connection_id.clone());
+        if let Some(db) = &self.db {
+            db.delete_connection(&m.connection_id).unwrap();
+        }
         Ok(())
     }
 }
@@ -53,12 +69,22 @@ fn no_browser() -> OpenFn {
 }
 
 async fn service(dir: &std::path::Path) -> (Arc<ConnectionsService>, Arc<Notify>) {
+    service_with(dir, false).await
+}
+
+async fn service_with(
+    dir: &std::path::Path,
+    saves: bool,
+) -> (Arc<ConnectionsService>, Arc<Notify>) {
     let (rt, _) = boot_on(dir, free_port()).await;
+    let rt = Arc::new(rt);
     let release = Arc::new(Notify::new());
     let svc = ConnectionsService::new(
-        Arc::new(rt),
+        rt.clone(),
         Arc::new(FakeConnections {
             release: release.clone(),
+            db: saves.then(|| rt.db().clone()),
+            removed: Default::default(),
         }),
     );
     (Arc::new(svc), release)
@@ -206,4 +232,31 @@ async fn console_links_use_project_id() {
     assert!(links.api.contains("project=proj-1"));
     assert!(links.consent.contains("project=proj-1"));
     assert!(links.clients.contains("project=proj-1"));
+}
+
+#[tokio::test]
+async fn cancel_after_save_removes_the_connection() {
+    let dir = tempfile::tempdir().unwrap();
+    let (svc, _release) = service_with(dir.path(), true).await;
+    let before: Vec<_> = svc.list().unwrap().into_iter().map(|c| c.id).collect();
+    let s = svc.clone();
+    let pending = tokio::spawn(async move {
+        s.add_meta_login(
+            MetaLoginRequest {
+                name: "x".into(),
+                app_id: "1".into(),
+                config_id: "2".into(),
+                app_secret: "s".into(),
+                relay_url: None,
+            },
+            no_browser(),
+        )
+        .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    assert!(svc.list().unwrap().iter().any(|c| c.id == "m_new"));
+    svc.cancel_login();
+    assert_eq!(pending.await.unwrap().unwrap_err().code, "LOGIN_CANCELLED");
+    let after: Vec<_> = svc.list().unwrap().into_iter().map(|c| c.id).collect();
+    assert_eq!(after, before);
 }

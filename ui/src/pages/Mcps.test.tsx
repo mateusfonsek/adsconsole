@@ -69,3 +69,27 @@ test("erro do servidor mostra a mensagem e o campo de porta", async () => {
   expect(await screen.findByText("A porta 7458 já está em uso.")).toBeInTheDocument();
   expect(screen.getByLabelText("Porta")).toHaveValue("7458");
 });
+
+test("porta ocupada ao salvar mostra a mensagem", async () => {
+  renderWithApp(<Mcps />, {
+    server_status: status,
+    client_snippet_preview: preview,
+    set_port: () => ({ kind: "error", port: 8080, error: { code: "PORT_IN_USE", message: "A porta 8080 já está em uso.", field: null } }),
+  });
+  const input = await screen.findByLabelText("Porta");
+  await userEvent.clear(input);
+  await userEvent.type(input, "8080");
+  await userEvent.click(screen.getByRole("button", { name: "Salvar porta" }));
+  expect(await screen.findByText("A porta 8080 já está em uso.")).toBeInTheDocument();
+});
+
+test("com o servidor em erro dá para tentar de novo a mesma porta", async () => {
+  renderWithApp(<Mcps />, {
+    server_status: {
+      ...status,
+      state: { kind: "error", port: 7458, error: { code: "PORT_IN_USE", message: "A porta 7458 já está em uso.", field: null } },
+    },
+    client_snippet_preview: preview,
+  });
+  expect(await screen.findByRole("button", { name: "Salvar porta" })).toBeEnabled();
+});
