@@ -3,6 +3,7 @@
 pub mod changes;
 pub mod clients;
 pub mod connections;
+pub mod demo;
 pub mod error;
 pub mod events;
 pub mod jobs;

@@ -53,7 +53,11 @@ pub fn run(builder: Builder<tauri::Wry>, demo: bool) {
         .invoke_handler(builder.invoke_handler())
         .setup(move |app| {
             builder.mount_events(app);
-            let dir = data_dir(&env)?;
+            let dir = if demo {
+                crate::core::demo::temp_dir()?
+            } else {
+                data_dir(&env)?
+            };
             app.manage(AppState::new(env, dir, demo));
             if let Some(w) = app.get_webview_window(window::MAIN) {
                 window::keep_alive_on_close(&w);
@@ -76,7 +80,11 @@ pub fn run(builder: Builder<tauri::Wry>, demo: bool) {
 pub fn start(app: &AppHandle) {
     let state = app.state::<AppState>();
     let booted = tauri::async_runtime::block_on(async {
-        boot_real(state.data_dir.clone(), state.env.clone()).await
+        if state.demo {
+            crate::core::demo::boot(state.data_dir.clone(), Default::default()).await
+        } else {
+            boot_real(state.data_dir.clone(), state.env.clone()).await
+        }
     });
     match booted {
         Ok(services) => {
