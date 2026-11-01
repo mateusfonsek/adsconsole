@@ -216,5 +216,68 @@
       "history": "Consultar mudanças e desfazer.",
       "escape": "Acesso direto à API para casos não cobertos. Desligado por padrão."
     }
+  },
+  "diff": {
+    "field": "Campo",
+    "before": "Antes",
+    "after": "Depois",
+    "empty": "Sem detalhes de antes e depois."
+  },
+  "approvals": {
+    "title": "Aprovações",
+    "subtitle": "Mudanças pedidas pela IA esperando o seu ok. Nada é aplicado sem a sua decisão.",
+    "empty": "Nada esperando aprovação.",
+    "empty_hint": "Quando a IA pedir uma escrita no modo aprovação, ela aparece aqui e o sistema te avisa.",
+    "approve": "Aprovar",
+    "reject": "Recusar",
+    "ai_waiting": "IA aguardando · {{time}}",
+    "expires": "Válido até {{when}}",
+    "expired": "Expirou: a IA recebeu \"não aprovado\".",
+    "irreversible": "Esta mudança não pode ser desfeita.",
+    "read_only": "O modo atual desta plataforma é só leitura. Recuse o pedido ou mude o modo em Ferramentas.",
+    "requested": "pedido {{when}}",
+    "account": "Conta",
+    "connection": "Conexão",
+    "tool": "Ferramenta",
+    "decided": "Decidido",
+    "approved_ok": "Aprovada e aplicada.",
+    "rejected_ok": "Recusada."
+  },
+  "history": {
+    "title": "Histórico",
+    "subtitle": "Tudo que a IA mudou nas suas contas, com desfazer.",
+    "empty": "Nenhuma mudança neste filtro.",
+    "undo": "Desfazer",
+    "undone": "Desfeita",
+    "irreversible": "Irreversível",
+    "undo_ok": "Desfeita.",
+    "undo_pending": "O desfazer espera aprovação.",
+    "orphans": "Estes objetos podem ter ficado na conta. Confira e apague na plataforma:",
+    "error": "Erro",
+    "load_more": "Carregar mais",
+    "when": "Quando",
+    "platform": "Plataforma",
+    "what": "O que mudou",
+    "status": "Status",
+    "filter_status": "Status",
+    "filter_period": "Período",
+    "filter_platform": "Plataforma",
+    "all": "Tudo",
+    "applied": "Aplicadas",
+    "failed": "Falharam",
+    "rejected": "Recusadas",
+    "pending": "Pendentes",
+    "today": "Hoje",
+    "week": "7 dias",
+    "month": "30 dias",
+    "ever": "Sempre",
+    "status_names": {
+      "pending": "Pendente",
+      "approved": "Aprovada",
+      "applied": "Aplicada",
+      "failed": "Falhou",
+      "rejected": "Recusada",
+      "expired": "Expirou"
+    }
   }
 }

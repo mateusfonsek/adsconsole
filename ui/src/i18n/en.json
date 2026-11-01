@@ -216,5 +216,68 @@
       "history": "Look up changes and undo.",
       "escape": "Direct API access for uncovered cases. Off by default."
     }
+  },
+  "diff": {
+    "field": "Field",
+    "before": "Before",
+    "after": "After",
+    "empty": "No before and after details."
+  },
+  "approvals": {
+    "title": "Approvals",
+    "subtitle": "Changes the AI asked for, waiting for your OK. Nothing is applied without your decision.",
+    "empty": "Nothing waiting for approval.",
+    "empty_hint": "When the AI asks for a write in approval mode, it shows up here and the system notifies you.",
+    "approve": "Approve",
+    "reject": "Reject",
+    "ai_waiting": "AI waiting · {{time}}",
+    "expires": "Valid until {{when}}",
+    "expired": "Expired: the AI got \"not approved\".",
+    "irreversible": "This change cannot be undone.",
+    "read_only": "This platform is in read-only mode. Reject the request or change the mode in Tools.",
+    "requested": "requested {{when}}",
+    "account": "Account",
+    "connection": "Connection",
+    "tool": "Tool",
+    "decided": "Decided",
+    "approved_ok": "Approved and applied.",
+    "rejected_ok": "Rejected."
+  },
+  "history": {
+    "title": "History",
+    "subtitle": "Everything the AI changed in your accounts, with undo.",
+    "empty": "No changes for this filter.",
+    "undo": "Undo",
+    "undone": "Undone",
+    "irreversible": "Irreversible",
+    "undo_ok": "Undone.",
+    "undo_pending": "The undo is waiting for approval.",
+    "orphans": "These objects may have been left in the account. Check and delete them on the platform:",
+    "error": "Error",
+    "load_more": "Load more",
+    "when": "When",
+    "platform": "Platform",
+    "what": "What changed",
+    "status": "Status",
+    "filter_status": "Status",
+    "filter_period": "Period",
+    "filter_platform": "Platform",
+    "all": "All",
+    "applied": "Applied",
+    "failed": "Failed",
+    "rejected": "Rejected",
+    "pending": "Pending",
+    "today": "Today",
+    "week": "7 days",
+    "month": "30 days",
+    "ever": "All time",
+    "status_names": {
+      "pending": "Pending",
+      "approved": "Approved",
+      "applied": "Applied",
+      "failed": "Failed",
+      "rejected": "Rejected",
+      "expired": "Expired"
+    }
   }
 }

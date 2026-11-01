@@ -3,7 +3,9 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { I18nextProvider, useTranslation } from "react-i18next";
 import { commands } from "./bindings";
 import { applyTheme } from "./lib/theme";
+import { Approvals } from "./pages/Approvals";
 import { Connections } from "./pages/Connections";
+import { History } from "./pages/History";
 import { Home } from "./pages/Home";
 import { Mcps } from "./pages/Mcps";
 import { Tools } from "./pages/Tools";
@@ -12,20 +14,14 @@ import { createI18n, systemLang, type Lang } from "./i18n";
 import { useCmd } from "./lib/ipc";
 import { useRoute, type RouteName } from "./lib/route";
 import { AppShell } from "./components/layout/AppShell";
-import { PageHeader } from "./components/layout/PageHeader";
-
-function Placeholder({ name }: { name: RouteName }) {
-  const { t } = useTranslation();
-  return <PageHeader title={t(`nav.${name}`)} />;
-}
 
 const PAGES: Record<RouteName, () => ReactNode> = {
   home: () => <Home />,
   connections: () => <Connections />,
   mcps: () => <Mcps />,
   tools: () => <Tools />,
-  approvals: () => <Placeholder name="approvals" />,
-  history: () => <Placeholder name="history" />,
+  approvals: () => <Approvals />,
+  history: () => <History />,
   settings: () => <Settings />,
 };
 
