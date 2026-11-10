@@ -252,7 +252,7 @@ pub(crate) fn bounded_text(raw: &str, max: usize, field: &str) -> Result<String,
     Ok(t.to_string())
 }
 
-/// Create `campaignBudgetOperation`: daily budget (`daily_budget`, in the account
+/// `campaignBudgetOperation` create: daily budget (`daily_budget`, in the account
 /// currency) with `deliveryMethod: STANDARD`, named with the campaign's [`budget_name`].
 pub(crate) fn budget_op(
     temp: &str,

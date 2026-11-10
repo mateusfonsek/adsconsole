@@ -1918,7 +1918,11 @@ async fn demand_gen_carousel_card_limits() {
             e.field.as_deref(),
             Some("ad_groups[0].ads[0].cards[1].image")
         );
-        assert!(e.message.contains("image"), "{}", e.message);
+        assert!(
+            e.message.contains("the image is repeated on another card"),
+            "{}",
+            e.message
+        );
     }
 
     // Two 1:1 cards: card assets with the square image and each one's URL.
