@@ -197,7 +197,7 @@ impl Engine {
             )
             .with_suggestion("Turn it on in AdsConsole → Tools"));
         }
-        // Ruling C: the history tools belong to the engine (no account); undo_change goes
+        // The history tools belong to the engine (no account); undo_change goes
         // through the read-only check inside submit_write.
         if history::is_history_tool(name) {
             return self.call_history(name, input, requested_by).await;

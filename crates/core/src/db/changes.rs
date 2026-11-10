@@ -615,7 +615,7 @@ mod tests {
         b.platform = Platform::MetaAds;
         db.insert_change(&b).unwrap();
         let now = Utc::now();
-        db.insert_pending("chg_a", now - Duration::minutes(1), Some("aviso"))
+        db.insert_pending("chg_a", now - Duration::minutes(1), Some("warning"))
             .unwrap();
         db.insert_pending("chg_b", now + Duration::hours(1), None)
             .unwrap();
@@ -623,7 +623,7 @@ mod tests {
         let all = db.list_pending(None).unwrap();
         assert_eq!(all.len(), 2);
         let a = all.iter().find(|p| p.change.change_id == "chg_a").unwrap();
-        assert_eq!(a.warning.as_deref(), Some("aviso"));
+        assert_eq!(a.warning.as_deref(), Some("warning"));
         assert_eq!(db.list_pending(Some(Platform::MetaAds)).unwrap().len(), 1);
         db.delete_pending("chg_a").unwrap();
         assert_eq!(db.list_pending(None).unwrap().len(), 1);

@@ -28,7 +28,7 @@ impl Engine {
         requested_by: Option<String>,
         undo: Option<UndoOf>,
     ) -> Result<Value, ToolError> {
-        // Ruling B: here too (the Task 10 undo comes in directly), before the precheck.
+        // The read-only check runs here too, before the precheck: undo calls submit_write directly.
         let mode = self.settings().write_mode;
         if mode == WriteMode::ReadOnly {
             return Err(self.read_only_error());

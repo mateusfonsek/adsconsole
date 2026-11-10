@@ -75,7 +75,7 @@ mod tests {
         let r = ToolRegistry::new(FakePlatform::new(Platform::GoogleAds).tools()).unwrap();
         let mut s = ServerSettings::default();
         assert!(r.is_enabled("get_campaigns", &s));
-        assert!(!r.is_enabled("raw_mutate", &s)); // Escape is off by default
+        assert!(!r.is_enabled("raw_mutate", &s)); // the `Escape` group is off by default
         s.groups.insert(ToolGroup::Escape, true);
         assert!(r.is_enabled("raw_mutate", &s));
         s.tools.insert("raw_mutate".into(), false); // the tool's toggle wins over the group's

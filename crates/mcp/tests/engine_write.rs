@@ -512,7 +512,7 @@ async fn dropped_call_still_finishes_the_change() {
 #[tokio::test]
 async fn access_denied_triggers_background_refresh() {
     let (engine, fake, _db) = setup(WriteMode::Direct).await;
-    fake.fail_next_read(ToolError::new(codes::ACCESS_DENIED, "sem acesso"));
+    fake.fail_next_read(ToolError::new(codes::ACCESS_DENIED, "access denied"));
     let err = engine
         .call_tool("get_campaigns", json!({ "account_id": "111" }), None)
         .await
@@ -549,7 +549,7 @@ async fn access_denied_refresh_is_coalesced() {
     };
     let before = rounds();
     for _ in 0..2 {
-        fake.fail_next_read(ToolError::new(codes::ACCESS_DENIED, "sem acesso"));
+        fake.fail_next_read(ToolError::new(codes::ACCESS_DENIED, "access denied"));
         let err = engine
             .call_tool("get_campaigns", json!({ "account_id": "111" }), None)
             .await

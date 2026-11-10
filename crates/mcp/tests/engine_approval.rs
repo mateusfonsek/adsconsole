@@ -139,7 +139,7 @@ async fn approve_after_timeout_executes() {
 
     let rec = engine.approve(&id).await.unwrap();
     assert_eq!(rec.status, ChangeStatus::Applied);
-    // Ruling H: get_change_status arrives in Task 10; the database shows the result.
+    // Read the result back from the database.
     let stored = db.get_change(&id).unwrap().unwrap();
     assert_eq!(stored.status, ChangeStatus::Applied);
     assert_eq!(executes(&fake, "create_campaign"), 1);
