@@ -22,7 +22,7 @@ impl EnvOverrides {
                 Ok(p) if p >= 1 => Some(p),
                 _ => {
                     return Err(CoreError::Config(format!(
-                        "ADSCONSOLE_PORT inválida: '{v}' (use um número de 1 a 65535)"
+                        "invalid ADSCONSOLE_PORT: '{v}' (use a number from 1 to 65535)"
                     )));
                 }
             },
@@ -39,9 +39,7 @@ pub fn data_dir(env: &EnvOverrides) -> Result<PathBuf, CoreError> {
     let dir = match &env.data_dir {
         Some(d) => d.clone(),
         None => dirs::data_dir()
-            .ok_or_else(|| {
-                CoreError::Config("Não foi possível localizar o diretório de dados".into())
-            })?
+            .ok_or_else(|| CoreError::Config("Could not locate the data directory".into()))?
             .join("adsconsole"),
     };
     std::fs::create_dir_all(&dir)?;

@@ -4,17 +4,17 @@ use crate::platform::Platform;
 
 #[derive(Debug, thiserror::Error)]
 pub enum RoutingError {
-    #[error("Conexão desconhecida: {0}")]
+    #[error("Unknown connection: {0}")]
     UnknownConnection(String),
-    #[error("A conta {account_id} não está na conexão {connection}")]
+    #[error("Account {account_id} is not in connection {connection}")]
     AccountNotInConnection {
         account_id: String,
         connection: String,
     },
-    #[error("Conta {0} não encontrada em nenhuma conexão")]
+    #[error("Account {0} not found in any connection")]
     AccountNotFound(String),
     #[error(
-        "A conta {account_id} existe em mais de uma conexão ({}); informe qual usar",
+        "Account {account_id} exists in more than one connection ({}); specify which one to use",
         connections
             .iter()
             .map(|(id, name)| format!("{name} [{id}]"))
@@ -23,17 +23,17 @@ pub enum RoutingError {
     )]
     Ambiguous {
         account_id: String,
-        /// Pares (connection_id, nome).
+        /// (connection_id, name) pairs.
         connections: Vec<(String, String)>,
     },
-    #[error("A conexão {0} precisa ser reconectada")]
+    #[error("Connection {0} needs to be reconnected")]
     NeedsReconnect(String),
     #[error(transparent)]
     Db(#[from] CoreError),
 }
 
-/// Google: tira hífens e espaços. Meta: garante o prefixo `act_` (sem diferenciar
-/// maiúsculas); vazio continua vazio.
+/// Google: strips hyphens and spaces. Meta: ensures the `act_` prefix (case-insensitive);
+/// empty stays empty.
 pub fn normalize_account_id(p: Platform, raw: &str) -> String {
     let raw = raw.trim();
     match p {
@@ -49,7 +49,7 @@ pub fn normalize_account_id(p: Platform, raw: &str) -> String {
     }
 }
 
-/// Decide qual conexão atende a conta. `account_id` já vem normalizado.
+/// Decides which connection serves the account. `account_id` is already normalized.
 pub fn resolve_connection(
     db: &Db,
     p: Platform,
@@ -85,7 +85,7 @@ pub fn resolve_connection(
     if candidate_ids.is_empty() {
         return Err(RoutingError::AccountNotFound(account_id.to_string()));
     }
-    // list_connections vem ordenada por connection_id, como accounts_for.
+    // list_connections is ordered by connection_id, like accounts_for.
     let candidates: Vec<_> = db
         .list_connections(p)?
         .into_iter()
@@ -140,7 +140,7 @@ mod tests {
         ConnectionMeta {
             connection_id: id.into(),
             platform: p,
-            name: format!("Conexão {id}"),
+            name: format!("Connection {id}"),
             is_default: default,
             status: ConnectionStatus::Ok,
             expires_at: None,
@@ -152,7 +152,7 @@ mod tests {
     fn acct(id: &str) -> AccountInfo {
         AccountInfo {
             account_id: id.into(),
-            name: format!("Conta {id}"),
+            name: format!("Account {id}"),
             currency: "BRL".into(),
             timezone: None,
             status: None,
@@ -160,7 +160,7 @@ mod tests {
         }
     }
 
-    /// `a` (default) e `b`; act_1 só em `a`, act_2 em ambas, act_3 só em `b`.
+    /// `a` (default) and `b`; act_1 only in `a`, act_2 in both, act_3 only in `b`.
     fn setup() -> Db {
         let db = Db::open_in_memory().unwrap();
         db.upsert_connection(&conn("a", Platform::MetaAds, true))
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn shared_without_default_is_ambiguous() {
         let db = setup();
-        // Padrão de outra plataforma não conta.
+        // A default on another platform does not count.
         db.upsert_connection(&conn("g", Platform::GoogleAds, true))
             .unwrap();
         db.upsert_connection(&conn("a", Platform::MetaAds, false))
@@ -222,12 +222,12 @@ mod tests {
                 assert_eq!(
                     connections,
                     vec![
-                        ("a".to_string(), "Conexão a".to_string()),
-                        ("b".to_string(), "Conexão b".to_string())
+                        ("a".to_string(), "Connection a".to_string()),
+                        ("b".to_string(), "Connection b".to_string())
                     ]
                 );
             }
-            e => panic!("erro inesperado: {e:?}"),
+            e => panic!("unexpected error: {e:?}"),
         }
     }
 
@@ -325,7 +325,7 @@ mod tests {
     fn upsert_keeps_cache_and_default_is_exclusive() {
         let db = setup();
         let mut b = conn("b", Platform::MetaAds, false);
-        b.name = "Novo nome".into();
+        b.name = "New name".into();
         db.upsert_connection(&b).unwrap();
         assert_eq!(
             db.accounts_for(Platform::MetaAds, "act_3").unwrap().len(),
@@ -334,7 +334,7 @@ mod tests {
         db.set_default_connection(Platform::MetaAds, "b").unwrap();
         let list = db.list_connections(Platform::MetaAds).unwrap();
         assert!(!list[0].is_default && list[1].is_default);
-        assert_eq!(list[1].name, "Novo nome");
+        assert_eq!(list[1].name, "New name");
         assert_eq!(
             db.list_accounts(Platform::MetaAds, Some("a"))
                 .unwrap()

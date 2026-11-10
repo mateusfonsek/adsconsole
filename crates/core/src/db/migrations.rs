@@ -2,9 +2,9 @@ use rusqlite::Connection;
 
 use crate::error::CoreError;
 
-/// Migrações aplicadas em ordem; a posição + 1 é o valor de `PRAGMA user_version`.
+/// Migrations applied in order; position + 1 is the `PRAGMA user_version` value.
 pub const MIGRATIONS: &[&str] = &[
-    // 1: histórico de mudanças, fila de aprovação, conexões e cache de contas
+    // 1: change history, approval queue, connections and account cache
     r#"
     CREATE TABLE changes (
         change_id     TEXT PRIMARY KEY,
@@ -61,11 +61,11 @@ pub const MIGRATIONS: &[&str] = &[
         PRIMARY KEY (platform, account_id, connection_id)
     );
     "#,
-    // 2: `force` do desfazer, para a checagem de conflito na hora de aplicar
+    // 2: undo `force`, for the conflict check at apply time
     r#"
     ALTER TABLE changes ADD COLUMN undo_force INTEGER NOT NULL DEFAULT 0;
     "#,
-    // 3: operações do Google Ads por projeto do Cloud (janela deslizante de 24 h)
+    // 3: Google Ads operations per Cloud project (sliding 24 h window)
     r#"
     CREATE TABLE google_ops (
         project_id TEXT NOT NULL,
@@ -74,7 +74,7 @@ pub const MIGRATIONS: &[&str] = &[
     );
     CREATE INDEX idx_google_ops ON google_ops(project_id, at);
     "#,
-    // 4: progresso de escritas em vários passos (Meta) e mudanças de orçamento por objeto
+    // 4: progress of multi-step writes (Meta) and budget changes per object
     r#"
     ALTER TABLE changes ADD COLUMN progress TEXT;
     CREATE TABLE meta_budget_changes (

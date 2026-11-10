@@ -27,7 +27,7 @@ impl ConnectionStatus {
             "ok" => Ok(ConnectionStatus::Ok),
             "needs_reconnect" => Ok(ConnectionStatus::NeedsReconnect),
             other => Err(CoreError::Config(format!(
-                "Status de conexão desconhecido: {other}"
+                "Unknown connection status: {other}"
             ))),
         }
     }
@@ -75,10 +75,10 @@ fn row_to_connection(row: &Row) -> rusqlite::Result<ConnectionMeta> {
 }
 
 impl Db {
-    /// Insere ou atualiza a conexão sem apagar o cache de contas dela.
+    /// Inserts or updates the connection without deleting its account cache.
     pub fn upsert_connection(&self, c: &ConnectionMeta) -> Result<(), CoreError> {
         let extra = serde_json::to_string(&c.extra)
-            .map_err(|e| CoreError::Config(format!("extra inválido: {e}")))?;
+            .map_err(|e| CoreError::Config(format!("invalid extra: {e}")))?;
         self.conn().execute(
             "INSERT INTO connections_meta (connection_id, platform, name, is_default, status, \
              expires_at, extra, created_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8) \
@@ -110,7 +110,7 @@ impl Db {
             .optional()?)
     }
 
-    /// Ordenadas por `connection_id`.
+    /// Ordered by `connection_id`.
     pub fn list_connections(&self, p: Platform) -> Result<Vec<ConnectionMeta>, CoreError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(&format!(
@@ -120,7 +120,7 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Apaga a conexão; o cache de contas dela vai junto (ON DELETE CASCADE).
+    /// Deletes the connection; its account cache goes with it (ON DELETE CASCADE).
     pub fn delete_connection(&self, id: &str) -> Result<(), CoreError> {
         self.conn().execute(
             "DELETE FROM connections_meta WHERE connection_id = ?1",
@@ -141,7 +141,7 @@ impl Db {
             params![p.as_str(), id],
         )?;
         if n == 0 {
-            return Err(CoreError::NotFound(format!("Conexão {id}")));
+            return Err(CoreError::NotFound(format!("Connection {id}")));
         }
         tx.commit()?;
         Ok(())
@@ -153,7 +153,7 @@ impl Db {
             params![id, s.as_str()],
         )?;
         if n == 0 {
-            return Err(CoreError::NotFound(format!("Conexão {id}")));
+            return Err(CoreError::NotFound(format!("Connection {id}")));
         }
         Ok(())
     }

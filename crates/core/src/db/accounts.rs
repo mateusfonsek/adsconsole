@@ -34,7 +34,7 @@ fn row_to_pair(row: &Row) -> rusqlite::Result<(String, AccountInfo)> {
 }
 
 impl Db {
-    /// Troca, numa transação, todas as contas em cache da conexão.
+    /// Replaces all cached accounts of the connection in one transaction.
     pub fn replace_accounts(
         &self,
         p: Platform,
@@ -72,7 +72,7 @@ impl Db {
         Ok(())
     }
 
-    /// Pares (connection_id, conta) que têm esse `account_id`, ordenados por conexão.
+    /// (connection_id, account) pairs that have this `account_id`, ordered by connection.
     pub fn accounts_for(
         &self,
         p: Platform,

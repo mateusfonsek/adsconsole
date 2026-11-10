@@ -73,12 +73,12 @@ pub struct Config {
     pub port: u16,
     pub autostart: bool,
     pub servers: BTreeMap<Platform, ServerSettings>,
-    /// Escolhido na primeira execução; depois disso não muda sozinho.
+    /// Chosen on first run; never changes on its own after that.
     pub secret_backend: Option<SecretBackend>,
-    /// `None`: segue o idioma do sistema.
+    /// `None`: follows the system language.
     pub language: Option<String>,
     pub theme: Theme,
-    /// Algum cliente de IA já chamou o MCP (primeiros passos do app).
+    /// Some AI client has already called the MCP server (app onboarding).
     pub client_seen: bool,
 }
 
@@ -120,7 +120,7 @@ impl Config {
                 if config.port == 0 {
                     config.port = Config::default().port;
                     warning = Some(format!(
-                        "config.json tinha a porta 0; usando a padrão {}.",
+                        "config.json had port 0; using the default {}.",
                         config.port
                     ));
                 }
@@ -137,7 +137,7 @@ impl Config {
                 Ok(LoadedConfig {
                     config: Config::default(),
                     warning: Some(format!(
-                        "config.json estava inválido ({err}); usando o padrão. O arquivo antigo foi salvo como {backup_name}"
+                        "config.json was invalid ({err}); using the defaults. The old file was saved as {backup_name}"
                     )),
                 })
             }
@@ -145,8 +145,9 @@ impl Config {
     }
 
     pub fn save(&self, path: &Path) -> Result<(), CoreError> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| CoreError::Config(format!("Falha ao serializar a configuração: {e}")))?;
+        let json = serde_json::to_string_pretty(self).map_err(|e| {
+            CoreError::Config(format!("Failed to serialize the configuration: {e}"))
+        })?;
         let mut tmp = path.as_os_str().to_owned();
         tmp.push(".tmp");
         std::fs::write(&tmp, json)?;
@@ -240,7 +241,7 @@ mod tests {
     fn corrupt_config_is_backed_up() {
         let d = tempdir().unwrap();
         let p = d.path().join("config.json");
-        std::fs::write(&p, "{ não é json").unwrap();
+        std::fs::write(&p, "{ not json").unwrap();
         let l = Config::load(&p).unwrap();
         assert_eq!(l.config, Config::default());
         assert!(l.warning.unwrap().contains("config.json.corrupt-"));

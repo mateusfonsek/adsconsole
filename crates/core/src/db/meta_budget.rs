@@ -1,4 +1,4 @@
-//! Mudanças de orçamento por objeto da Meta (no máximo 4 por hora por ad set).
+//! Budget changes per Meta object (at most 4 per hour per ad set).
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::params;
@@ -19,8 +19,8 @@ impl Db {
         Ok(())
     }
 
-    /// Momentos das mudanças de `object_id` desde `since`, em ordem crescente.
-    /// Apaga as linhas com mais de 2 h.
+    /// Timestamps of the changes to `object_id` since `since`, in ascending order.
+    /// Deletes rows older than 2 h.
     pub fn budget_changes_since(
         &self,
         object_id: &str,
@@ -68,6 +68,6 @@ mod tests {
         assert_eq!(got.len(), 2);
         assert_eq!(ts(&got[0]), ts(&b));
         assert_eq!(ts(&got[1]), ts(&c));
-        assert_eq!(rows(&db), 3, "a linha de 3 h foi apagada");
+        assert_eq!(rows(&db), 3, "the 3 h row was deleted");
     }
 }

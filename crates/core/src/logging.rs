@@ -1,4 +1,4 @@
-//! Logs com rotação diária e mascaramento de tokens e secrets.
+//! Daily-rotated logs with token and secret masking.
 
 use crate::CoreError;
 use regex::Regex;
@@ -13,21 +13,21 @@ use tracing_subscriber::fmt::MakeWriter;
 
 const KEYS: &str = "access_token|refresh_token|client_secret|app_secret|code_verifier|code|fb_exchange_token|input_token";
 
-/// `"chave":"valor"` (JSON) e `chave: "valor"` (Debug de struct). Aceita `\"` dentro do valor.
+/// `"key":"value"` (JSON) and `key: "value"` (struct Debug). Accepts `\"` inside the value.
 static JSON_KV: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r#"(?i)((?:^|\W)"?(?:{KEYS})"?\s*:\s*")(?:[^"\\]|\\.)*"#
     ))
     .unwrap()
 });
-/// Mesmo formato, mas escapado por Debug: `\"chave\":\"valor\"`.
+/// Same format, but escaped by Debug: `\"key\":\"value\"`.
 static JSON_KV_ESCAPED: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r#"(?i)((?:^|\W)(?:\\")?(?:{KEYS})(?:\\")?\s*:\s*\\")(?:[^\\]|\\[^"])*"#
     ))
     .unwrap()
 });
-/// `chave=valor` (query/form), com ou sem aspas. A chave só casa inteira (`error_code` não conta).
+/// `key=value` (query/form), quoted or not. The key must match whole (`error_code` does not count).
 static FORM_KV: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(
         r#"(?i)((?:^|\W)(?:{KEYS})=)(?:"[^"]*"|'[^']*'|\\"(?:[^\\]|\\[^"])*\\"|[^&\s"']+)"#
@@ -46,7 +46,7 @@ fn apply<'a>(re: &Regex, s: Cow<'a, str>, rep: &str) -> Cow<'a, str> {
     }
 }
 
-/// Troca por `***` o valor de tokens e secrets conhecidos; o rótulo fica.
+/// Replaces the value of known tokens and secrets with `***`; the label stays.
 pub fn redact(s: &str) -> Cow<'_, str> {
     let out = apply(&JSON_KV_ESCAPED, Cow::Borrowed(s), "${1}***");
     let out = apply(&JSON_KV, out, "${1}***");
@@ -55,7 +55,7 @@ pub fn redact(s: &str) -> Cow<'_, str> {
     apply(&BARE_TOKEN, out, "***")
 }
 
-/// Mantém o worker de escrita vivo; ao ser descartado, descarrega o buffer.
+/// Keeps the write worker alive; flushes the buffer when dropped.
 pub struct LogGuard {
     _guard: WorkerGuard,
 }
@@ -91,7 +91,7 @@ impl<'a> MakeWriter<'a> for RedactingMakeWriter {
     }
 }
 
-/// Instala o subscriber global (uma vez por processo). Filtro via `RUST_LOG`, padrão `info`.
+/// Installs the global subscriber (once per process). Filter via `RUST_LOG`, default `info`.
 pub fn init(log_dir: &Path) -> Result<LogGuard, CoreError> {
     let appender = RollingFileAppender::builder()
         .rotation(Rotation::DAILY)
@@ -99,7 +99,7 @@ pub fn init(log_dir: &Path) -> Result<LogGuard, CoreError> {
         .filename_suffix("log")
         .max_log_files(7)
         .build(log_dir)
-        .map_err(|e| CoreError::Config(format!("Não foi possível abrir o log: {e}")))?;
+        .map_err(|e| CoreError::Config(format!("Could not open the log: {e}")))?;
     let (inner, guard) = tracing_appender::non_blocking(appender);
     let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     tracing_subscriber::fmt()
@@ -107,7 +107,7 @@ pub fn init(log_dir: &Path) -> Result<LogGuard, CoreError> {
         .with_ansi(false)
         .with_writer(RedactingMakeWriter { inner })
         .try_init()
-        .map_err(|e| CoreError::Config(format!("Log já inicializado: {e}")))?;
+        .map_err(|e| CoreError::Config(format!("Log already initialized: {e}")))?;
     Ok(LogGuard { _guard: guard })
 }
 
@@ -147,12 +147,12 @@ mod tests {
             ),
         ];
         for (i, o) in cases {
-            assert_eq!(redact(i), o, "entrada: {i}");
+            assert_eq!(redact(i), o, "input: {i}");
         }
     }
 
     #[test]
     fn leaves_plain_text_untouched() {
-        assert!(matches!(redact("campanha 123 pausada"), Cow::Borrowed(_)));
+        assert!(matches!(redact("campaign 123 paused"), Cow::Borrowed(_)));
     }
 }

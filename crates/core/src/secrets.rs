@@ -7,7 +7,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 use crate::error::CoreError;
 
-/// Segredo em memória: `Debug` mascarado e sem `Display`, para não vazar em logs.
+/// In-memory secret: masked `Debug` and no `Display`, so it does not leak into logs.
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(transparent)]
 pub struct Secret(String);
@@ -40,7 +40,7 @@ const MCP_TOKEN_KEY: &str = "mcp_token";
 pub trait SecretStore: Send + Sync {
     fn get(&self, key: &str) -> Result<Option<String>, CoreError>;
     fn set(&self, key: &str, value: &str) -> Result<(), CoreError>;
-    /// Apagar uma chave inexistente é `Ok(())`.
+    /// Deleting a missing key is `Ok(())`.
     fn delete(&self, key: &str) -> Result<(), CoreError>;
 }
 
@@ -53,7 +53,7 @@ pub enum SecretBackend {
 }
 
 fn lock_error<T>(_: T) -> CoreError {
-    CoreError::Secret("Armazenamento de segredos indisponível (lock envenenado)".into())
+    CoreError::Secret("Secret store unavailable (poisoned lock)".into())
 }
 
 #[derive(Default)]
@@ -78,7 +78,7 @@ impl SecretStore for MemoryStore {
     }
 }
 
-/// Segredos em JSON `{chave: valor}` com permissão 0600 (unix) a cada escrita.
+/// Secrets as JSON `{key: value}` with 0600 permissions (unix) on every write.
 pub struct FileStore {
     path: PathBuf,
     lock: Mutex<()>,
@@ -97,7 +97,7 @@ impl FileStore {
             Ok(text) if text.trim().is_empty() => Ok(BTreeMap::new()),
             Ok(text) => serde_json::from_str(&text).map_err(|e| {
                 CoreError::Secret(format!(
-                    "Arquivo de segredos {} ilegível: {e}",
+                    "Secrets file {} is unreadable: {e}",
                     self.path.display()
                 ))
             }),
@@ -112,8 +112,8 @@ impl FileStore {
             std::fs::create_dir_all(parent)?;
         }
         let json = serde_json::to_string_pretty(map)
-            .map_err(|e| CoreError::Secret(format!("Falha ao serializar segredos: {e}")))?;
-        // Escrita atômica: arquivo temporário irmão (0600) e rename por cima do destino.
+            .map_err(|e| CoreError::Secret(format!("Failed to serialize secrets: {e}")))?;
+        // Atomic write: sibling temp file (0600) renamed over the destination.
         let mut tmp_name = self.path.as_os_str().to_owned();
         tmp_name.push(".tmp");
         let tmp = PathBuf::from(tmp_name);
@@ -126,7 +126,7 @@ impl FileStore {
         }
         let result = (|| -> std::io::Result<()> {
             let mut file = options.open(&tmp)?;
-            // Garante 0600 também quando o temporário já existia com outra permissão.
+            // Ensures 0600 even when the temp file already existed with other permissions.
             #[cfg(unix)]
             {
                 use std::os::unix::fs::PermissionsExt;
@@ -165,7 +165,7 @@ impl SecretStore for FileStore {
     }
 }
 
-/// Segredos no keychain do sistema.
+/// Secrets in the system keychain.
 pub struct KeyringStore {
     service: String,
 }
@@ -183,7 +183,7 @@ impl KeyringStore {
 }
 
 fn keyring_error(e: keyring::Error) -> CoreError {
-    CoreError::Secret(format!("Keychain indisponível: {e}"))
+    CoreError::Secret(format!("Keychain unavailable: {e}"))
 }
 
 impl SecretStore for KeyringStore {
@@ -205,7 +205,7 @@ impl SecretStore for KeyringStore {
     }
 }
 
-/// Escreve, lê e apaga uma chave de teste. A chave é apagada mesmo se a leitura falhar.
+/// Writes, reads and deletes a test key. The key is deleted even if the read fails.
 fn keychain_works(store: &dyn SecretStore) -> bool {
     if store.set(PROBE_KEY, "ok").is_err() {
         return false;
@@ -214,7 +214,7 @@ fn keychain_works(store: &dyn SecretStore) -> bool {
     store.delete(PROBE_KEY).is_ok() && read
 }
 
-/// O keychain do sistema responde a um teste de escrita/leitura.
+/// The system keychain passes a write/read probe.
 pub fn keychain_available() -> bool {
     keychain_works(&KeyringStore::new(KEYRING_SERVICE))
 }
@@ -222,23 +222,23 @@ pub fn keychain_available() -> bool {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub enum SecretStoreError {
     #[error(
-        "O keychain do sistema não respondeu. Os segredos do AdsConsole estão nele; tente de novo ou passe a usar um arquivo."
+        "The system keychain did not respond. AdsConsole's secrets are stored in it; try again or switch to a file."
     )]
     KeychainUnavailable,
 }
 
-/// Usa o keychain se ele responder a um teste de escrita/leitura; senão cai
-/// para `data_dir/secrets.json` (o app avisa o usuário quando vier `File`).
+/// Uses the keychain if it passes a write/read probe; otherwise falls back
+/// to `data_dir/secrets.json` (the app warns the user when `File` comes back).
 pub fn open_secret_store(data_dir: &Path) -> (Arc<dyn SecretStore>, SecretBackend) {
     match open_secret_store_with(data_dir, None, &keychain_available) {
         Ok(r) => r,
-        // Sem backend lembrado, a escolha nunca falha.
+        // With no remembered backend, the choice never fails.
         Err(SecretStoreError::KeychainUnavailable) => file_store(data_dir),
     }
 }
 
-/// Como `open_secret_store`, respeitando o backend já escolhido antes: um keychain
-/// lembrado que não responde é erro (cair para o arquivo trocaria o token MCP).
+/// Like `open_secret_store`, honoring the backend chosen earlier: a remembered
+/// keychain that does not respond is an error (falling back to the file would change the MCP token).
 pub fn open_secret_store_with(
     data_dir: &Path,
     remembered: Option<SecretBackend>,
@@ -271,9 +271,9 @@ fn choose_store(
     }
 }
 
-/// O token do ambiente vence e não é gravado; senão vale o token guardado;
-/// senão gera um novo (32 bytes, base64url sem padding) e grava. Token vazio ou só
-/// com espaços (no ambiente ou guardado) conta como ausente.
+/// The environment token wins and is not stored; otherwise the stored token is used;
+/// otherwise a new one is generated (32 bytes, base64url without padding) and stored. An empty or
+/// whitespace-only token (in the environment or stored) counts as missing.
 pub fn ensure_mcp_token(
     store: &dyn SecretStore,
     env_token: Option<&str>,
@@ -434,17 +434,17 @@ mod tests {
     #[test]
     fn remembered_file_skips_probe() {
         let dir = tempfile::tempdir().unwrap();
-        let probe = || -> bool { panic!("não deveria testar o keychain") };
+        let probe = || -> bool { panic!("should not probe the keychain") };
         let (_, b) = choose_store(dir.path(), Some(SecretBackend::File), &probe, mem).unwrap();
         assert_eq!(b, SecretBackend::File);
     }
 
-    /// Grava e apaga normalmente, mas a leitura sempre falha.
+    /// Writes and deletes normally, but reads always fail.
     #[derive(Default)]
     struct BrokenGet(MemoryStore);
     impl SecretStore for BrokenGet {
         fn get(&self, _: &str) -> Result<Option<String>, CoreError> {
-            Err(CoreError::Secret("falha".into()))
+            Err(CoreError::Secret("failure".into()))
         }
         fn set(&self, k: &str, v: &str) -> Result<(), CoreError> {
             self.0.set(k, v)
@@ -470,7 +470,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "toca no keychain real"]
+    #[ignore = "touches the real keychain"]
     fn keyring_store_contract() {
         contract(&KeyringStore::new("adsconsole-test"));
     }

@@ -3,7 +3,7 @@ pub use rust_decimal::Decimal;
 
 const MICROS_EXPONENT: u32 = 6;
 
-/// Converte um valor decimal para micros (6 casas), sem arredondar.
+/// Converts a decimal amount to micros (6 decimal places), without rounding.
 pub fn to_micros(amount: Decimal) -> Result<i64, CoreError> {
     to_minor_units(amount, MICROS_EXPONENT)
 }
@@ -12,12 +12,12 @@ pub fn from_micros(micros: i64) -> Decimal {
     from_minor_units(micros, MICROS_EXPONENT)
 }
 
-/// Converte um valor decimal para a menor unidade da moeda (`exponent` casas).
-/// Valores negativos ou com mais casas que `exponent` são rejeitados, sem arredondar.
+/// Converts a decimal amount to the currency's smallest unit (`exponent` decimal places).
+/// Negative amounts, or amounts with more decimal places than `exponent`, are rejected without rounding.
 pub fn to_minor_units(amount: Decimal, exponent: u32) -> Result<i64, CoreError> {
     if amount.is_sign_negative() && !amount.is_zero() {
         return Err(CoreError::InvalidAmount(format!(
-            "{amount} é negativo; o valor deve ser maior ou igual a zero"
+            "{amount} is negative; the amount must be greater than or equal to zero"
         )));
     }
     if amount.normalize().scale() > exponent {
@@ -28,14 +28,16 @@ pub fn to_minor_units(amount: Decimal, exponent: u32) -> Result<i64, CoreError> 
     let factor = 10_i64
         .checked_pow(exponent)
         .map(Decimal::from)
-        .ok_or_else(|| CoreError::InvalidAmount(format!("{exponent} casas decimais é demais")))?;
+        .ok_or_else(|| {
+            CoreError::InvalidAmount(format!("{exponent} decimal places is too many"))
+        })?;
     amount
         .checked_mul(factor)
         .and_then(|v| i64::try_from(v.normalize()).ok())
-        .ok_or_else(|| CoreError::InvalidAmount(format!("{amount} é grande demais")))
+        .ok_or_else(|| CoreError::InvalidAmount(format!("{amount} is too large")))
 }
 
-/// Casas decimais da moeda (ISO 4217): 0 para as sem centavos listadas, 2 para as demais.
+/// Currency decimal places (ISO 4217): 0 for the listed zero-decimal currencies, 2 for the rest.
 pub fn currency_exponent(code: &str) -> u32 {
     const ZERO_DECIMAL: [&str; 8] = ["JPY", "KRW", "CLP", "VND", "ISK", "PYG", "UGX", "XOF"];
     if ZERO_DECIMAL.iter().any(|c| c.eq_ignore_ascii_case(code)) {
@@ -45,7 +47,7 @@ pub fn currency_exponent(code: &str) -> u32 {
     }
 }
 
-/// Recusa casas além do expoente da moeda e converte para micros.
+/// Rejects decimal places beyond the currency exponent and converts to micros.
 pub fn to_micros_checked(amount: Decimal, currency: &str) -> Result<i64, CoreError> {
     to_minor_units(amount, currency_exponent(currency))?;
     to_micros(amount)

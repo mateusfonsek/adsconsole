@@ -26,7 +26,7 @@ pub(crate) fn parse_platform(s: &str) -> Result<Platform, CoreError> {
     Platform::ALL
         .into_iter()
         .find(|p| p.as_str() == s)
-        .ok_or_else(|| CoreError::Config(format!("Plataforma desconhecida: {s}")))
+        .ok_or_else(|| CoreError::Config(format!("Unknown platform: {s}")))
 }
 
 pub(crate) fn ts(t: &DateTime<Utc>) -> String {
@@ -51,7 +51,7 @@ pub(crate) fn get_ts(row: &Row, idx: usize) -> rusqlite::Result<DateTime<Utc>> {
         .map_err(|e| conv_err(idx, e))
 }
 
-/// Banco SQLite local. Métodos síncronos; a conexão fica atrás de um mutex.
+/// Local SQLite database. Synchronous methods; the connection sits behind a mutex.
 pub struct Db {
     conn: Mutex<Connection>,
 }

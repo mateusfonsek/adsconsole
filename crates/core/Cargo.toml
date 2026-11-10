@@ -9,7 +9,7 @@ license.workspace = true
 name = "adsconsole_core"
 
 [features]
-# Deriva `specta::Type` nos tipos que o app expõe à UI.
+# Derives `specta::Type` on the types the app exposes to the UI.
 specta = ["dep:specta"]
 
 [dependencies]

@@ -11,7 +11,7 @@ use crate::platform::Platform;
 #[serde(rename_all = "snake_case")]
 pub enum ChangeStatus {
     Pending,
-    /// Transitório: aprovada, executando.
+    /// Transient: approved, executing.
     Approved,
     Applied,
     Rejected,
@@ -43,9 +43,7 @@ impl ChangeStatus {
             "failed" => ChangeStatus::Failed,
             "undone" => ChangeStatus::Undone,
             other => {
-                return Err(CoreError::Config(format!(
-                    "Status de mudança desconhecido: {other}"
-                )));
+                return Err(CoreError::Config(format!("Unknown change status: {other}")));
             }
         })
     }
@@ -74,12 +72,12 @@ pub struct ChangeRecord {
     pub status: ChangeStatus,
     pub requested_by: Option<String>,
     pub undo_of: Option<String>,
-    /// Desfazer com `force=true`: aplica mesmo se o objeto mudou depois da original.
+    /// Undo with `force=true`: applies even if the object changed after the original.
     pub undo_force: bool,
     pub undone_by: Option<String>,
     pub error: Option<Value>,
-    /// Progresso de uma escrita em vários passos (ex.: `{"created": [..]}` na Meta).
-    /// Gravado por [`Db::record_progress`]; `update_change` só o sobrescreve quando é `Some`.
+    /// Progress of a multi-step write (e.g. `{"created": [..]}` on Meta).
+    /// Stored by [`Db::record_progress`]; `update_change` overwrites it only when it is `Some`.
     #[serde(default)]
     pub progress: Option<Value>,
     pub created_at: DateTime<Utc>,
@@ -114,7 +112,7 @@ pub struct PendingApproval {
     pub expires_at: DateTime<Utc>,
 }
 
-/// `"chg_"` + UUID v7 (ordena por tempo).
+/// `"chg_"` + UUID v7 (sorts by time).
 pub fn new_change_id() -> String {
     format!("chg_{}", uuid::Uuid::now_v7())
 }
@@ -220,7 +218,7 @@ impl Db {
             .optional()?)
     }
 
-    /// Sobrescreve os campos mutáveis e define `updated_at = agora`.
+    /// Overwrites the mutable fields and sets `updated_at = now`.
     pub fn update_change(&self, c: &ChangeRecord) -> Result<(), CoreError> {
         let inverse = inverse_text(c)?;
         let n = self.conn().execute(
@@ -245,28 +243,26 @@ impl Db {
         )?;
         if n == 0 {
             return Err(CoreError::NotFound(format!(
-                "Mudança {} não encontrada",
+                "Change {} not found",
                 c.change_id
             )));
         }
         Ok(())
     }
 
-    /// Grava só o progresso (e `updated_at`) de uma mudança em andamento.
+    /// Stores only the progress (and `updated_at`) of a change in flight.
     pub fn record_progress(&self, change_id: &str, progress: &Value) -> Result<(), CoreError> {
         let n = self.conn().execute(
             "UPDATE changes SET progress=?2, updated_at=?3 WHERE change_id=?1",
             params![change_id, progress.to_string(), ts(&Utc::now())],
         )?;
         if n == 0 {
-            return Err(CoreError::NotFound(format!(
-                "Mudança {change_id} não encontrada"
-            )));
+            return Err(CoreError::NotFound(format!("Change {change_id} not found")));
         }
         Ok(())
     }
 
-    /// Compare-and-set do status; `true` se a linha mudou.
+    /// Compare-and-set on the status; `true` if the row changed.
     pub fn transition_status(
         &self,
         id: &str,
@@ -280,8 +276,8 @@ impl Db {
         Ok(n > 0)
     }
 
-    /// Marca a original como desfeita por `undone_by`, num só passo, se ainda estiver
-    /// `applied`; `true` se a linha mudou.
+    /// Marks the original as undone by `undone_by`, in a single step, if it is still
+    /// `applied`; `true` if the row changed.
     pub fn mark_undone(&self, id: &str, undone_by: &str) -> Result<bool, CoreError> {
         let n = self.conn().execute(
             "UPDATE changes SET status='undone', undone_by=?2, updated_at=?3 \
@@ -291,7 +287,7 @@ impl Db {
         Ok(n > 0)
     }
 
-    /// Mais novas primeiro.
+    /// Newest first.
     pub fn list_changes(&self, f: &ChangeFilter) -> Result<Vec<ChangeRecord>, CoreError> {
         let mut clauses = Vec::new();
         let mut args: Vec<String> = Vec::new();
@@ -323,7 +319,7 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// Desfazer em andamento (status `pending` ou `approved`) para a mudança original.
+    /// Undo in flight (status `pending` or `approved`) for the original change.
     pub fn find_undo_in_flight(
         &self,
         original_id: &str,
@@ -388,7 +384,7 @@ impl Db {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    /// IDs das pendências com `expires_at` anterior a `now`.
+    /// IDs of pending approvals with `expires_at` before `now`.
     pub fn pending_expired_before(&self, now: DateTime<Utc>) -> Result<Vec<String>, CoreError> {
         let conn = self.conn();
         let mut stmt = conn.prepare(
@@ -417,7 +413,7 @@ mod tests {
             connection_id: "conn_1".into(),
             tool: "pause_campaign".into(),
             input: json!({"campaign_id": "9", "nested": {"a": [1, 2, {"b": null}]}}),
-            summary: "Pausar campanha 9".into(),
+            summary: "Pause campaign 9".into(),
             before: Some(json!({"status": "enabled"})),
             after: Some(json!({"status": "paused"})),
             inverse: Some(InverseOp {
@@ -500,7 +496,7 @@ mod tests {
         let got = db.get_change("chg_a").unwrap().unwrap();
         assert_eq!(got.status, ChangeStatus::Undone);
         assert_eq!(got.undone_by.as_deref(), Some("chg_u1"));
-        // Segunda vez não muda nada: o primeiro desfazer continua registrado.
+        // Second call changes nothing: the first undo stays recorded.
         assert!(!db.mark_undone("chg_a", "chg_u2").unwrap());
         assert_eq!(
             db.get_change("chg_a")
@@ -535,7 +531,7 @@ mod tests {
         assert_eq!(
             db.get_change("chg_p").unwrap().unwrap().progress,
             Some(p),
-            "update_change preserva progress"
+            "update_change preserves progress"
         );
         assert!(db.record_progress("nope", &json!({})).is_err());
     }

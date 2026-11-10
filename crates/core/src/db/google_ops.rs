@@ -1,4 +1,4 @@
-//! Contagem de operações do Google Ads por projeto do Cloud, numa janela deslizante de 24 h.
+//! Google Ads operation counts per Cloud project, over a sliding 24 h window.
 
 use chrono::{DateTime, Duration, Utc};
 use rusqlite::params;
@@ -20,7 +20,7 @@ impl Db {
         Ok(())
     }
 
-    /// Soma as operações de `at > now - 24h` e apaga as linhas com mais de 48 h.
+    /// Sums the operations with `at > now - 24h` and deletes rows older than 48 h.
     pub fn google_ops_last_24h(
         &self,
         project_id: &str,

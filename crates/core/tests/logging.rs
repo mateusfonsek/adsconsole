@@ -16,7 +16,7 @@ fn log_file_is_redacted() {
                 .to_string_lossy()
                 .starts_with("adsconsole")
         })
-        .expect("arquivo de log não encontrado");
+        .expect("log file not found");
     let content = std::fs::read_to_string(file).unwrap();
     assert!(content.contains("refresh_token=***"), "{content}");
     assert!(!content.contains("abc123"), "{content}");
