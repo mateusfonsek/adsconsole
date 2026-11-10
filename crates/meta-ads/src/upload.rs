@@ -150,7 +150,7 @@ pub async fn upload_image(
     let (key, img) = out["images"]
         .as_object()
         .and_then(|m| m.iter().next())
-        .ok_or_else(|| MetaError::Decode("adimages sem images".into()))?;
+        .ok_or_else(|| MetaError::Decode("adimages response has no images".into()))?;
     Ok(json!({
         "image_hash": img["hash"],
         "url": img["url"],

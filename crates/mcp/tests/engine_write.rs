@@ -100,7 +100,7 @@ fn acct(id: &str) -> AccountInfo {
 }
 
 fn by() -> Option<String> {
-    Some("teste".into())
+    Some("test".into())
 }
 
 fn all_changes(db: &Db) -> Vec<adsconsole_core::db::ChangeRecord> {
@@ -200,7 +200,7 @@ async fn direct_write_records_history() {
     let rec = db.get_change(id).unwrap().unwrap();
     assert_eq!(rec.status, ChangeStatus::Applied);
     assert!(rec.reversible);
-    assert_eq!(rec.requested_by.as_deref(), Some("teste"));
+    assert_eq!(rec.requested_by.as_deref(), Some("test"));
     assert_eq!(rec.inverse.as_ref().unwrap().tool, "remove_campaign");
     assert_eq!(rec.connection_id, "conn_a");
     assert_eq!(rec.summary, out["summary"].as_str().unwrap());
@@ -364,7 +364,7 @@ async fn same_account_writes_are_serialized() {
                 .call_tool(
                     "update_campaign",
                     json!({"account_id": "111", "campaign_id": cid, "name": format!("n{i}")}),
-                    Some("teste".into()),
+                    Some("test".into()),
                 )
                 .await
         });

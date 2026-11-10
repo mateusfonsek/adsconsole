@@ -202,14 +202,14 @@ pub async fn add_meta_login_connection(
     let endpoints = adapter.endpoints();
     let token = login(endpoints, &req.app, req.port, open, LOGIN_WAIT)
         .await
-        .map_err(|e| translate_in(e, None, "connect"))?;
+        .map_err(|e| translate_in(e, None, "the connection"))?;
     let info = debug_token(
         endpoints,
         &token,
         Some((&req.app.app_id, &req.app.app_secret)),
     )
     .await
-    .map_err(|e| translate_in(e, None, "connect"))?;
+    .map_err(|e| translate_in(e, None, "the connection"))?;
     check_token(&info)?;
     let extra = ConnectionExtra {
         kind: MetaConnKind::Login,
@@ -243,7 +243,7 @@ pub async fn add_meta_token_connection(
     };
     let info = debug_token(adapter.endpoints(), &req.access_token, app)
         .await
-        .map_err(|e| translate_in(e, None, "connect"))?;
+        .map_err(|e| translate_in(e, None, "the connection"))?;
     check_token(&info)?;
     let extra = ConnectionExtra {
         kind: if info.kind == TokenKind::SystemUser {
@@ -295,10 +295,10 @@ pub async fn reconnect_meta_connection(
     let endpoints = adapter.endpoints();
     let token = login(endpoints, &app, port, open, LOGIN_WAIT)
         .await
-        .map_err(|e| translate_in(e, None, "reconnect"))?;
+        .map_err(|e| translate_in(e, None, "the reconnection"))?;
     let info = debug_token(endpoints, &token, Some((&app.app_id, &app.app_secret)))
         .await
-        .map_err(|e| translate_in(e, None, "reconnect"))?;
+        .map_err(|e| translate_in(e, None, "the reconnection"))?;
     check_token(&info)?;
     let meta = save_connection(
         adapter,
@@ -332,7 +332,7 @@ pub async fn replace_meta_token(
     };
     let info = debug_token(adapter.endpoints(), &token, app)
         .await
-        .map_err(|e| translate_in(e, None, "replace the token"))?;
+        .map_err(|e| translate_in(e, None, "the token replacement"))?;
     check_token(&info)?;
     let meta = save_connection(
         adapter,

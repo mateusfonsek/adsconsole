@@ -21,7 +21,7 @@ fn endpoints(server: &MockServer) -> MetaEndpoints {
 fn app() -> AppCreds {
     AppCreds {
         app_id: "123".into(),
-        app_secret: Secret::new("secret"),
+        app_secret: Secret::new("S3CR3T-xyz"),
         config_id: "cfg9".into(),
         relay_url: None,
     }
@@ -83,7 +83,7 @@ async fn mock_exchanges(server: &MockServer) {
         .and(query_param_is_missing("client_secret"))
         .and(body_has("grant_type", "fb_exchange_token"))
         .and(body_has("fb_exchange_token", "s"))
-        .and(body_has("client_secret", "secret"))
+        .and(body_has("client_secret", "S3CR3T-xyz"))
         .respond_with(ResponseTemplate::new(200).set_body_json(
             json!({"access_token": "L", "token_type": "bearer", "expires_in": 5183944}),
         ))
@@ -405,13 +405,13 @@ async fn dropping_server() -> MetaEndpoints {
 #[tokio::test]
 async fn network_errors_hide_secrets() {
     let ep = dropping_server().await;
-    let secret = Secret::new("secret");
+    let secret = Secret::new("S3CR3T-xyz");
     let err = debug_token(&ep, &Secret::new("EAAUSR"), Some(("123", &secret)))
         .await
         .unwrap_err();
     let text = format!("{err} {err:?}");
     assert!(!text.contains("EAAUSR"), "{text}");
-    assert!(!text.contains("secret"), "{text}");
+    assert!(!text.contains("S3CR3T-xyz"), "{text}");
     let err = debug_token(&ep, &Secret::new("EAAUSR"), None)
         .await
         .unwrap_err();
@@ -424,6 +424,6 @@ async fn network_errors_hide_secrets() {
         .await
         .unwrap_err();
     let text = format!("{err} {err:?}");
-    assert!(!text.contains("secret"), "{text}");
+    assert!(!text.contains("S3CR3T-xyz"), "{text}");
     assert!(!text.contains("abc"), "{text}");
 }

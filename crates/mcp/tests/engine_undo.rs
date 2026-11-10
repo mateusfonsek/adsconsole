@@ -10,7 +10,7 @@ use chrono::Utc;
 use serde_json::json;
 
 fn by() -> Option<String> {
-    Some("teste".into())
+    Some("test".into())
 }
 
 fn config_for(mode: WriteMode, wait_secs: u64) -> SharedConfig {
@@ -125,7 +125,7 @@ async fn undo_update_restores_before() {
     assert_eq!(undo.tool, "update_campaign");
     assert_eq!(undo.account_id, "111");
     assert_eq!(undo.connection_id, orig.connection_id);
-    assert_eq!(undo.requested_by.as_deref(), Some("teste"));
+    assert_eq!(undo.requested_by.as_deref(), Some("test"));
 }
 
 #[tokio::test]
@@ -430,7 +430,7 @@ async fn history_tools() {
     }
     assert_eq!(item["tool"], "update_campaign");
     assert_eq!(item["status"], "applied");
-    assert_eq!(item["requested_by"], "teste");
+    assert_eq!(item["requested_by"], "test");
     assert!(item.get("before").is_none());
 
     let page = s

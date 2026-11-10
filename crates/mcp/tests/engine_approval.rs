@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use tempfile::TempDir;
 
 fn by() -> Option<String> {
-    Some("teste".into())
+    Some("test".into())
 }
 
 async fn engine_on(fake: Arc<FakePlatform>, db: Arc<Db>, wait_secs: u64) -> Engine {

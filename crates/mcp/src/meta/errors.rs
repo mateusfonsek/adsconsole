@@ -43,7 +43,7 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
                 ),
             )
             .with_details(json!({ "retry_after_secs": wait.as_secs() }))
-            .with_suggestion("Wait the indicated time before retrying.");
+            .with_suggestion("Wait for the indicated time before retrying.");
             e.retryable = true;
             e
         }

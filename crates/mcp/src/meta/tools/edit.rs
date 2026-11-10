@@ -173,7 +173,7 @@ fn budget_changes(
             if has_budget(obj, "lifetime_budget") {
                 return Err(invalid(
                     "daily_budget",
-                    "This object uses a lifetime budget (lifetime_budget); Meta does not change the type after creation.",
+                    "This object uses a lifetime budget (lifetime_budget); Meta does not allow switching the budget type after creation.",
                 ));
             }
             changes.push(("daily_budget", money("daily_budget", d)?));
@@ -182,7 +182,7 @@ fn budget_changes(
             if has_budget(obj, "daily_budget") {
                 return Err(invalid(
                     "lifetime_budget",
-                    "This object uses a daily budget (daily_budget); Meta does not change the type after creation.",
+                    "This object uses a daily budget (daily_budget); Meta does not allow switching the budget type after creation.",
                 ));
             }
             changes.push(("lifetime_budget", money("lifetime_budget", l)?));
