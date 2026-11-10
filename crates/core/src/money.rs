@@ -22,7 +22,7 @@ pub fn to_minor_units(amount: Decimal, exponent: u32) -> Result<i64, CoreError> 
     }
     if amount.normalize().scale() > exponent {
         return Err(CoreError::InvalidAmount(format!(
-            "{amount} tem mais de {exponent} casas decimais"
+            "{amount} has more than {exponent} decimal places"
         )));
     }
     let factor = 10_i64

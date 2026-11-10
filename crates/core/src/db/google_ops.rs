@@ -59,7 +59,7 @@ mod tests {
         db.record_google_ops("p", 5, now - Duration::hours(1))
             .unwrap();
         db.record_google_ops("p", 3, now).unwrap();
-        db.record_google_ops("outro", 99, now).unwrap();
+        db.record_google_ops("other", 99, now).unwrap();
         assert_eq!(db.google_ops_last_24h("p", now).unwrap(), 8);
         assert_eq!(rows(&db), 4);
         db.record_google_ops("p", 7, now - Duration::hours(49))

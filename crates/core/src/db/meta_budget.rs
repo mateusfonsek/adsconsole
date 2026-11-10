@@ -61,7 +61,7 @@ mod tests {
         db.record_budget_change("s1", c).unwrap();
         db.record_budget_change("s1", a).unwrap();
         db.record_budget_change("s1", b).unwrap();
-        db.record_budget_change("outro", c).unwrap();
+        db.record_budget_change("other", c).unwrap();
         let got = db
             .budget_changes_since("s1", now - Duration::hours(1))
             .unwrap();
