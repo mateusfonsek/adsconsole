@@ -3,7 +3,7 @@ use std::time::Duration;
 /// Maximum number of extra attempts after the first.
 pub const MAX_RETRIES: u32 = 3;
 
-/// Backoff exponencial: `base`, `2*base`, `4*base`.
+/// Exponential backoff: `base`, `2*base`, `4*base`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RetryPolicy {
     pub base: Duration,

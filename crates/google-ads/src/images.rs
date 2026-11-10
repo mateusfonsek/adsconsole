@@ -100,7 +100,7 @@ pub struct LoadedImage {
     pub bytes: Vec<u8>,
     pub width: u32,
     pub height: u32,
-    /// `image/png`, `image/jpeg` ou `image/gif` (from the bytes, not the HTTP header).
+    /// `image/png`, `image/jpeg` or `image/gif` (from the bytes, not the HTTP header).
     pub mime: String,
 }
 
@@ -122,7 +122,7 @@ impl LoadedImage {
     }
 }
 
-/// Resultado de [`load`].
+/// Result of [`load`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Loaded {
     /// New image (from a file or URL), to upload as an asset.

@@ -1,4 +1,4 @@
-//! Google Ads operations (REST). A plain library: it does not depend de `adsconsole-mcp` nem de `rmcp`.
+//! Google Ads operations (REST). A plain library: it does not depend on `adsconsole-mcp` or `rmcp`.
 
 pub mod client;
 pub mod client_json;

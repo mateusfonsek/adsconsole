@@ -204,7 +204,7 @@ async fn file_rules() {
         0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, b'J', b'F', b'I', b'F', 0x00,
     ];
     jpeg.extend_from_slice(&[1, 1, 0, 0, 1, 0, 1, 0, 0]);
-    // SOF0 com 628 x 1200.
+    // SOF0 with 628 x 1200.
     jpeg.extend_from_slice(&[0xFF, 0xC0, 0x00, 0x11, 0x08, 0x02, 0x74, 0x04, 0xB0, 0x03]);
     jpeg.extend_from_slice(&[0; 9]);
     let img = new(images::load(&file("a.jpg", &jpeg), &client).await.unwrap());

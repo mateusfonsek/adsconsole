@@ -327,7 +327,7 @@ fn set_path(obj: &mut Map<String, Value>, path: &[&str], v: Value) {
     }
 }
 
-/// Monta `{"<op_key>": {"update": {...}, "updateMask": "a,b"}}`.
+/// Builds `{"<op_key>": {"update": {...}, "updateMask": "a,b"}}`.
 pub fn update_op(rn: &str, changes: &[(&EditableField, Value)]) -> Result<Value, String> {
     let key = op_key(rn)?;
     if changes.is_empty() {
