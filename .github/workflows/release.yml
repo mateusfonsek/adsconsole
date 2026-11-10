@@ -28,7 +28,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-      - name: Dependências do Tauri (Linux)
+      - name: Tauri dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
@@ -56,9 +56,9 @@ jobs:
           releaseDraft: true
           prerelease: false
           releaseBody: |
-            Instaladores do AdsConsole ${{ github.ref_name }} para macOS (Apple Silicon e Intel), Windows e Linux.
+            AdsConsole ${{ github.ref_name }} installers for macOS (Apple Silicon and Intel), Windows and Linux.
 
-            O app ainda não é assinado. Na primeira abertura:
-            - macOS: abra Ajustes do Sistema → Privacidade e Segurança e clique em Abrir Mesmo Assim ao lado do AdsConsole (macOS 14 ou anterior: botão direito no app → Abrir).
-            - Windows: em "O Windows protegeu o computador", clique em Mais informações → Executar assim mesmo.
-            - Linux: use o .AppImage (dê permissão de execução) ou instale o .deb.
+            The app is not signed yet. On first launch:
+            - macOS: open System Settings → Privacy & Security and click Open Anyway next to AdsConsole (macOS 14 or earlier: right-click the app → Open).
+            - Windows: at "Windows protected your PC", click More info → Run anyway.
+            - Linux: use the .AppImage (make it executable) or install the .deb.

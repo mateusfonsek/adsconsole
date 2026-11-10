@@ -1,21 +1,21 @@
-# Como publicar uma versão
+# How to publish a release
 
-1. Atualize a versão em `crates/app/Cargo.toml`, `crates/app/tauri.conf.json` e `ui/package.json`.
-2. Rode os testes: `cargo test --workspace`, `npm --prefix ui test` e `npm --prefix ui run e2e`.
-3. Crie a tag `vX.Y.Z` na `main` e envie (`git push origin vX.Y.Z`). O workflow **Release** gera os instaladores e cria um rascunho de release.
-4. Faça o checklist abaixo com os instaladores do rascunho.
-5. Publique o rascunho. A partir daí, o app instalado avisa da versão nova.
+1. Update the version in `crates/app/Cargo.toml`, `crates/app/tauri.conf.json` and `ui/package.json`.
+2. Run the tests: `cargo test --workspace`, `npm --prefix ui test` and `npm --prefix ui run e2e`.
+3. Create the `vX.Y.Z` tag on `main` and push it (`git push origin vX.Y.Z`). The **Release** workflow builds the installers and creates a draft release.
+4. Go through the checklist below with the draft's installers.
+5. Publish the draft. From then on, the installed app announces the new version.
 
-## Checklist manual (macOS, Windows e Linux)
+## Manual checklist (macOS, Windows and Linux)
 
-- [ ] Instalar e abrir pela primeira vez num Mac limpo com o `.dmg` baixado da release (Gatekeeper: Ajustes → Privacidade e Segurança → Abrir Mesmo Assim; não pode aparecer "danificado") e no Windows (SmartScreen).
-- [ ] Conectar Google Ads com um projeto real (assistente, JSON do cliente, login no navegador).
-- [ ] Conectar Meta Ads com um app real, por login e por token.
-- [ ] Pedir uma escrita pela IA no modo aprovação: chega a notificação, o contador aparece na barra de menu, aprovar aplica.
-- [ ] Desfazer a mudança pelo Histórico.
-- [ ] Pausar e retomar um MCP pela barra de menu.
-- [ ] Fechar a janela (os MCPs continuam) e reabrir pela barra de menu.
-- [ ] Ligar "Abrir com o sistema", reiniciar o computador e conferir.
-- [ ] Sair com uma aprovação pendente: o app pede confirmação.
-- [ ] Trocar idioma e tema.
-- [ ] Clientes de IA: Claude Code, Claude Desktop, Codex, Gemini CLI e Cursor conectam com o trecho copiado e listam as ferramentas.
+- [ ] Install and open for the first time on a clean Mac with the `.dmg` downloaded from the release (Gatekeeper: System Settings → Privacy & Security → Open Anyway; it must not say "damaged"), and on Windows (SmartScreen).
+- [ ] Connect Google Ads with a real project (wizard, client JSON, browser login).
+- [ ] Connect Meta Ads with a real app, by login and by token.
+- [ ] Have the AI request a write in approval mode: the notification arrives, the counter shows in the menu bar, approving applies it.
+- [ ] Undo the change from History.
+- [ ] Pause and resume an MCP from the menu bar.
+- [ ] Close the window (the MCPs keep running) and reopen it from the menu bar.
+- [ ] Turn on "Open at login", restart the computer and check.
+- [ ] Quit with a pending approval: the app asks for confirmation.
+- [ ] Switch language and theme.
+- [ ] AI clients: Claude Code, Claude Desktop, Codex, Gemini CLI and Cursor connect with the copied snippet and list the tools.
