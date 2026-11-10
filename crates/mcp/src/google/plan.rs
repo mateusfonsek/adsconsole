@@ -1,8 +1,8 @@
-//! Escrita genérica do Google Ads. Cada ferramenta de escrita monta um [`WritePlan`];
-//! o adapter valida, tira o snapshot, aplica e lê o estado atual a partir dele.
+//! Generic Google Ads write. Each write tool builds a [`WritePlan`]; the adapter
+//! validates, takes the snapshot, applies and reads the current state from it.
 //!
-//! Formato do antes/depois/atual: `{rn: {campo_gaql: valor normalizado}}`. O `target`
-//! da inversa é `{"watch": [WatchTarget]}`, com os nomes de recurso já reais.
+//! Format of before/after/current: `{rn: {gaql_field: normalized value}}`. The inverse's
+//! `target` is `{"watch": [WatchTarget]}`, with the resource names already real.
 
 use std::collections::{HashMap, HashSet};
 
@@ -19,49 +19,49 @@ use super::tools::assets::VideoUpload;
 use crate::adapter::{Applied, Validated};
 use crate::error::{ToolError, codes};
 
-/// Ferramentas ocultas usadas como inversa (ver [`super::tools::hidden`]).
+/// Hidden tools used as the inverse (see [`super::tools::hidden`]).
 pub(crate) const RESTORE_FIELDS: &str = "restore_fields";
 pub(crate) const REMOVE_RESOURCES: &str = "remove_resources";
 pub(crate) const REMOVE_YOUTUBE_UPLOAD: &str = "remove_youtube_upload";
 
-/// O que uma escrita vai fazer, montado por [`super::tools::WriteTool::plan`].
+/// What a write will do, built by [`super::tools::WriteTool::plan`].
 pub(crate) struct WritePlan {
     pub summary: String,
     pub warning: Option<String>,
-    /// `MutateOperation`s do `googleAds:mutate`, na ordem de envio.
+    /// `MutateOperation`s of `googleAds:mutate`, in send order.
     pub operations: Vec<Value>,
-    /// Campos alterados em recursos que já existem: viram o snapshot ("antes").
+    /// Fields changed on resources that already exist: they become the snapshot ("before").
     pub field_changes: Vec<FieldChange>,
-    /// O que ler depois da escrita ("depois") e no estado atual do desfazer.
+    /// What to read after the write ("after") and in the undo's current state.
     pub watch: Vec<Watch>,
     pub inverse: InverseSpec,
-    /// Quando `Some`, a escrita não usa o `googleAds:mutate`: o `validate` só faz as
-    /// checagens locais e o `execute` roda isto.
+    /// When `Some`, the write doesn't use `googleAds:mutate`: `validate` only runs the
+    /// local checks and `execute` runs this.
     pub direct: Option<DirectExec>,
 }
 
 pub(crate) struct FieldChange {
     pub resource_name: String,
-    /// Campo GAQL da tabela [`fields::FIELDS`].
+    /// GAQL field from the [`fields::FIELDS`] table.
     pub field: &'static str,
-    /// Valor novo, já normalizado (o formato de [`fields::normalize`]).
+    /// New value, already normalized (the [`fields::normalize`] format).
     pub value: Value,
 }
 
 pub(crate) struct Watch {
-    /// Pode ser temporário (criado nesta escrita); o execute troca pelo real.
+    /// May be temporary (created in this write); execute replaces it with the real one.
     pub resource_name: String,
-    /// Recurso GAQL, ex.: `campaign`.
+    /// GAQL resource, e.g. `campaign`.
     pub resource: &'static str,
-    /// Campos GAQL completos, ex.: `campaign.status`.
+    /// Full GAQL fields, e.g. `campaign.status`.
     pub fields: Vec<&'static str>,
 }
 
 pub(crate) enum InverseSpec {
-    /// Volta os campos de `field_changes` para o snapshot (`restore_fields`).
+    /// Sets the `field_changes` fields back to the snapshot (`restore_fields`).
     RestoreFields,
-    /// Remove os recursos criados, nesta ordem (`remove_resources`). Os nomes podem
-    /// ser temporários.
+    /// Removes the created resources, in this order (`remove_resources`). The names may
+    /// be temporary.
     RemoveCreated {
         order: Vec<String>,
     },
@@ -69,16 +69,16 @@ pub(crate) enum InverseSpec {
 }
 
 pub(crate) enum DirectExec {
-    /// POST em `customers/{c}{path_suffix}`, contado como uma operação de mutate.
+    /// POST to `customers/{c}{path_suffix}`, counted as one mutate operation.
     Post { path_suffix: String, body: Value },
-    /// Upload de vídeo para o YouTube e, quando processado, o asset do vídeo. O nome
-    /// do upload só existe depois do envio, então a execução
-    /// ([`super::tools::assets::run_upload`]) monta o "depois", o alvo e a inversa
-    /// sozinha: `watch` e `inverse` do plano ficam vazios.
+    /// Video upload to YouTube and, once processed, the video asset. The upload's name
+    /// only exists after sending, so the execution
+    /// ([`super::tools::assets::run_upload`]) builds the "after", the target and the inverse
+    /// on its own: the plan's `watch` and `inverse` stay empty.
     YoutubeUpload(Box<VideoUpload>),
 }
 
-/// [`Watch`] resolvido, como fica gravado no `target` da inversa.
+/// Resolved [`Watch`], as stored in the inverse's `target`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct WatchTarget {
     pub resource_name: String,
@@ -87,16 +87,16 @@ pub(crate) struct WatchTarget {
 }
 
 fn internal_plan(msg: impl std::fmt::Display) -> ToolError {
-    ToolError::new(codes::INTERNAL, format!("Plano de escrita inválido: {msg}"))
+    ToolError::new(codes::INTERNAL, format!("Invalid write plan: {msg}"))
 }
 
-/// `customers/{c}/{colecao}/{id}` cujo id (ou parte de um id composto `a~b`) é negativo.
+/// `customers/{c}/{collection}/{id}` whose id (or part of a composite id `a~b`) is negative.
 fn is_temp(rn: &str) -> bool {
     let parts: Vec<&str> = rn.splitn(4, '/').collect();
     matches!(parts.as_slice(), ["customers", _, _, id] if id.split('~').any(|p| p.starts_with('-')))
 }
 
-/// Nomes temporários criados pelas operações (`<x>Operation.create.resourceName`).
+/// Temporary names created by the operations (`<x>Operation.create.resourceName`).
 fn created_name(op: &Value) -> Option<&str> {
     op.as_object()?
         .values()
@@ -106,15 +106,15 @@ fn created_name(op: &Value) -> Option<&str> {
         .as_str()
 }
 
-/// Operações como vão para a API. O plano guarda o nome temporário de todo recurso
-/// criado (para o desfazer e a releitura), mas vão sem `resourceName`:
-/// - `campaignSharedSet`: o `-N` do nome repete o do `sharedSet` (`DUPLICATE_TEMP_IDS`);
-/// - critério de campanha ou grupo que não é keyword (local, idioma, horário, …): o id
-///   vem do conteúdo e o `-N` do nome dá `FIELD_MISMATCH`;
-/// - `assetGroupAsset` e `assetGroupSignal`: o id é derivado do asset (ou do conteúdo),
-///   como na criação do PMax, que passou na conta real.
+/// Operations as they go to the API. The plan keeps the temporary name of every created
+/// resource (for undo and the re-read), but these go without `resourceName`:
+/// - `campaignSharedSet`: the name's `-N` repeats the `sharedSet`'s (`DUPLICATE_TEMP_IDS`);
+/// - campaign or ad group criterion that isn't a keyword (location, language, schedule, …):
+///   the id comes from the content and the name's `-N` gives `FIELD_MISMATCH`;
+/// - `assetGroupAsset` and `assetGroupSignal`: the id is derived from the asset (or the
+///   content), as in the PMax creation, which passed on a real account.
 ///
-/// O nome real volta na resposta, que casa com a operação pela posição ([`temp_map`]).
+/// The real name comes back in the response, which matches the operation by position ([`temp_map`]).
 fn wire_ops(operations: &[Value]) -> Vec<Value> {
     operations
         .iter()
@@ -148,21 +148,21 @@ fn wire_ops(operations: &[Value]) -> Vec<Value> {
         .collect()
 }
 
-/// Resumo legível das operações, sem os bytes das imagens: índice, tipo, nome (ou
-/// temporário) do que cria e cada referência a `customers/...`, dizendo se aponta para
-/// um recurso existente, para um temporário criado antes (e em que operação) ou para um
-/// que não existe. O Google trata operações seguidas do mesmo tipo como um lote e não
-/// deixa um lote referenciar temporários criados nele mesmo; essas referências saem
-/// marcadas com `!! MESMO LOTE`.
+/// Readable summary of the operations, without the image bytes: index, kind, name (or
+/// temporary name) of what it creates and each reference to `customers/...`, saying whether
+/// it points to an existing resource, to a temporary one created earlier (and in which
+/// operation) or to one that doesn't exist. Google treats consecutive operations of the same
+/// type as a batch and doesn't let a batch reference temporaries created in that same batch;
+/// those references are marked `!! SAME BATCH`.
 pub fn describe_operations(operations: &[Value]) -> Vec<String> {
-    // temporário -> (índice da operação, lote)
+    // temporary -> (operation index, batch)
     let mut created: HashMap<String, (usize, usize)> = HashMap::new();
     let mut batch = 0;
     let mut last_key = "";
     let mut out = Vec::new();
     for (i, op) in operations.iter().enumerate() {
         let Some((key, inner)) = op.as_object().and_then(|m| m.iter().next()) else {
-            out.push(format!("#{i} operação inválida"));
+            out.push(format!("#{i} invalid operation"));
             continue;
         };
         if key != last_key {
@@ -178,14 +178,14 @@ pub fn describe_operations(operations: &[Value]) -> Vec<String> {
             .get("resourceName")
             .and_then(Value::as_str)
             .or_else(|| body.as_str())
-            .unwrap_or("(sem resourceName)");
+            .unwrap_or("(no resourceName)");
         let mut refs = Vec::new();
         if let Some(m) = body.as_object() {
             for (k, v) in m.iter().filter(|(k, _)| *k != "resourceName") {
                 collect_refs(k, v, &created, batch, &mut refs);
             }
         }
-        let mut line = format!("#{i} lote {batch} {key} {kind} {own}");
+        let mut line = format!("#{i} batch {batch} {key} {kind} {own}");
         if !refs.is_empty() {
             line.push_str(&format!(" | refs: {}", refs.join("; ")));
         }
@@ -209,12 +209,12 @@ fn collect_refs(
     match v {
         Value::String(s) if s.starts_with("customers/") => {
             let what = if !is_temp(s) {
-                "existente".to_string()
+                "existing".to_string()
             } else {
                 match created.get(s) {
-                    Some((at, b)) if *b == batch => format!("criado em #{at} !! MESMO LOTE"),
-                    Some((at, _)) => format!("criado em #{at}"),
-                    None => "!! TEMPORÁRIO SEM CRIAÇÃO ANTERIOR".to_string(),
+                    Some((at, b)) if *b == batch => format!("created in #{at} !! SAME BATCH"),
+                    Some((at, _)) => format!("created in #{at}"),
+                    None => "!! TEMPORARY WITHOUT AN EARLIER CREATE".to_string(),
                 }
             };
             out.push(format!("{path}={s} ({what})"));
@@ -230,7 +230,7 @@ fn collect_refs(
     }
 }
 
-/// `mutateOperationResponses[i]` corresponde a `operations[i]`.
+/// `mutateOperationResponses[i]` matches `operations[i]`.
 fn temp_map(operations: &[Value], responses: &[Value]) -> HashMap<String, String> {
     operations
         .iter()
@@ -249,7 +249,7 @@ fn temp_map(operations: &[Value], responses: &[Value]) -> HashMap<String, String
         .collect()
 }
 
-/// Recurso e campos GAQL entram na query: só `[a-z0-9_.]`, e o campo é do recurso.
+/// The GAQL resource and fields go into the query: only `[a-z0-9_.]`, and each field belongs to the resource.
 fn check_watch_target(w: &WatchTarget) -> Result<(), ToolError> {
     let ident = |s: &str| {
         !s.is_empty()
@@ -264,28 +264,31 @@ fn check_watch_target(w: &WatchTarget) -> Result<(), ToolError> {
     {
         return Err(ToolError::new(
             codes::INTERNAL,
-            format!("Alvo de leitura inválido: {} {:?}", w.resource, w.fields),
+            format!("Invalid read target: {} {:?}", w.resource, w.fields),
         ));
     }
     Ok(())
 }
 
-/// Checagens locais do plano, antes de qualquer chamada que escreve.
+/// Local checks of the plan, before any call that writes.
 fn check(plan: &WritePlan) -> Result<(), ToolError> {
     if plan.direct.is_none() && plan.operations.is_empty() {
         return Err(ToolError::new(
             codes::INVALID_INPUT,
-            "Nenhuma operação para enviar.",
+            "No operations to send.",
         ));
     }
     for c in &plan.field_changes {
         if fields::find(c.field).is_none() {
-            return Err(internal_plan(format!("campo fora da tabela: {}", c.field)));
+            return Err(internal_plan(format!(
+                "field not in the table: {}",
+                c.field
+            )));
         }
-        // O snapshot lê o "antes": só existe para recursos que já existem.
+        // The snapshot reads the "before": it only exists for resources that already exist.
         if is_temp(&c.resource_name) {
             return Err(internal_plan(format!(
-                "campo alterado em recurso temporário: {}",
+                "field changed on a temporary resource: {}",
                 c.resource_name
             )));
         }
@@ -312,7 +315,7 @@ fn check(plan: &WritePlan) -> Result<(), ToolError> {
         .into_iter()
         .find(|r| is_temp(r) && !created.contains(r))
     {
-        return Err(internal_plan(format!("id temporário sem criação: {t}")));
+        return Err(internal_plan(format!("temporary id without a create: {t}")));
     }
     Ok(())
 }
@@ -324,7 +327,7 @@ fn join_warnings(a: Option<String>, b: Option<String>) -> Option<String> {
     }
 }
 
-/// Regras locais e `validateOnly: true` (exceto em [`DirectExec`]), com o aviso de cota.
+/// Local rules and `validateOnly: true` (except for [`DirectExec`]), with the quota warning.
 pub(crate) async fn validate(
     ctx: &Ctx,
     tool: &str,
@@ -348,12 +351,12 @@ pub(crate) async fn validate(
     })
 }
 
-/// Valores atuais dos campos de `field_changes`, agrupados por recurso; `{}` sem campos.
+/// Current values of the `field_changes` fields, grouped by resource; `{}` without fields.
 pub(crate) async fn snapshot(ctx: &Ctx, tool: &str, plan: &WritePlan) -> Result<Value, ToolError> {
     let mut targets: Vec<WatchTarget> = Vec::new();
     for c in &plan.field_changes {
         let field =
-            fields::find(c.field).ok_or_else(|| internal_plan(format!("campo {}", c.field)))?;
+            fields::find(c.field).ok_or_else(|| internal_plan(format!("field {}", c.field)))?;
         match targets
             .iter_mut()
             .find(|t| t.resource_name == c.resource_name)
@@ -370,8 +373,8 @@ pub(crate) async fn snapshot(ctx: &Ctx, tool: &str, plan: &WritePlan) -> Result<
     read_targets(ctx, tool, &targets).await
 }
 
-/// Lê um campo de uma linha do search: pela tabela de campos editáveis quando ele
-/// está lá; senão, seguindo o caminho GAQL em camelCase.
+/// Reads a field from a search row: through the editable fields table when it is
+/// there; otherwise, following the GAQL path in camelCase.
 fn read_field(gaql: &str, row: &Value) -> Value {
     if let Some(f) = fields::find(gaql) {
         return fields::normalize(f, row);
@@ -382,7 +385,7 @@ fn read_field(gaql: &str, row: &Value) -> Value {
         .unwrap_or(Value::Null)
 }
 
-/// `{rn: {campo: valor}}` dos alvos. Recurso que não existe mais lê tudo `null`.
+/// `{rn: {field: value}}` of the targets. A resource that no longer exists reads all `null`.
 pub(crate) async fn read_targets(
     ctx: &Ctx,
     tool: &str,
@@ -411,7 +414,7 @@ pub(crate) async fn read_targets(
     Ok(Value::Object(out))
 }
 
-/// Nome real de `name`; `Err(name)` se é temporário e a resposta não trouxe o real.
+/// Real name of `name`; `Err(name)` if it is temporary and the response didn't bring the real one.
 fn resolve(name: &str, temps: &HashMap<String, String>) -> Result<String, String> {
     if !is_temp(name) {
         return Ok(name.to_string());
@@ -419,7 +422,7 @@ fn resolve(name: &str, temps: &HashMap<String, String>) -> Result<String, String
     temps.get(name).cloned().ok_or_else(|| name.to_string())
 }
 
-/// Corpo do `create` da operação que cria `name`.
+/// Body of the `create` of the operation that creates `name`.
 fn create_body<'a>(operations: &'a [Value], name: &str) -> Option<&'a Value> {
     operations
         .iter()
@@ -430,13 +433,13 @@ fn create_body<'a>(operations: &'a [Value], name: &str) -> Option<&'a Value> {
         .get("create")
 }
 
-/// "Depois" quando a releitura falha, com o que já se sabe de cada campo observado:
-/// - recurso criado nesta escrita: o valor no corpo do `create` (ex.: `status: PAUSED`,
-///   `name`), normalizado como na leitura;
-/// - recurso existente: o valor novo de `field_changes`.
+/// "After" when the re-read fails, with what is already known about each watched field:
+/// - resource created in this write: the value in the `create` body (e.g. `status: PAUSED`,
+///   `name`), normalized as in the read;
+/// - existing resource: the new value from `field_changes`.
 ///
-/// Campo sem valor conhecido fica de fora; o desfazer só compara as chaves presentes.
-/// `watch[i]` corresponde a `targets[i]` (mesmo alvo, nome já resolvido).
+/// A field with no known value is left out; undo only compares the keys present.
+/// `watch[i]` matches `targets[i]` (same target, name already resolved).
 fn expected_after(plan: &WritePlan, targets: &[WatchTarget]) -> Value {
     let mut out = Map::new();
     for (w, t) in plan.watch.iter().zip(targets) {
@@ -467,7 +470,7 @@ fn expected_after(plan: &WritePlan, targets: &[WatchTarget]) -> Value {
     Value::Object(out)
 }
 
-/// Alvos e inversa com os nomes reais.
+/// Targets and inverse with the real names.
 type Resolved = (Vec<WatchTarget>, Option<(String, Value)>);
 
 fn resolve_plan(
@@ -505,13 +508,13 @@ fn resolve_plan(
     Ok((targets, inverse))
 }
 
-/// Aplica (mutate atômico ou [`DirectExec`]), resolve os nomes temporários, relê o
-/// `watch` para o "depois" e monta a inversa.
+/// Applies (atomic mutate or [`DirectExec`]), resolves the temporary names, re-reads the
+/// `watch` for the "after" and builds the inverse.
 ///
-/// Depois que o Google aplicou, nunca devolve `Err` (o Engine gravaria `Failed`):
-/// - releitura falhou: "depois" de [`expected_after`], inversa mantida;
-/// - resposta sem o nome real de um temporário referenciado: `after = {}` e sem
-///   inversa (não reversível), com `tracing::error`.
+/// Once Google has applied, it never returns `Err` (the Engine would record `Failed`):
+/// - re-read failed: "after" from [`expected_after`], inverse kept;
+/// - response without the real name of a referenced temporary: `after = {}` and no
+///   inverse (not reversible), with `tracing::error`.
 pub(crate) async fn execute(
     ctx: &Ctx,
     tool: &str,
@@ -523,7 +526,7 @@ pub(crate) async fn execute(
         && before.as_object().is_none_or(|m| m.is_empty())
     {
         return Err(internal_plan(
-            "RestoreFields sem snapshot (antes vazio ou inválido)",
+            "RestoreFields without a snapshot (before is empty or invalid)",
         ));
     }
     let responses = match &plan.direct {
@@ -561,7 +564,7 @@ pub(crate) async fn execute(
             tracing::error!(
                 tool,
                 temp = missing.as_str(),
-                "escrita aplicada, mas a resposta não trouxe o nome real; registrada sem desfazer"
+                "write applied, but the response lacked the real name; recorded without undo"
             );
             return Ok(Applied {
                 after: json!({}),
@@ -572,7 +575,7 @@ pub(crate) async fn execute(
     let after = match read_targets(ctx, tool, &targets).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(tool, error = %e.message, "falha ao reler depois da escrita");
+            tracing::warn!(tool, error = %e.message, "failed to re-read after the write");
             expected_after(plan, &targets)
         }
     };
@@ -587,11 +590,11 @@ pub(crate) async fn execute(
     })
 }
 
-/// Chave do `target` com valores fixos do "depois" que não são relidos (ex.: o
-/// `video_id` do upload); o estado atual os repete como estão.
+/// `target` key with fixed "after" values that are not re-read (e.g. the upload's
+/// `video_id`); the current state repeats them as they are.
 pub(crate) const TARGET_EXTRA: &str = "extra";
 
-/// Estado atual de `target.watch`, no mesmo formato do "depois", mais as chaves de
+/// Current state of `target.watch`, in the same format as the "after", plus the keys of
 /// `target.extra`.
 pub(crate) async fn current_state(
     ctx: &Ctx,
@@ -599,9 +602,8 @@ pub(crate) async fn current_state(
     target: &Value,
 ) -> Result<Value, ToolError> {
     let targets: Vec<WatchTarget> = match target.get("watch") {
-        Some(w) => serde_json::from_value(w.clone()).map_err(|e| {
-            ToolError::new(codes::INTERNAL, format!("Alvo do desfazer inválido: {e}"))
-        })?,
+        Some(w) => serde_json::from_value(w.clone())
+            .map_err(|e| ToolError::new(codes::INTERNAL, format!("Invalid undo target: {e}")))?,
         None => Vec::new(),
     };
     let mut out = read_targets(ctx, tool, &targets).await?;
@@ -644,19 +646,19 @@ mod tests {
     #[derive(Clone, Copy, PartialEq)]
     enum Mode {
         Ok,
-        /// Observa um temporário que nenhuma operação cria.
+        /// Watches a temporary that no operation creates.
         Dangling,
-        /// `field_changes` num recurso temporário.
+        /// `field_changes` on a temporary resource.
         TempFieldChange,
     }
 
-    /// Cria orçamento (-1) e campanha (-2, com nome e PAUSED) e observa a campanha.
+    /// Creates a budget (-1) and a campaign (-2, with a name and PAUSED) and watches the campaign.
     struct FakeCreate(Mode);
 
     #[async_trait]
     impl WriteTool for FakeCreate {
         fn spec(&self) -> ToolSpec {
-            ToolSpec::write::<NoInput>("fake_create", "Cria.", ToolGroup::Create, true)
+            ToolSpec::write::<NoInput>("fake_create", "Creates.", ToolGroup::Create, true)
         }
         async fn plan(&self, ctx: &Ctx, _input: &Value) -> Result<WritePlan, ToolError> {
             let mut ids = TempIds::new(&ctx.customer_id);
@@ -677,14 +679,14 @@ mod tests {
                 Vec::new()
             };
             Ok(WritePlan {
-                summary: "Cria campanha.".into(),
+                summary: "Creates a campaign.".into(),
                 warning: None,
                 operations: vec![
                     json!({ "campaignBudgetOperation": { "create": {
                         "resourceName": budget, "amountMicros": "1000000" } } }),
                     json!({ "campaignOperation": { "create": {
                         "resourceName": campaign, "campaignBudget": budget,
-                        "name": "Nova", "status": "PAUSED" } } }),
+                        "name": "New", "status": "PAUSED" } } }),
                 ],
                 field_changes,
                 watch: vec![Watch {
@@ -700,18 +702,18 @@ mod tests {
         }
     }
 
-    /// Escrita fora do mutate.
+    /// Write outside mutate.
     struct FakeDirect;
 
     #[async_trait]
     impl WriteTool for FakeDirect {
         fn spec(&self) -> ToolSpec {
-            ToolSpec::write::<NoInput>("fake_direct", "Direto.", ToolGroup::Edit, true)
+            ToolSpec::write::<NoInput>("fake_direct", "Direct.", ToolGroup::Edit, true)
         }
         async fn plan(&self, _ctx: &Ctx, _input: &Value) -> Result<WritePlan, ToolError> {
             Ok(WritePlan {
-                summary: "Direto.".into(),
-                warning: Some("Aviso do plano.".into()),
+                summary: "Direct.".into(),
+                warning: Some("Plan warning.".into()),
                 operations: Vec::new(),
                 field_changes: Vec::new(),
                 watch: Vec::new(),
@@ -767,7 +769,7 @@ mod tests {
         .unwrap();
         let acct = AccountInfo {
             account_id: "111".into(),
-            name: "Conta".into(),
+            name: "Account".into(),
             currency: "BRL".into(),
             timezone: None,
             status: Some("ENABLED".into()),
@@ -816,7 +818,7 @@ mod tests {
             .respond_with(
                 ResponseTemplate::new(200).set_body_json(json!({ "results": [
                     { "campaign": { "resourceName": "customers/111/campaigns/88",
-                        "status": "PAUSED", "name": "Nova" } }
+                        "status": "PAUSED", "name": "New" } }
                 ]})),
             )
             .mount(&server)
@@ -832,7 +834,7 @@ mod tests {
         assert_eq!(
             applied.after,
             json!({ rn: {
-                "campaign.status": "PAUSED", "campaign.name": "Nova", "campaign.end_date_time": null
+                "campaign.status": "PAUSED", "campaign.name": "New", "campaign.end_date_time": null
             } })
         );
         let inverse = applied.inverse.unwrap();
@@ -853,7 +855,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(current, applied.after);
-        // Nenhuma leitura com o id temporário.
+        // No read with the temporary id.
         let reqs = server.received_requests().await.unwrap();
         assert!(
             reqs.iter()
@@ -877,12 +879,12 @@ mod tests {
     #[tokio::test]
     async fn missing_real_name_is_applied_without_undo() {
         let (server, adapter) = setup(FakeCreate(Mode::Ok)).await;
-        // Resposta sem os resultados: não há como saber o nome real.
+        // Response without the results: no way to know the real name.
         mock_mutate(&server, json!([])).await;
         let applied = adapter.execute(&fake_call(), &json!({})).await.unwrap();
         assert_eq!(applied.after, json!({}));
         assert!(applied.inverse.is_none());
-        // Nenhuma leitura com o id temporário.
+        // No read with the temporary id.
         let reqs = server.received_requests().await.unwrap();
         assert!(reqs.iter().all(|r| !r.url.path().ends_with(":search")));
     }
@@ -905,10 +907,10 @@ mod tests {
             .await;
         let applied = adapter.execute(&fake_call(), &json!({})).await.unwrap();
         let rn = "customers/111/campaigns/88";
-        // end_date não está no create: fica de fora.
+        // end_date is not in the create: it is left out.
         assert_eq!(
             applied.after,
-            json!({ rn: { "campaign.status": "PAUSED", "campaign.name": "Nova" } })
+            json!({ rn: { "campaign.status": "PAUSED", "campaign.name": "New" } })
         );
         let inverse = applied.inverse.unwrap();
         assert_eq!(inverse.tool, REMOVE_RESOURCES);
@@ -924,7 +926,7 @@ mod tests {
         mock_mutate(&server, json!([])).await;
         let err = adapter.validate(&fake_call()).await.unwrap_err();
         assert_eq!(err.code, codes::INTERNAL);
-        assert!(err.message.contains("temporário"), "{}", err.message);
+        assert!(err.message.contains("temporary"), "{}", err.message);
         assert!(
             server
                 .received_requests()
@@ -950,7 +952,7 @@ mod tests {
             ..fake_call()
         };
         let v = adapter.validate(&c).await.unwrap();
-        assert_eq!(v.warning.as_deref(), Some("Aviso do plano."));
+        assert_eq!(v.warning.as_deref(), Some("Plan warning."));
         assert!(
             server
                 .received_requests()

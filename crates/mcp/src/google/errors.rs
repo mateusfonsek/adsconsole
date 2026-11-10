@@ -1,4 +1,4 @@
-//! Tradução de [`GoogleError`] para [`ToolError`].
+//! Translation of [`GoogleError`] into [`ToolError`].
 
 use adsconsole_core::db::{ConnectionStatus, Db};
 use adsconsole_core::money;
@@ -9,11 +9,11 @@ use serde_json::{Value, json};
 use super::ctx::Ctx;
 use crate::error::{ToolError, codes};
 
-const RECONNECT_SUGGESTION: &str = "Reconecte esta conexão no AdsConsole → Conexões.";
-const MAYBE_APPLIED_SUGGESTION: &str = "O Google respondeu com erro interno; confira na conta se a mudança foi aplicada antes de repetir.";
+const RECONNECT_SUGGESTION: &str = "Reconnect this connection in AdsConsole → Connections.";
+const MAYBE_APPLIED_SUGGESTION: &str = "Google responded with an internal error; check in the account whether the change was applied before retrying.";
 
-/// De onde veio o erro: a conexão (para marcar `NeedsReconnect` e montar links do
-/// Console) e a moeda da conta, quando há uma.
+/// Where the error came from: the connection (to mark `NeedsReconnect` and build Console
+/// links) and the account currency, when there is one.
 pub(crate) struct Scope<'a> {
     pub db: &'a Db,
     pub connection_id: &'a str,
@@ -21,7 +21,7 @@ pub(crate) struct Scope<'a> {
     pub currency: Option<&'a str>,
 }
 
-/// Traduz um erro do Google. Com `ctx`, um `ReauthRequired` marca a conexão como
+/// Translates a Google error. With `ctx`, a `ReauthRequired` marks the connection as
 /// `NeedsReconnect`.
 pub fn translate(err: GoogleError, ctx: Option<&Ctx>, tool: &str) -> ToolError {
     let scope = ctx.map(|c| Scope {
@@ -41,7 +41,7 @@ pub(crate) fn translate_in(err: GoogleError, scope: Option<&Scope>, tool: &str) 
             }
             ToolError::new(
                 codes::CONNECTION_NEEDS_RECONNECT,
-                "A autorização do Google desta conexão expirou ou foi revogada.",
+                "This connection's Google authorization expired or was revoked.",
             )
             .with_suggestion(RECONNECT_SUGGESTION)
         }
@@ -69,7 +69,7 @@ pub(crate) fn translate_in(err: GoogleError, scope: Option<&Scope>, tool: &str) 
             let mut e = ToolError::new(codes::API_ERROR, err.to_string());
             if let Some(s) = scope {
                 e = e.with_suggestion(format!(
-                    "Confira o client OAuth desta conexão no Console: {}",
+                    "Check this connection's OAuth client in the Console: {}",
                     console_links(s.project_id).clients
                 ));
             }
@@ -85,13 +85,13 @@ pub(crate) fn translate_in(err: GoogleError, scope: Option<&Scope>, tool: &str) 
             ToolError::new(codes::INVALID_INPUT, err.to_string()).with_field("file_path")
         }
     };
-    tracing::warn!(tool, code = out.code.as_str(), "erro do Google Ads");
+    tracing::warn!(tool, code = out.code.as_str(), "google ads error");
     out
 }
 
 fn mark_needs_reconnect(db: &Db, connection_id: &str) {
     if let Err(e) = db.set_connection_status(connection_id, ConnectionStatus::NeedsReconnect) {
-        tracing::warn!(connection_id, error = %e, "falha ao marcar a conexão para reconectar");
+        tracing::warn!(connection_id, error = %e, "failed to mark the connection for reconnect");
     }
 }
 
@@ -117,7 +117,7 @@ fn errors_json(errors: &[AdsError]) -> Value {
     )
 }
 
-/// Mínimo diário em unidades da moeda, a partir dos detalhes do erro.
+/// Daily minimum in currency units, from the error details.
 fn budget_minimum(e: &AdsError) -> Option<String> {
     let d = e.details.as_ref()?.get("budgetPerDayMinimumErrorDetails")?;
     let raw = d
@@ -130,7 +130,7 @@ fn budget_minimum(e: &AdsError) -> Option<String> {
     Some(money::from_micros(micros).normalize().to_string())
 }
 
-/// Tópicos de política citados pelos erros de política.
+/// Policy topics cited by the policy errors.
 fn policy_topics(errors: &[&AdsError]) -> Vec<String> {
     let mut topics = Vec::new();
     for e in errors {
@@ -174,7 +174,7 @@ fn api_error(
     if maybe_applied {
         return ToolError::new(
             codes::EXECUTION_FAILED,
-            format!("O Google respondeu com erro interno (HTTP {http_status}): {message}"),
+            format!("Google responded with an internal error (HTTP {http_status}): {message}"),
         )
         .with_suggestion(MAYBE_APPLIED_SUGGESTION)
         .with_details(details);
@@ -182,12 +182,12 @@ fn api_error(
     if find(&["CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION"]).is_some() {
         let mut e = ToolError::new(
             codes::ACCESS_LEVEL_INSUFFICIENT,
-            "O projeto do Google Cloud desta conexão está no nível Test e não acessa contas reais.",
+            "This connection's Google Cloud project is at the Test access level and cannot access real accounts.",
         )
         .with_details(details);
         if let Some(s) = scope {
             e = e.with_suggestion(format!(
-                "Peça o nível Explorer da Google Ads API em {}",
+                "Request the Explorer access level for the Google Ads API at {}",
                 console_links(s.project_id).api
             ));
         }
@@ -200,17 +200,17 @@ fn api_error(
     ]) {
         let (msg, suggestion) = match e.code.as_str() {
             "USER_PERMISSION_DENIED" => (
-                "O usuário desta conexão não tem permissão nesta conta do Google Ads.",
-                "Se a conta é filha de uma MCC, confira o login_customer_id da conexão; \
-                 use list_accounts com refresh: true para atualizar as contas.",
+                "This connection's user has no permission on this Google Ads account.",
+                "If the account is a child of an MCC, check the connection's login_customer_id; \
+                 use list_accounts with refresh: true to refresh the accounts.",
             ),
             "CUSTOMER_NOT_ENABLED" => (
-                "A conta do Google Ads não está ativa (cancelada ou ainda não configurada).",
-                "Use list_accounts para ver as contas ativas.",
+                "The Google Ads account is not active (canceled or not set up yet).",
+                "Use list_accounts to see the active accounts.",
             ),
             _ => (
-                "A conta Google usada no login desta conexão não tem acesso ao Google Ads.",
-                "Reconecte com uma conta Google que tenha acesso no AdsConsole → Conexões.",
+                "The Google account used to sign in to this connection has no Google Ads access.",
+                "Reconnect with a Google account that has access in AdsConsole → Connections.",
             ),
         };
         return ToolError::new(codes::ACCESS_DENIED, msg)
@@ -220,10 +220,10 @@ fn api_error(
     if let Some(e) = find(&["BUDGET_BELOW_PER_DAY_MINIMUM"]) {
         let msg = match budget_minimum(e) {
             Some(min) => match scope.and_then(|s| s.currency) {
-                Some(cur) => format!("O orçamento diário mínimo nesta conta é {min} {cur}."),
-                None => format!("O orçamento diário mínimo nesta conta é {min}."),
+                Some(cur) => format!("The minimum daily budget on this account is {min} {cur}."),
+                None => format!("The minimum daily budget on this account is {min}."),
             },
-            None => "O orçamento diário está abaixo do mínimo desta conta.".to_string(),
+            None => "The daily budget is below this account's minimum.".to_string(),
         };
         return ToolError::new(codes::BUDGET_TOO_LOW, msg)
             .with_field("daily_budget")
@@ -232,17 +232,17 @@ fn api_error(
     if find(&["CONVERSION_TRACKING_NOT_ENABLED"]).is_some() {
         return ToolError::new(
             codes::BIDDING_REQUIRES_CONVERSIONS,
-            "Esta estratégia de lance exige o acompanhamento de conversões ativo na conta.",
+            "This bidding strategy requires conversion tracking enabled on the account.",
         )
-        .with_suggestion("Configure o acompanhamento de conversões ou use bidding maximize_clicks.")
+        .with_suggestion("Set up conversion tracking or use bidding maximize_clicks.")
         .with_details(details);
     }
     if http_status == 429 || is_exhausted(status) || errors.iter().any(|e| is_exhausted(&e.code)) {
         let mut e = ToolError::new(
             codes::QUOTA_EXHAUSTED,
-            "O Google Ads limitou as requisições desta conexão (cota esgotada).",
+            "Google Ads throttled this connection's requests (quota exhausted).",
         )
-        .with_suggestion("Espere alguns minutos e tente de novo.")
+        .with_suggestion("Wait a few minutes and try again.")
         .with_details(details);
         e.retryable = true;
         return e;
@@ -254,10 +254,10 @@ fn api_error(
     if !policy.is_empty() {
         let topics = policy_topics(&policy);
         let msg = if topics.is_empty() {
-            "O Google Ads recusou o conteúdo por violar políticas de anúncios.".to_string()
+            "Google Ads rejected the content for violating ad policies.".to_string()
         } else {
             format!(
-                "O Google Ads recusou o conteúdo por violar políticas de anúncios: {}.",
+                "Google Ads rejected the content for violating ad policies: {}.",
                 topics.join(", ")
             )
         };
@@ -270,7 +270,7 @@ fn api_error(
     if find(&["OPERATION_NOT_PERMITTED_FOR_REMOVED_RESOURCE"]).is_some() {
         return ToolError::new(
             codes::INVALID_STATE,
-            "O objeto já está removido no Google Ads, e objetos removidos não podem ser alterados nem reativados.",
+            "The object is already removed in Google Ads, and removed objects cannot be changed or re-enabled.",
         )
         .with_details(details);
     }

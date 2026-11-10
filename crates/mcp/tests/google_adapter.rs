@@ -18,11 +18,11 @@ use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, ResponseTemplate};
 
 const CLIENT_JSON: &[u8] =
-    br#"{"installed":{"client_id":"new.apps","client_secret":"new-secret","project_id":"novo-proj"}}"#;
+    br#"{"installed":{"client_id":"new.apps","client_secret":"new-secret","project_id":"new-proj"}}"#;
 
 fn add_req() -> AddGoogleConnection {
     AddGoogleConnection {
-        name: "Minha conexão".into(),
+        name: "My connection".into(),
         client_json: CLIENT_JSON.to_vec(),
         login_customer_id: None,
         access_level: AccessLevel::Explorer,
@@ -82,7 +82,7 @@ async fn add_connection_end_to_end() {
     assert!(id.starts_with("g_"), "{id}");
     assert_eq!(meta.platform, Platform::GoogleAds);
     assert_eq!(meta.status, ConnectionStatus::Ok);
-    assert_eq!(meta.extra["project_id"], "novo-proj");
+    assert_eq!(meta.extra["project_id"], "new-proj");
     assert_eq!(meta.extra["access_level"], "explorer");
     assert_eq!(meta.extra["login_customer_id"], Value::Null);
     assert_eq!(secret(&h, &id, "client_id").as_deref(), Some("new.apps"));
@@ -111,7 +111,7 @@ async fn add_connection_rejects_web_client() {
     let h = google_harness().await;
     let mut req = add_req();
     req.client_json = br#"{"web":{"client_id":"a","client_secret":"s"}}"#.to_vec();
-    let open = |_: &str| -> std::io::Result<()> { panic!("não deveria abrir o navegador") };
+    let open = |_: &str| -> std::io::Result<()> { panic!("should not open the browser") };
     let err = add_google_connection(&h.adapter, req, &open)
         .await
         .unwrap_err();
@@ -135,7 +135,7 @@ async fn add_connection_rolls_back_on_failure() {
         .unwrap_err();
     assert_ne!(err.code, codes::INTERNAL);
     let conns = h.db.list_connections(Platform::GoogleAds).unwrap();
-    assert_eq!(conns.len(), 1, "só a conexão semeada sobra");
+    assert_eq!(conns.len(), 1, "only the seeded connection is left");
     assert_eq!(conns[0].connection_id, CONN);
     let expected: Vec<String> = ["client_id", "client_secret", "refresh_token"]
         .iter()
@@ -144,7 +144,7 @@ async fn add_connection_rolls_back_on_failure() {
     assert_eq!(
         h.secrets.keys(),
         expected,
-        "só os segredos da conexão semeada"
+        "only the seeded connection's secrets"
     );
     assert_eq!(h.adapter.connections(), vec![CONN.to_string()]);
 }
@@ -187,7 +187,7 @@ async fn mcc_children_dedup_first_manager_wins() {
     assert_eq!(child.manager_id.as_deref(), Some("998"));
     let direct = accounts.iter().find(|a| a.account_id == "111").unwrap();
     assert_eq!(direct.manager_id, None);
-    // A consulta de customer vai sem login; a de customer_client, com login = MCC.
+    // The customer query goes without login; the customer_client one, with login = MCC.
     for r in h.server.received_requests().await.unwrap() {
         let body = String::from_utf8_lossy(&r.body).to_string();
         let login = r
@@ -263,7 +263,7 @@ async fn connection_login_customer_id_is_not_attached_to_direct_accounts() {
     adsconsole_mcp::google::connections::save_connection(
         &h.adapter,
         "g_login",
-        "Com login",
+        "With login",
         &creds,
         &adsconsole_core::secrets::Secret::new("r_test"),
         Some("123-456-7890"),
@@ -280,8 +280,8 @@ async fn connection_login_customer_id_is_not_attached_to_direct_accounts() {
         .adapter
         .ctx(&call("g_login", "333", "x", json!({})))
         .unwrap();
-    // A conta é acessível direto (sem MCC no cache): o login da conexão, que pode ser
-    // de uma MCC sem relação com ela, não vai no header.
+    // The account is directly accessible (no MCC in the cache): the connection's login, which
+    // may belong to an unrelated MCC, doesn't go in the header.
     assert_eq!(ctx.login, None);
 }
 
@@ -304,7 +304,7 @@ async fn invalid_grant_marks_needs_reconnect() {
         .await;
     mock_search(&h.server, "111", "FROM campaign", json!([])).await;
 
-    // Pelo Ctx: translate marca a conexão.
+    // Through the Ctx: translate marks the connection.
     let ctx = h
         .adapter
         .ctx(&call("g_bad", "555", "x", json!({})))
@@ -316,7 +316,7 @@ async fn invalid_grant_marks_needs_reconnect() {
         .unwrap_err();
     let err = translate(e, Some(&ctx), "get_campaigns");
     assert_eq!(err.code, codes::CONNECTION_NEEDS_RECONNECT);
-    assert!(err.suggestion.unwrap().contains("Conexões"));
+    assert!(err.suggestion.unwrap().contains("Connections"));
     let status = |id: &str| h.db.get_connection(id).unwrap().unwrap().status;
     assert_eq!(status("g_bad"), ConnectionStatus::NeedsReconnect);
     assert_eq!(h.adapter.connections(), vec![CONN.to_string()]);
@@ -327,14 +327,14 @@ async fn invalid_grant_marks_needs_reconnect() {
         .unwrap();
     assert_eq!(err.code, codes::CONNECTION_NEEDS_RECONNECT);
 
-    // Sem Ctx (list_accounts): o adapter marca também.
+    // Without a Ctx (list_accounts): the adapter marks it too.
     h.db.set_connection_status("g_bad", ConnectionStatus::Ok)
         .unwrap();
     let err = h.adapter.list_accounts("g_bad").await.unwrap_err();
     assert_eq!(err.code, codes::CONNECTION_NEEDS_RECONNECT);
     assert_eq!(status("g_bad"), ConnectionStatus::NeedsReconnect);
 
-    // A conexão saudável continua respondendo.
+    // The healthy connection keeps responding.
     let ctx = h.adapter.ctx(&call(CONN, "111", "x", json!({}))).unwrap();
     ctx.client
         .search("111", None, "SELECT campaign.id FROM campaign", None)
@@ -361,11 +361,11 @@ async fn reconnect_swaps_refresh_token_and_clears_cache() {
         .unwrap();
     assert_eq!(meta.status, ConnectionStatus::Ok);
     assert_eq!(secret(&h, CONN, "refresh_token").as_deref(), Some("r_new"));
-    // O cache de contas foi relido depois do login.
+    // The account cache was re-read after the sign-in.
     let cached = h.db.list_accounts(Platform::GoogleAds, Some(CONN)).unwrap();
     let direct = cached.iter().find(|(_, a)| a.account_id == "111").unwrap();
-    assert_eq!(direct.1.name, "Cliente 111");
-    // O OAuth usou o client guardado.
+    assert_eq!(direct.1.name, "Customer 111");
+    // OAuth used the stored client.
     let reqs = h.server.received_requests().await.unwrap();
     let exchange = reqs
         .iter()
@@ -373,7 +373,7 @@ async fn reconnect_swaps_refresh_token_and_clears_cache() {
         .unwrap();
     assert!(String::from_utf8_lossy(&exchange.body).contains("client_id=cid"));
 
-    // Cliente novo: o próximo token usa o refresh novo.
+    // New client: the next token uses the new refresh token.
     let ctx = h.adapter.ctx(&call(CONN, "111", "x", json!({}))).unwrap();
     ctx.client
         .search("111", None, "SELECT campaign.id FROM campaign", None)
@@ -420,7 +420,7 @@ async fn budget_minimum_message() {
     assert_eq!(err.field.as_deref(), Some("daily_budget"));
     assert_eq!(
         err.message,
-        "O orçamento diário mínimo nesta conta é 25.4 BRL."
+        "The minimum daily budget on this account is 25.4 BRL."
     );
 
     let mut jpy = ctx.clone();
@@ -448,7 +448,7 @@ async fn translations_table() {
     assert_eq!(e.code, codes::ACCESS_LEVEL_INSUFFICIENT);
     assert_eq!(
         e.message,
-        "O projeto do Google Cloud desta conexão está no nível Test e não acessa contas reais."
+        "This connection's Google Cloud project is at the Test access level and cannot access real accounts."
     );
     assert!(e.suggestion.unwrap().contains(
         "https://console.cloud.google.com/apis/api/googleads.googleapis.com/overview?project=proj"
@@ -469,7 +469,7 @@ async fn translations_table() {
     assert_eq!(e.code, codes::BIDDING_REQUIRES_CONVERSIONS);
     assert_eq!(
         e.suggestion.as_deref(),
-        Some("Configure o acompanhamento de conversões ou use bidding maximize_clicks.")
+        Some("Set up conversion tracking or use bidding maximize_clicks.")
     );
 
     for code in ["RESOURCE_EXHAUSTED", "RESOURCE_TEMPORARILY_EXHAUSTED"] {
@@ -508,7 +508,7 @@ async fn translations_table() {
     let e = t(violation);
     assert_eq!(e.code, codes::AD_POLICY);
     assert_eq!(e.details.as_ref().unwrap()["topics"], json!(["Trademarks"]));
-    // Duplicados não adjacentes saem também, na ordem da primeira aparição.
+    // Non-adjacent duplicates are removed too, keeping the order of first appearance.
     let mut repeated = api_with(
         "policyFindingError",
         "POLICY_FINDING",
@@ -533,10 +533,10 @@ async fn translations_table() {
     assert_eq!(e.code, codes::INVALID_STATE);
     assert_eq!(
         e.message,
-        "O objeto já está removido no Google Ads, e objetos removidos não podem ser alterados nem reativados."
+        "The object is already removed in Google Ads, and removed objects cannot be changed or re-enabled."
     );
 
-    const CONFIRA: &str = "O Google respondeu com erro interno; confira na conta se a mudança foi aplicada antes de repetir.";
+    const CHECK_ACCOUNT: &str = "Google responded with an internal error; check in the account whether the change was applied before retrying.";
     let e = t(GoogleError::Api {
         http_status: 500,
         status: "INTERNAL".into(),
@@ -546,13 +546,13 @@ async fn translations_table() {
         maybe_applied: true,
     });
     assert_eq!(e.code, codes::EXECUTION_FAILED);
-    assert_eq!(e.suggestion.as_deref(), Some(CONFIRA));
+    assert_eq!(e.suggestion.as_deref(), Some(CHECK_ACCOUNT));
     assert!(!e.retryable);
     let e = t(GoogleError::MaybeApplied {
-        cause: "tempo esgotado".into(),
+        cause: "timed out".into(),
     });
     assert_eq!(e.code, codes::EXECUTION_FAILED);
-    assert_eq!(e.suggestion.as_deref(), Some(CONFIRA));
+    assert_eq!(e.suggestion.as_deref(), Some(CHECK_ACCOUNT));
 
     let e = t(api("fieldError", "REQUIRED"));
     assert_eq!(e.code, codes::API_ERROR);
@@ -580,7 +580,7 @@ async fn manager_account_precheck() {
     assert_eq!(err.code, codes::ACCOUNT_NOT_ACTIVE);
     assert_eq!(
         err.message,
-        "Contas de administrador (MCC) não têm campanhas; use uma conta filha."
+        "Manager accounts (MCC) have no campaigns; use a child account."
     );
     h.adapter
         .precheck(&call(CONN, "111", "update_campaign", json!({})))
@@ -611,7 +611,9 @@ async fn quota_warning_at_80_percent() {
         .unwrap();
     assert_eq!(
         quota_warning(&ctx).as_deref(),
-        Some("Esta conexão já usou 2304 de 2880 operações nas últimas 24 h (nível Explorer).")
+        Some(
+            "This connection has used 2304 of 2880 operations in the last 24 h (Explorer access level)."
+        )
     );
     let mut standard = ctx.clone();
     standard.access_level = AccessLevel::Standard;
@@ -647,13 +649,13 @@ async fn list_accounts_tool_reads_cache_and_refreshes() {
     let child = accounts.iter().find(|a| a["account_id"] == "222").unwrap();
     assert_eq!(
         child,
-        &json!({"account_id": "222", "name": "Conta 222", "currency": "BRL",
+        &json!({"account_id": "222", "name": "Account 222", "currency": "BRL",
             "timezone": "America/Sao_Paulo", "status": "ENABLED", "manager_id": "999",
             "connection": CONN})
     );
     assert!(h.server.received_requests().await.unwrap().is_empty());
 
-    // refresh: true consulta o Google e regrava o cache.
+    // refresh: true queries Google and rewrites the cache.
     mock_accessible(&h.server, &["111"]).await;
     mock_search(
         &h.server,
@@ -674,7 +676,7 @@ async fn list_accounts_tool_reads_cache_and_refreshes() {
         .unwrap();
     assert_eq!(
         out["accounts"],
-        json!([{"account_id": "111", "name": "Cliente 111", "currency": "USD",
+        json!([{"account_id": "111", "name": "Customer 111", "currency": "USD",
             "timezone": "America/Sao_Paulo", "status": "ENABLED", "manager_id": null,
             "connection": CONN}])
     );
@@ -684,7 +686,7 @@ async fn list_accounts_tool_reads_cache_and_refreshes() {
             "",
             "",
             "list_accounts",
-            json!({"connection": "g_nada"}),
+            json!({"connection": "g_none"}),
         ))
         .await
         .unwrap_err();
@@ -695,7 +697,7 @@ async fn list_accounts_tool_reads_cache_and_refreshes() {
 async fn reconnect_after_removal_writes_nothing() {
     let h = google_harness().await;
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
-    // Navegador que só devolve o callback quando o teste mandar.
+    // Browser that only returns the callback when the test says so.
     let open = move |url: &str| -> std::io::Result<()> {
         tx.send(url.to_string()).unwrap();
         Ok(())

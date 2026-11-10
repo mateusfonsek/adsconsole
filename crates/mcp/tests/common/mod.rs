@@ -70,7 +70,7 @@ pub fn endpoints(server: &MockServer) -> GoogleEndpoints {
 pub fn account(id: &str, currency: &str, status: &str, manager: Option<&str>) -> AccountInfo {
     AccountInfo {
         account_id: id.into(),
-        name: format!("Conta {id}"),
+        name: format!("Account {id}"),
         currency: currency.into(),
         timezone: Some("America/Sao_Paulo".into()),
         status: Some(status.into()),
@@ -192,7 +192,7 @@ pub async fn mock_search(server: &MockServer, customer: &str, needle: &str, resu
 pub fn customer_row(id: &str, currency: &str, status: &str, manager: bool) -> Value {
     json!({ "customer": {
         "resourceName": format!("customers/{id}"), "id": id,
-        "descriptiveName": format!("Cliente {id}"), "currencyCode": currency,
+        "descriptiveName": format!("Customer {id}"), "currencyCode": currency,
         "timeZone": "America/Sao_Paulo", "status": status, "manager": manager
     }})
 }
@@ -201,7 +201,7 @@ pub fn customer_row(id: &str, currency: &str, status: &str, manager: bool) -> Va
 pub fn client_row(manager: &str, id: &str, currency: &str, status: &str) -> Value {
     json!({ "customerClient": {
         "resourceName": format!("customers/{manager}/customerClients/{id}"), "id": id,
-        "descriptiveName": format!("Filha {id}"), "currencyCode": currency,
+        "descriptiveName": format!("Child {id}"), "currencyCode": currency,
         "timeZone": "America/Sao_Paulo", "status": status, "manager": false, "level": "1"
     }})
 }

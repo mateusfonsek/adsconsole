@@ -1,4 +1,4 @@
-//! Leituras do Google Ads (gaql_search com cursor, relatórios) contra o wiremock.
+//! Google Ads reads (gaql_search with cursor, reports) against wiremock.
 
 mod common;
 
@@ -21,7 +21,7 @@ async fn read(
     h.adapter.read(&call(CONN, "111", tool, input)).await
 }
 
-/// Consultas GAQL enviadas à conta 111, na ordem.
+/// GAQL queries sent to account 111, in order.
 async fn queries(h: &GoogleHarness) -> Vec<String> {
     h.server
         .received_requests()
@@ -41,7 +41,7 @@ fn big_row(id: u32) -> Value {
 }
 
 async fn mount_pages(h: &GoogleHarness) {
-    // Página 2 (corpo com pageToken) tem prioridade sobre a página 1.
+    // Page 2 (body with pageToken) takes priority over page 1.
     Mock::given(method("POST"))
         .and(path(SEARCH))
         .and(body_string_contains("\"pageToken\":\"p2\""))
@@ -113,8 +113,8 @@ async fn gaql_cursor_is_opaque_base64url_json() {
         c.bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
     );
-    // Cursor de outra forma (não-base64, ou JSON sem os campos) é INVALID_INPUT.
-    for bad in ["isto não é cursor!", "e30", "aGVsbG8"] {
+    // A cursor of any other shape (not base64, or JSON without the fields) is INVALID_INPUT.
+    for bad in ["this is not a cursor!", "e30", "aGVsbG8"] {
         let err = read(
             &h,
             "gaql_search",
@@ -145,7 +145,7 @@ async fn gaql_rejects_non_select() {
 fn campaign_row() -> Value {
     json!({
         "campaign": {
-            "resourceName": "customers/111/campaigns/5", "id": "5", "name": "Marca",
+            "resourceName": "customers/111/campaigns/5", "id": "5", "name": "Brand",
             "status": "ENABLED", "advertisingChannelType": "SEARCH",
             "biddingStrategyType": "MAXIMIZE_CONVERSIONS",
             "startDateTime": "2026-01-05 00:00:00", "endDateTime": "2026-12-31 23:59:59"
@@ -184,7 +184,7 @@ async fn get_campaigns_normalizes() {
     assert_eq!(c["clicks"], 50);
     assert_eq!(c["conversions"], json!(3.5));
     assert_eq!(c["bidding_strategy"], "MAXIMIZE_CONVERSIONS");
-    // Status desconhecido não derruba a leitura: fica o texto cru.
+    // An unknown status doesn't break the read: the raw text is kept.
     assert_eq!(out["campaigns"][1]["status"], "SOMETHING_NEW");
     let q = &queries(&h).await[0];
     assert!(q.contains("DURING LAST_30_DAYS"), "{q}");
@@ -248,7 +248,7 @@ async fn search_terms_ordered_and_limited() {
         "111",
         "FROM search_term_view",
         json!([{
-            "searchTermView": { "searchTerm": "tênis", "status": "NONE" },
+            "searchTermView": { "searchTerm": "shoes", "status": "NONE" },
             "campaign": { "id": "5" }, "adGroup": { "id": "9" },
             "metrics": { "impressions": "10", "clicks": "2", "costMicros": "1500000", "conversions": 1.0 }
         }]),
@@ -258,7 +258,7 @@ async fn search_terms_ordered_and_limited() {
         .await
         .unwrap();
     let t = &out["terms"][0];
-    assert_eq!(t["search_term"], "tênis");
+    assert_eq!(t["search_term"], "shoes");
     assert_eq!(t["campaign_id"], "5");
     assert_eq!(t["ad_group_id"], "9");
     assert_eq!(t["cost"], json!(1.5));
@@ -293,7 +293,7 @@ async fn change_history_has_date_and_limit() {
     assert_eq!(e["operation"], "UPDATE");
     assert_eq!(e["campaign_id"], "5");
     let q = &queries(&h).await[0];
-    // A API exige intervalo finito: limite inferior e superior, ambos datetime.
+    // The API requires a finite range: lower and upper bounds, both datetime.
     let at = |op: &str| {
         let pat = format!("change_event.change_date_time {op} '");
         let rest = &q[q.find(&pat).expect(q) + pat.len()..];
@@ -333,7 +333,7 @@ async fn recommendations_and_conversion_actions() {
         "111",
         "FROM conversion_action",
         json!([{ "conversionAction": {
-            "id": "77", "name": "Compra", "category": "PURCHASE", "status": "ENABLED",
+            "id": "77", "name": "Purchase", "category": "PURCHASE", "status": "ENABLED",
             "type": "WEBPAGE", "primaryForGoal": true
         }}]),
     )
@@ -362,7 +362,7 @@ async fn campaign_details_shapes() {
         s,
         "111",
         "FROM ad_group WHERE",
-        json!([{ "adGroup": { "id": "9", "name": "Grupo", "status": "PAUSED", "type": "SEARCH_STANDARD", "cpcBidMicros": "1500000" }}]),
+        json!([{ "adGroup": { "id": "9", "name": "Group", "status": "PAUSED", "type": "SEARCH_STANDARD", "cpcBidMicros": "1500000" }}]),
     )
     .await;
     mock_search(
@@ -371,9 +371,9 @@ async fn campaign_details_shapes() {
         "FROM ad_group_criterion",
         json!([
             { "adGroup": { "id": "9" }, "adGroupCriterion": { "criterionId": "1", "status": "ENABLED",
-              "negative": false, "keyword": { "text": "tênis", "matchType": "EXACT" }, "cpcBidMicros": "2000000" }},
+              "negative": false, "keyword": { "text": "shoes", "matchType": "EXACT" }, "cpcBidMicros": "2000000" }},
             { "adGroup": { "id": "9" }, "adGroupCriterion": { "criterionId": "2", "status": "ENABLED",
-              "negative": true, "keyword": { "text": "grátis", "matchType": "BROAD" }}}
+              "negative": true, "keyword": { "text": "free", "matchType": "BROAD" }}}
         ]),
     )
     .await;
@@ -395,7 +395,7 @@ async fn campaign_details_shapes() {
         "FROM campaign_criterion",
         json!([
             { "campaignCriterion": { "criterionId": "10", "type": "KEYWORD", "negative": true,
-              "keyword": { "text": "barato", "matchType": "PHRASE" }}},
+              "keyword": { "text": "cheap", "matchType": "PHRASE" }}},
             { "campaignCriterion": { "criterionId": "11", "type": "LOCATION", "negative": false,
               "location": { "geoTargetConstant": "geoTargetConstants/1001773" }}},
             { "campaignCriterion": { "criterionId": "12", "type": "LANGUAGE",
@@ -428,7 +428,7 @@ async fn campaign_details_shapes() {
         q.contains("campaign.start_date_time, campaign.end_date_time"),
         "{q}"
     );
-    // A API exige campaign.id no SELECT de toda consulta que filtra por ele.
+    // The API requires campaign.id in the SELECT of every query that filters by it.
     let all = queries(&h).await;
     assert!(all.len() >= 6, "{all:?}");
     for q in all {
@@ -442,7 +442,7 @@ async fn campaign_details_shapes() {
     assert_eq!(g["status"], "PAUSED");
     assert_eq!(g["cpc_bid"], json!(1.5));
     assert_eq!(g["keywords"].as_array().unwrap().len(), 2);
-    assert_eq!(g["keywords"][0]["text"], "tênis");
+    assert_eq!(g["keywords"][0]["text"], "shoes");
     assert_eq!(g["keywords"][0]["cpc_bid"], json!(2.0));
     assert_eq!(g["keywords"][1]["negative"], true);
     let ad = &g["ads"][0];
@@ -451,7 +451,7 @@ async fn campaign_details_shapes() {
     assert_eq!(ad["headlines"][0]["pinned"], "HEADLINE_1");
     assert_eq!(ad["descriptions"][0]["text"], "D1");
     assert_eq!(ad["final_urls"][0], "https://x.com");
-    assert_eq!(out["negatives"][0]["text"], "barato");
+    assert_eq!(out["negatives"][0]["text"], "cheap");
     assert_eq!(out["negatives"].as_array().unwrap().len(), 1);
     assert_eq!(
         out["targeting"]["locations"][0]["geo_target_constant"],
@@ -494,14 +494,14 @@ async fn campaign_details_pmax_has_asset_groups() {
         "111",
         "FROM asset_group_asset",
         json!([{ "assetGroup": { "id": "70" }, "assetGroupAsset": { "fieldType": "HEADLINE", "status": "ENABLED" },
-                 "asset": { "id": "1", "type": "TEXT", "textAsset": { "text": "Oi" }}}]),
+                 "asset": { "id": "1", "type": "TEXT", "textAsset": { "text": "Hi" }}}]),
     )
     .await;
     mock_search(
         s,
         "111",
         "FROM asset_group_signal",
-        json!([{ "assetGroup": { "id": "70" }, "assetGroupSignal": { "searchTheme": { "text": "tênis" }}}]),
+        json!([{ "assetGroup": { "id": "70" }, "assetGroupSignal": { "searchTheme": { "text": "shoes" }}}]),
     )
     .await;
     let out = read(&h, "get_campaign_details", json!({ "campaign_id": "5" }))
@@ -509,8 +509,8 @@ async fn campaign_details_pmax_has_asset_groups() {
         .unwrap();
     let ag = &out["asset_groups"][0];
     assert_eq!(ag["asset_group_id"], "70");
-    assert_eq!(ag["assets"]["HEADLINE"][0]["text"], "Oi");
-    assert_eq!(ag["signals"][0]["searchTheme"]["text"], "tênis");
+    assert_eq!(ag["assets"]["HEADLINE"][0]["text"], "Hi");
+    assert_eq!(ag["signals"][0]["searchTheme"]["text"], "shoes");
     assert_eq!(out["ad_groups"], json!([]));
     assert!(queries(&h).await.len() <= 7);
 }
@@ -566,7 +566,7 @@ async fn campaign_details_is_capped_at_100kb() {
         .map(|i| {
             json!({ "adGroup": { "id": "9" }, "adGroupCriterion": {
             "criterionId": i.to_string(), "status": "ENABLED", "negative": false,
-            "keyword": { "text": format!("palavra-chave numero {i}"), "matchType": "BROAD" }}})
+            "keyword": { "text": format!("keyword number {i}"), "matchType": "BROAD" }}})
         })
         .collect();
     mock_search(s, "111", "FROM ad_group_criterion", json!(kws)).await;
@@ -636,7 +636,7 @@ async fn campaign_details_trims_signals() {
 async fn campaign_details_drops_whole_groups_when_needed() {
     let h = google_harness().await;
     pmax_base(&h).await;
-    // 100 grupos com nome de ~2 KB: só os cascos já passam de 100 KB.
+    // 100 groups with a ~2 KB name: the bare groups alone exceed 100 KB.
     let groups: Vec<Value> = (0..100)
         .map(|i| json!({ "assetGroup": { "id": i.to_string(), "name": "n".repeat(2_000), "status": "ENABLED" }}))
         .collect();
@@ -646,7 +646,7 @@ async fn campaign_details_drops_whole_groups_when_needed() {
         "111",
         "FROM asset_group_asset",
         json!([{ "assetGroup": { "id": "0" }, "assetGroupAsset": { "fieldType": "HEADLINE", "status": "ENABLED" },
-                 "asset": { "id": "1", "type": "TEXT", "textAsset": { "text": "Oi" }}}]),
+                 "asset": { "id": "1", "type": "TEXT", "textAsset": { "text": "Hi" }}}]),
     )
     .await;
     mock_search(&h.server, "111", "FROM asset_group_signal", json!([])).await;
@@ -657,7 +657,7 @@ async fn campaign_details_drops_whole_groups_when_needed() {
     assert_eq!(out["truncated"], true);
     let n = out["asset_groups"].as_array().unwrap().len();
     assert!(n > 0 && n < 100, "{n}");
-    // Sem chaves de tipo vazias.
+    // No empty type keys.
     for g in out["asset_groups"].as_array().unwrap() {
         assert!(
             g["assets"]
@@ -715,7 +715,7 @@ async fn keyword_ideas_body_and_output() {
         IDEAS,
         200,
         json!({ "results": [{
-            "text": "tênis corrida",
+            "text": "running shoes",
             "keywordIdeaMetrics": {
                 "avgMonthlySearches": "1900", "competition": "HIGH",
                 "lowTopOfPageBidMicros": "500000", "highTopOfPageBidMicros": "2250000"
@@ -723,18 +723,18 @@ async fn keyword_ideas_body_and_output() {
         }]}),
     )
     .await;
-    let out = read(&h, "keyword_ideas", json!({ "keywords": ["tênis"] }))
+    let out = read(&h, "keyword_ideas", json!({ "keywords": ["shoes"] }))
         .await
         .unwrap();
     let idea = &out["ideas"][0];
-    assert_eq!(idea["text"], "tênis corrida");
+    assert_eq!(idea["text"], "running shoes");
     assert_eq!(idea["avg_monthly_searches"], 1900);
     assert_eq!(idea["competition"], "HIGH");
     assert_eq!(idea["low_top_of_page_bid"], json!(0.5));
     assert_eq!(idea["high_top_of_page_bid"], json!(2.25));
     assert_eq!(out["truncated"], false);
     let b = &bodies(&h, IDEAS).await[0];
-    assert_eq!(b["keywordSeed"]["keywords"], json!(["tênis"]));
+    assert_eq!(b["keywordSeed"]["keywords"], json!(["shoes"]));
     assert_eq!(b["language"], "languageConstants/1014");
     assert_eq!(b["geoTargetConstants"], json!(["geoTargetConstants/2076"]));
     assert_eq!(b["keywordPlanNetwork"], "GOOGLE_SEARCH");
@@ -864,7 +864,7 @@ async fn keyword_metrics_with_forecast() {
         HISTORY,
         200,
         json!({ "results": [{
-            "text": "tênis",
+            "text": "shoes",
             "keywordMetrics": {
                 "avgMonthlySearches": "1000", "competition": "LOW",
                 "lowTopOfPageBidMicros": "1000000", "highTopOfPageBidMicros": "3000000",
@@ -885,12 +885,12 @@ async fn keyword_metrics_with_forecast() {
     let out = read(
         &h,
         "keyword_metrics",
-        json!({ "keywords": ["tênis"], "forecast": { "daily_budget": 50, "max_cpc": 1.5, "days": 10 } }),
+        json!({ "keywords": ["shoes"], "forecast": { "daily_budget": 50, "max_cpc": 1.5, "days": 10 } }),
     )
     .await
     .unwrap();
     let hist = &out["historical"][0];
-    assert_eq!(hist["text"], "tênis");
+    assert_eq!(hist["text"], "shoes");
     assert_eq!(hist["avg_monthly_searches"], 1000);
     assert_eq!(hist["low_top_of_page_bid"], json!(1.0));
     assert_eq!(hist["high_top_of_page_bid"], json!(3.0));
@@ -902,7 +902,7 @@ async fn keyword_metrics_with_forecast() {
     assert_eq!(f["conversions"], json!(3.5));
 
     let hb = &bodies(&h, HISTORY).await[0];
-    assert_eq!(hb["keywords"], json!(["tênis"]));
+    assert_eq!(hb["keywords"], json!(["shoes"]));
     assert_eq!(hb["language"], "languageConstants/1014");
     let fb = &bodies(&h, FORECAST).await[0];
     let c = &fb["campaign"];
@@ -911,7 +911,7 @@ async fn keyword_metrics_with_forecast() {
     assert_eq!(m["dailyBudgetMicros"], "50000000");
     assert_eq!(m["maxCpcBidMicros"], "1500000");
     let kw = &c["adGroups"][0]["biddableKeywords"][0]["keyword"];
-    assert_eq!(kw["text"], "tênis");
+    assert_eq!(kw["text"], "shoes");
     assert_eq!(kw["matchType"], "BROAD");
     let p = &fb["forecastPeriod"];
     let tomorrow = chrono::Utc::now().date_naive() + chrono::Duration::days(1);

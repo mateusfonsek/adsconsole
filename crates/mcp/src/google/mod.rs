@@ -1,5 +1,5 @@
-//! Adapter do Google Ads: conexões BYO, cache de clientes, contexto por conta e
-//! tradução de erros. As ferramentas ficam em [`tools`].
+//! Google Ads adapter: BYO connections, client cache, per-account context and
+//! error translation. The tools live in [`tools`].
 
 pub mod connections;
 pub mod ctx;
@@ -40,12 +40,12 @@ const CLIENT_QUERY: &str = "SELECT customer_client.id, customer_client.descripti
      customer_client.currency_code, customer_client.time_zone, customer_client.status, \
      customer_client.manager, customer_client.level FROM customer_client \
      WHERE customer_client.level = 1";
-/// Teto de filhas lidas por MCC.
+/// Cap on child accounts read per MCC.
 const MAX_CHILDREN: usize = 10_000;
-/// Status no cache de uma conta de administrador (MCC), que não tem campanhas.
+/// Cached status of a manager account (MCC), which has no campaigns.
 const MANAGER_STATUS: &str = "MANAGER";
 
-/// Grava em `google_ops` as operações enviadas, no projeto do Cloud da conexão.
+/// Records the sent operations in `google_ops`, under the connection's Cloud project.
 struct DbMeter {
     db: Arc<Db>,
     project_id: String,
@@ -54,13 +54,13 @@ struct DbMeter {
 impl OpsMeter for DbMeter {
     fn record(&self, ops: u32) {
         if let Err(e) = self.db.record_google_ops(&self.project_id, ops, Utc::now()) {
-            tracing::warn!(project_id = self.project_id.as_str(), error = %e, "falha ao contar operações");
+            tracing::warn!(project_id = self.project_id.as_str(), error = %e, "failed to count operations");
         }
     }
 }
 
-/// Clientes por conexão. A geração de uma conexão sobe a cada `forget_client`: um
-/// cliente montado com segredos lidos antes disso não entra no cache.
+/// Clients per connection. A connection's generation goes up on every `forget_client`: a
+/// client built with secrets read before that doesn't go into the cache.
 #[derive(Default)]
 struct ClientCache {
     clients: HashMap<String, GoogleAdsClient>,
@@ -72,29 +72,29 @@ pub struct GoogleAdapter {
     secrets: Arc<dyn SecretStore>,
     endpoints: GoogleEndpoints,
     retry: RetryPolicy,
-    /// Um cliente por conexão (token em cache e medidor de operações).
+    /// One client per connection (cached token and operations meter).
     clients: Mutex<ClientCache>,
-    /// Ferramentas com conta, com o spec já montado (o schema é gerado uma vez).
+    /// Tools that take an account, with the spec already built (the schema is generated once).
     tools: Vec<(ToolSpec, GTool)>,
-    /// Espera do `upload_video` (ver [`GoogleAdapter::set_poll`]).
+    /// `upload_video` wait (see [`GoogleAdapter::set_poll`]).
     poll: Mutex<UploadPoll>,
-    /// Arquivo de vídeo como estava no `validate`, por chamada (ver [`tools::assets`]).
+    /// Video file as it was at `validate`, per call (see [`tools::assets`]).
     seen_files: Mutex<HashMap<String, tools::assets::FileStamp>>,
 }
 
-/// Avisa a partir de 80% do limite diário do nível de acesso.
+/// Warns from 80% of the access level's daily limit.
 pub fn quota_warning(ctx: &Ctx) -> Option<String> {
     let limit = ctx.access_level.daily_limit()?;
     let used = match ctx.db.google_ops_last_24h(&ctx.project_id, Utc::now()) {
         Ok(n) => n,
         Err(e) => {
-            tracing::warn!(error = %e, "falha ao ler a contagem de operações");
+            tracing::warn!(error = %e, "failed to read the operation count");
             return None;
         }
     };
     (used * 5 >= limit * 4).then(|| {
         format!(
-            "Esta conexão já usou {used} de {limit} operações nas últimas 24 h (nível {}).",
+            "This connection has used {used} of {limit} operations in the last 24 h ({} access level).",
             ctx.access_level.label()
         )
     })
@@ -108,14 +108,14 @@ fn text(v: &Value, key: &str) -> Option<String> {
     }
 }
 
-/// Converte uma linha de `customer` ou `customer_client` (já sem a chave do recurso).
+/// Converts a `customer` or `customer_client` row (already without the resource key).
 fn account_from_row(v: &Value, fallback_id: &str, manager_id: Option<&str>) -> AccountInfo {
     let id = text(v, "id").unwrap_or_else(|| fallback_id.to_string());
     let is_manager = v.get("manager").and_then(Value::as_bool).unwrap_or(false);
     AccountInfo {
         name: text(v, "descriptiveName")
             .filter(|n| !n.is_empty())
-            .unwrap_or_else(|| format!("Conta {id}")),
+            .unwrap_or_else(|| format!("Account {id}")),
         currency: text(v, "currencyCode").unwrap_or_default(),
         timezone: text(v, "timeZone"),
         status: if is_manager {
@@ -128,8 +128,8 @@ fn account_from_row(v: &Value, fallback_id: &str, manager_id: Option<&str>) -> A
     }
 }
 
-/// Conta que a conexão lista mas não deixa consultar (cancelada, sem permissão):
-/// fica de fora em vez de derrubar a listagem toda.
+/// An account the connection lists but can't query (canceled, no permission) is
+/// left out instead of failing the whole listing.
 fn skippable(e: &GoogleError) -> bool {
     matches!(e, GoogleError::Api { errors, .. } if errors.iter().any(|x| matches!(
         x.code.as_str(),
@@ -141,12 +141,12 @@ async fn fetch_accounts(client: &GoogleAdsClient) -> Result<Vec<AccountInfo>, Go
     let mut out = Vec::new();
     let mut seen = HashSet::new();
     let mut managers = Vec::new();
-    // Primeiro as acessíveis direto (sem login); depois as filhas, na ordem das MCCs.
+    // Directly accessible accounts first (no login); then the children, in MCC order.
     for id in client.list_accessible_customers().await? {
         let page = match client.search(&id, None, CUSTOMER_QUERY, None).await {
             Ok(p) => p,
             Err(e) if skippable(&e) => {
-                tracing::warn!(customer_id = id.as_str(), error = %e, "conta ignorada na listagem");
+                tracing::warn!(customer_id = id.as_str(), error = %e, "account skipped in listing");
                 continue;
             }
             Err(e) => return Err(e),
@@ -169,7 +169,7 @@ async fn fetch_accounts(client: &GoogleAdsClient) -> Result<Vec<AccountInfo>, Go
         {
             Ok(r) => r,
             Err(e) if skippable(&e) => {
-                tracing::warn!(customer_id = manager.as_str(), error = %e, "MCC ignorada na listagem");
+                tracing::warn!(customer_id = manager.as_str(), error = %e, "mcc skipped in listing");
                 continue;
             }
             Err(e) => return Err(e),
@@ -196,7 +196,7 @@ impl GoogleAdapter {
         Self::with_retry(db, secrets, endpoints, RetryPolicy::default())
     }
 
-    /// Como [`GoogleAdapter::new`], com outro backoff (os testes usam milissegundos).
+    /// Like [`GoogleAdapter::new`], with a different backoff (tests use milliseconds).
     pub fn with_retry(
         db: Arc<Db>,
         secrets: Arc<dyn SecretStore>,
@@ -225,8 +225,8 @@ impl GoogleAdapter {
         })
     }
 
-    /// Só para testes: lê o estado do upload de vídeo a cada `every` e espera no
-    /// máximo `max` (no lugar de 15 s e do `wait_minutes` da entrada).
+    /// Tests only: reads the video upload status every `every` and waits at
+    /// most `max` (instead of 15 s and the input's `wait_minutes`).
     #[doc(hidden)]
     pub fn set_poll(&self, every: std::time::Duration, max: std::time::Duration) {
         *self.poll.lock().unwrap_or_else(|e| e.into_inner()) = UploadPoll {
@@ -257,7 +257,7 @@ impl GoogleAdapter {
         self.clients.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Descarta o cliente em cache (credenciais trocadas ou conexão removida).
+    /// Drops the cached client (credentials replaced or connection removed).
     pub(crate) fn forget_client(&self, connection_id: &str) {
         let mut cache = self.lock_clients();
         cache.clients.remove(connection_id);
@@ -267,7 +267,7 @@ impl GoogleAdapter {
             .or_default() += 1;
     }
 
-    /// Conexão do Google com o `extra` já lido; senão `UNKNOWN_CONNECTION`.
+    /// Google connection with its `extra` already parsed; otherwise `UNKNOWN_CONNECTION`.
     pub(crate) fn connection(
         &self,
         connection_id: &str,
@@ -292,14 +292,14 @@ impl GoogleAdapter {
                 ToolError::new(
                     codes::CONNECTION_NEEDS_RECONNECT,
                     format!(
-                        "As credenciais da conexão {connection_id} não estão no armazenamento de segredos."
+                        "The credentials of connection {connection_id} are not in the secret store."
                     ),
                 )
-                .with_suggestion("Remova e adicione a conexão de novo no AdsConsole → Conexões.")
+                .with_suggestion("Remove and add the connection again in AdsConsole → Connections.")
             })
     }
 
-    /// Client OAuth guardado da conexão.
+    /// The connection's stored OAuth client.
     pub(crate) fn stored_creds(
         &self,
         connection_id: &str,
@@ -335,11 +335,11 @@ impl GoogleAdapter {
             let client =
                 GoogleAdsClient::new(self.endpoints.clone(), tokens, meter).with_retry(self.retry);
             let mut cache = self.lock_clients();
-            // Segredos trocados enquanto montava: monta de novo com os atuais.
+            // Secrets replaced while building: build again with the current ones.
             if cache.generation.get(connection_id).copied().unwrap_or(0) != generation {
                 continue;
             }
-            // Se outra chamada montou um ao mesmo tempo, fica o primeiro (mesmo token em cache).
+            // If another call built one at the same time, the first one stays (same cached token).
             return Ok(cache
                 .clients
                 .entry(connection_id.to_string())
@@ -368,7 +368,7 @@ impl GoogleAdapter {
             })
     }
 
-    /// Contexto da conta da chamada, a partir do cache de contas e da conexão.
+    /// Context of the call's account, from the account cache and the connection.
     pub fn ctx(&self, call: &Call) -> Result<Ctx, ToolError> {
         let (meta, extra) = self.connection(&call.connection_id)?;
         if meta.status == ConnectionStatus::NeedsReconnect {
@@ -379,8 +379,8 @@ impl GoogleAdapter {
         Ok(Ctx {
             client,
             customer_id: account.account_id,
-            // Só a MCC sob a qual a conta foi listada. O `login_customer_id` da conexão não
-            // entra aqui: numa conta acessível direto, uma MCC sem relação dá
+            // Only the MCC the account was listed under. The connection's `login_customer_id`
+            // is not used here: on a directly accessible account, an unrelated MCC gives
             // `USER_PERMISSION_DENIED`.
             login: account.manager_id,
             currency: account.currency,
@@ -392,8 +392,8 @@ impl GoogleAdapter {
         })
     }
 
-    /// Atualiza o cache de contas de `connection` (ou de todas as conexões `Ok`).
-    /// Uma conexão que falha mantém o cache antigo; só é erro se todas falharem.
+    /// Refreshes the account cache of `connection` (or of every `Ok` connection).
+    /// A connection that fails keeps its old cache; it is only an error if all of them fail.
     pub(crate) async fn refresh_accounts(&self, connection: Option<&str>) -> Result<(), ToolError> {
         let targets = match connection {
             Some(c) => vec![c.to_string()],
@@ -418,14 +418,14 @@ impl GoogleAdapter {
         }
     }
 
-    /// Diagnóstico: as operações que a escrita enviaria, resumidas e sem os bytes das
-    /// imagens (ver [`plan::describe_operations`]). Não envia nada ao Google.
+    /// Diagnostics: the operations the write would send, summarized and without the image
+    /// bytes (see [`plan::describe_operations`]). Sends nothing to Google.
     pub async fn describe_operations(&self, call: &Call) -> Result<Vec<String>, ToolError> {
         let (_, plan) = self.plan(call).await?;
         Ok(plan::describe_operations(&plan.operations))
     }
 
-    /// Contexto e plano de uma escrita (refeito em cada etapa; ver [`tools::WriteTool`]).
+    /// Context and plan of a write (rebuilt at every step; see [`tools::WriteTool`]).
     async fn plan(&self, call: &Call) -> Result<(Ctx, WritePlan), ToolError> {
         let tool = self.write_tool(&call.tool)?;
         let ctx = self.ctx(call)?;
@@ -433,7 +433,7 @@ impl GoogleAdapter {
         Ok((ctx, plan))
     }
 
-    /// Erro do Google no `validate`/`execute`, com o ajuste da ferramenta
+    /// Google error in `validate`/`execute`, with the tool's adjustment
     /// ([`WriteTool::map_error`]).
     fn map_write_error(&self, tool: &str, e: ToolError) -> ToolError {
         match self.write_tool(tool) {
@@ -443,7 +443,7 @@ impl GoogleAdapter {
     }
 }
 
-/// Chave da chamada em `seen_files`: conexão, conta, ferramenta e entrada.
+/// The call's key in `seen_files`: connection, account, tool and input.
 fn file_key(call: &Call) -> String {
     format!(
         "{}\u{0}{}\u{0}{}\u{0}{}",
@@ -452,10 +452,7 @@ fn file_key(call: &Call) -> String {
 }
 
 fn not_implemented(tool: &str) -> ToolError {
-    ToolError::new(
-        codes::UNKNOWN_TOOL,
-        format!("Ferramenta desconhecida: {tool}"),
-    )
+    ToolError::new(codes::UNKNOWN_TOOL, format!("Unknown tool: {tool}"))
 }
 
 #[async_trait::async_trait]
@@ -505,15 +502,15 @@ impl PlatformAdapter for GoogleAdapter {
             Some("ENABLED") => Ok(()),
             Some(MANAGER_STATUS) => Err(ToolError::new(
                 codes::ACCOUNT_NOT_ACTIVE,
-                "Contas de administrador (MCC) não têm campanhas; use uma conta filha.",
+                "Manager accounts (MCC) have no campaigns; use a child account.",
             )
-            .with_suggestion("Use list_accounts para ver as contas filhas (manager_id).")),
+            .with_suggestion("Use list_accounts to see the child accounts (manager_id).")),
             other => Err(ToolError::new(
                 codes::ACCOUNT_NOT_ACTIVE,
                 format!(
-                    "A conta {} não está ativa no Google Ads (status {}).",
+                    "Account {} is not active in Google Ads (status {}).",
                     call.account_id,
-                    other.unwrap_or("desconhecido")
+                    other.unwrap_or("unknown")
                 ),
             )),
         }
@@ -574,7 +571,7 @@ impl PlatformAdapter for GoogleAdapter {
                 .map(|c| c.connection_id)
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "falha ao listar conexões do Google");
+                tracing::warn!(error = %e, "failed to list google connections");
                 Vec::new()
             }
         }
@@ -602,7 +599,7 @@ mod tests {
     #[async_trait]
     impl ReadTool for Echo {
         fn spec(&self) -> ToolSpec {
-            ToolSpec::read::<NoInput>("echo", "Eco.", ToolGroup::Read)
+            ToolSpec::read::<NoInput>("echo", "Echo.", ToolGroup::Read)
         }
         async fn run(&self, ctx: &Ctx, _input: &Value) -> Result<Value, ToolError> {
             Ok(json!({ "customer": ctx.customer_id }))
@@ -635,7 +632,7 @@ mod tests {
         .unwrap();
         let acct = AccountInfo {
             account_id: "111".into(),
-            name: "Conta".into(),
+            name: "Account".into(),
             currency: "BRL".into(),
             timezone: None,
             status: Some("ENABLED".into()),
@@ -662,14 +659,14 @@ mod tests {
         assert_eq!(out["customer"], "111");
         assert_eq!(
             out["aviso_cota"],
-            "Esta conexão já usou 2304 de 2880 operações nas últimas 24 h (nível Explorer)."
+            "This connection has used 2304 of 2880 operations in the last 24 h (Explorer access level)."
         );
         let out = adapter(2000).read(&echo_call()).await.unwrap();
         assert!(out.get("aviso_cota").is_none(), "{out}");
     }
 
-    /// Store que, na primeira leitura do refresh token, simula um reconnect
-    /// concorrente: troca o token e chama `forget_client`.
+    /// Store that, on the first refresh token read, simulates a concurrent reconnect:
+    /// replaces the token and calls `forget_client`.
     struct RacingStore {
         inner: MemoryStore,
         adapter: std::sync::OnceLock<std::sync::Weak<GoogleAdapter>>,
@@ -730,7 +727,7 @@ mod tests {
         .unwrap();
         let (_, extra) = adapter.connection("g1").unwrap();
         adapter.client("g1", &extra).unwrap();
-        // Primeira montagem descartada (geração mudou); a segunda leu o token novo.
+        // First build discarded (generation changed); the second one read the new token.
         assert_eq!(
             store
                 .refresh_reads
@@ -744,7 +741,7 @@ mod tests {
                 .refresh_reads
                 .load(std::sync::atomic::Ordering::SeqCst),
             2,
-            "a segunda chamada usa o cache"
+            "the second call uses the cache"
         );
     }
 

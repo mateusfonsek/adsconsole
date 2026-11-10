@@ -1,4 +1,4 @@
-//! Conexões BYO do Google Ads: adicionar (JSON do client + OAuth), reconectar e remover.
+//! BYO Google Ads connections: add (client JSON + OAuth), reconnect and remove.
 
 use std::io;
 use std::time::Duration;
@@ -19,16 +19,16 @@ use crate::adapter::PlatformAdapter;
 use crate::engine::internal;
 use crate::error::{ToolError, codes};
 
-/// Nomes dos segredos de uma conexão no `SecretStore`.
+/// Names of a connection's secrets in the `SecretStore`.
 pub(crate) const CLIENT_ID: &str = "client_id";
 pub(crate) const CLIENT_SECRET: &str = "client_secret";
 pub(crate) const REFRESH_TOKEN: &str = "refresh_token";
 const SECRET_NAMES: [&str; 3] = [CLIENT_ID, CLIENT_SECRET, REFRESH_TOKEN];
 
-/// Espera máxima pelo login no navegador.
+/// Maximum wait for the browser sign-in.
 const LOGIN_WAIT: Duration = Duration::from_secs(300);
 
-/// Nível de acesso do projeto do Cloud na Google Ads API.
+/// Access level of the Cloud project on the Google Ads API.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccessLevel {
@@ -39,7 +39,7 @@ pub enum AccessLevel {
 }
 
 impl AccessLevel {
-    /// Operações por dia permitidas; `None` = ilimitado.
+    /// Operations allowed per day; `None` = unlimited.
     pub fn daily_limit(self) -> Option<u64> {
         match self {
             AccessLevel::Test => Some(15_000),
@@ -59,7 +59,7 @@ impl AccessLevel {
     }
 }
 
-/// `extra` de uma conexão do Google em `connections_meta`.
+/// `extra` of a Google connection in `connections_meta`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub(crate) struct ConnectionExtra {
     pub project_id: String,
@@ -73,17 +73,20 @@ impl ConnectionExtra {
         serde_json::from_value(meta.extra.clone()).map_err(|e| {
             ToolError::new(
                 codes::INTERNAL,
-                format!("Dados da conexão {} corrompidos: {e}", meta.connection_id),
+                format!(
+                    "Data for connection {} is corrupted: {e}",
+                    meta.connection_id
+                ),
             )
         })
     }
 }
 
-/// Pedido de nova conexão. Sem `Debug`: `client_json` traz o client secret.
+/// New connection request. No `Debug`: `client_json` carries the client secret.
 #[derive(Clone)]
 pub struct AddGoogleConnection {
     pub name: String,
-    /// Conteúdo do JSON baixado do Console (client do tipo App para computador).
+    /// Contents of the JSON downloaded from the Console (a Desktop app client).
     pub client_json: Vec<u8>,
     pub login_customer_id: Option<String>,
     pub access_level: AccessLevel,
@@ -99,20 +102,20 @@ fn normalize_login(raw: Option<&str>) -> Result<Option<String>, ToolError> {
     if !id.chars().all(|c| c.is_ascii_digit()) {
         return Err(ToolError::new(
             codes::INVALID_INPUT,
-            format!("login_customer_id inválido: {id}. Use só os dígitos do id da MCC."),
+            format!("Invalid login_customer_id: {id}. Use only the digits of the MCC id."),
         )
         .with_field("login_customer_id"));
     }
     Ok(Some(id))
 }
 
-/// Erro do OAuth no navegador. Sem conexão gravada ainda: nada a marcar.
+/// Browser OAuth error. No connection saved yet: nothing to mark.
 fn login_error(err: GoogleError) -> ToolError {
     match err {
         GoogleError::Timeout => {
             let mut e = ToolError::new(
                 codes::EXECUTION_FAILED,
-                "O login não foi concluído a tempo. Tente de novo.",
+                "The sign-in was not completed in time. Try again.",
             );
             e.retryable = true;
             e
@@ -121,9 +124,9 @@ fn login_error(err: GoogleError) -> ToolError {
     }
 }
 
-/// Grava os 3 segredos e a linha em `connections_meta` (status `Ok`). Se algo
-/// falha no meio, apaga o que já tinha gravado. Também é o jeito de semear uma
-/// conexão nos testes.
+/// Saves the 3 secrets and the `connections_meta` row (status `Ok`). If something
+/// fails midway, deletes what was already saved. Also the way to seed a
+/// connection in tests.
 pub fn save_connection(
     adapter: &GoogleAdapter,
     connection_id: &str,
@@ -168,21 +171,21 @@ pub fn save_connection(
     Ok(meta)
 }
 
-/// Apaga os segredos da conexão; falhas só vão para o log (sem os valores).
+/// Deletes the connection's secrets; failures only go to the log (without the values).
 fn delete_secrets(adapter: &GoogleAdapter, connection_id: &str) {
     for name in SECRET_NAMES {
         if let Err(e) = adapter
             .secrets()
             .delete(&connection_secret_key(connection_id, name))
         {
-            tracing::warn!(connection_id, secret = name, error = %e, "falha ao apagar segredo");
+            tracing::warn!(connection_id, secret = name, error = %e, "failed to delete secret");
         }
     }
 }
 
-/// Nova conexão: lê o JSON do client, faz o login no navegador (até 5 min), grava
-/// segredos e conexão e lista as contas. Se a listagem falha, desfaz tudo e devolve
-/// o erro.
+/// New connection: reads the client JSON, signs in through the browser (up to 5 min), saves
+/// the secrets and the connection, and lists the accounts. If listing fails, rolls everything
+/// back and returns the error.
 pub async fn add_google_connection(
     adapter: &GoogleAdapter,
     req: AddGoogleConnection,
@@ -191,14 +194,14 @@ pub async fn add_google_connection(
     let name = req.name.trim();
     if name.is_empty() {
         return Err(
-            ToolError::new(codes::INVALID_INPUT, "Informe um nome para a conexão.")
+            ToolError::new(codes::INVALID_INPUT, "Provide a name for the connection.")
                 .with_field("name"),
         );
     }
     let creds = ClientCreds::from_json(&req.client_json).map_err(|e| {
         ToolError::new(codes::INVALID_INPUT, e.to_string()).with_field("client_json")
     })?;
-    // Antes do login, para o usuário não autorizar à toa.
+    // Before the sign-in, so the user doesn't authorize for nothing.
     let login = normalize_login(req.login_customer_id.as_deref())?;
     let refresh = authorize(adapter.endpoints(), &creds, open, LOGIN_WAIT)
         .await
@@ -225,7 +228,7 @@ pub async fn add_google_connection(
             tracing::warn!(
                 connection_id = connection_id.as_str(),
                 error = %cleanup,
-                "falha ao desfazer a conexão nova"
+                "failed to roll back the new connection"
             );
         }
         return Err(e);
@@ -233,8 +236,8 @@ pub async fn add_google_connection(
     Ok(meta)
 }
 
-/// Refaz o OAuth com o client guardado, troca o refresh token, volta o status para
-/// `Ok` e descarta o cliente em cache.
+/// Redoes OAuth with the stored client, replaces the refresh token, sets the status back to
+/// `Ok` and drops the cached client.
 pub async fn reconnect_google_connection(
     adapter: &GoogleAdapter,
     connection_id: &str,
@@ -245,7 +248,7 @@ pub async fn reconnect_google_connection(
     let refresh = authorize(adapter.endpoints(), &creds, open, LOGIN_WAIT)
         .await
         .map_err(login_error)?;
-    // A conexão pode ter sido removida enquanto o login esperava: nada a gravar.
+    // The connection may have been removed while the sign-in was waiting: nothing to save.
     adapter.connection(connection_id)?;
     let key = connection_secret_key(connection_id, REFRESH_TOKEN);
     adapter
@@ -262,22 +265,22 @@ pub async fn reconnect_google_connection(
         Ok(found) => found,
         Err(e) => {
             if let Err(del) = adapter.secrets().delete(&key) {
-                tracing::warn!(connection_id, error = %del, "falha ao apagar o refresh token novo");
+                tracing::warn!(connection_id, error = %del, "failed to delete the new refresh token");
             }
             adapter.forget_client(connection_id);
             return Err(e);
         }
     };
-    // Conta nova no login (ou removida) entra no cache; falha aqui não desfaz o login.
+    // Accounts added to (or removed from) the login reach the cache; a failure here doesn't undo the sign-in.
     if let Err(e) = adapter.refresh_accounts(Some(connection_id)).await {
-        tracing::warn!(connection_id, error = %e, "falha ao atualizar contas após reconectar");
+        tracing::warn!(connection_id, error = %e, "failed to refresh accounts after reconnect");
     }
     Ok(meta)
 }
 
-/// Apaga a conexão (o cache de contas vai junto) e depois os segredos. Conexão
-/// inexistente não é erro. Primeiro a linha: se ela falha, a conexão continua
-/// inteira; segredo que não sai depois disso só vai para o log.
+/// Deletes the connection (the account cache goes with it) and then the secrets. A missing
+/// connection is not an error. The row goes first: if that fails, the connection stays
+/// intact; a secret that fails to delete after that only goes to the log.
 pub fn remove_google_connection(
     adapter: &GoogleAdapter,
     connection_id: &str,
@@ -291,7 +294,7 @@ pub fn remove_google_connection(
     Ok(())
 }
 
-/// Escopo de tradução de erro para uma conexão sem conta (sem moeda).
+/// Error translation scope for a connection without an account (no currency).
 pub(crate) fn scope<'a>(
     adapter: &'a GoogleAdapter,
     connection_id: &'a str,
@@ -314,7 +317,7 @@ mod tests {
         let e = login_error(GoogleError::Timeout);
         assert_eq!(
             e.message,
-            "O login não foi concluído a tempo. Tente de novo."
+            "The sign-in was not completed in time. Try again."
         );
         assert!(e.retryable);
         let e = login_error(GoogleError::Auth("access_denied".into()));

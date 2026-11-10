@@ -2696,7 +2696,7 @@ async fn display_refusal_on_real_mutate() {
         e.suggestion
             .as_deref()
             .unwrap_or_default()
-            .contains("confira na conta"),
+            .contains("check in the account"),
         "{e:?}"
     );
 }

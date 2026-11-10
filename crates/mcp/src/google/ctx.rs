@@ -1,4 +1,4 @@
-//! Contexto de uma chamada do Google Ads já resolvida para uma conta.
+//! Context of a Google Ads call already resolved to an account.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,26 +8,26 @@ use adsconsole_google_ads::client::GoogleAdsClient;
 
 use super::connections::AccessLevel;
 
-/// Montado por [`super::GoogleAdapter::ctx`] a partir do cache de contas e da conexão.
+/// Built by [`super::GoogleAdapter::ctx`] from the account cache and the connection.
 #[derive(Clone)]
 pub struct Ctx {
     pub client: GoogleAdsClient,
     pub customer_id: String,
-    /// Valor do header `login-customer-id`: a MCC sob a qual a conta foi listada no
-    /// cache. Conta acessível direto vai sem o header.
+    /// Value of the `login-customer-id` header: the MCC the account was listed under in
+    /// the cache. A directly accessible account goes without the header.
     pub login: Option<String>,
     pub currency: String,
     pub project_id: String,
     pub access_level: AccessLevel,
     pub connection_id: String,
-    /// Usado para marcar a conexão como `NeedsReconnect` e ler a contagem de operações.
+    /// Used to mark the connection as `NeedsReconnect` and to read the operation count.
     pub db: Arc<Db>,
-    /// Espera do processamento do vídeo em `upload_video`.
+    /// Wait for video processing in `upload_video`.
     pub upload_poll: UploadPoll,
 }
 
-/// Intervalo entre as leituras do estado do upload e, nos testes, o prazo total
-/// (em produção o prazo é o `wait_minutes` da entrada).
+/// Interval between upload status reads and, in tests, the total deadline
+/// (in production the deadline is the input's `wait_minutes`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UploadPoll {
     pub every: Duration,
