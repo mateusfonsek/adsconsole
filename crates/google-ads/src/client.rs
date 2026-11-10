@@ -10,15 +10,15 @@ use crate::meter::OpsMeter;
 use crate::retry::{MAX_RETRIES, RetryPolicy};
 use crate::token::{TokenManager, http_client, map_reqwest};
 
-/// Natureza da chamada: define o retry e a contagem de operações.
+/// Kind of call: determines the retry behavior and the operation count.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CallKind {
     Read,
     Mutate {
         ops: u32,
     },
-    /// Mutate com `validateOnly`: nunca aplica, então segue o retry de leitura,
-    /// mas conta as operações.
+    /// Mutate with `validateOnly`: never applies, so it follows the read retry
+    /// behavior, but it counts the operations.
     Validate {
         ops: u32,
     },
@@ -53,8 +53,8 @@ impl GoogleAdsClient {
         tokens: Arc<TokenManager>,
         meter: Arc<dyn OpsMeter>,
     ) -> Self {
-        // Falha só se o backend TLS não inicializar; sem isso nenhuma chamada funcionaria.
-        let http = http_client().expect("cliente HTTP");
+        // Fails only if the TLS backend cannot initialize; no call would work without it.
+        let http = http_client().expect("HTTP client");
         Self {
             endpoints,
             tokens,
@@ -64,12 +64,12 @@ impl GoogleAdsClient {
         }
     }
 
-    /// Troca o timeout HTTP por request (padrão 60 s).
+    /// Replaces the per-request HTTP timeout (default 60 s).
     pub fn with_timeout(mut self, timeout: std::time::Duration) -> Self {
         self.http = reqwest::Client::builder()
             .timeout(timeout)
             .build()
-            .expect("cliente HTTP");
+            .expect("HTTP client");
         self
     }
 
@@ -114,14 +114,14 @@ impl GoogleAdsClient {
             .send(Method::POST, &url, login, Some(&body), CallKind::Read)
             .await?;
         let raw: RawSearch = serde_json::from_value(v)
-            .map_err(|_| GoogleError::Decode("resposta de busca malformada".into()))?;
+            .map_err(|_| GoogleError::Decode("malformed search response".into()))?;
         Ok(SearchPage {
             results: raw.results,
             next_page_token: raw.next_page_token.filter(|t| !t.is_empty()),
         })
     }
 
-    /// Segue as páginas até `max_rows` linhas (ou o fim dos resultados).
+    /// Follows the pages until `max_rows` rows (or the end of the results).
     pub async fn search_all(
         &self,
         customer: &str,
@@ -145,7 +145,7 @@ impl GoogleAdsClient {
         Ok(rows)
     }
 
-    /// Mutate atômico (`partialFailure: false`). Em `validate_only` devolve lista vazia.
+    /// Atomic mutate (`partialFailure: false`). With `validate_only` it returns an empty list.
     pub async fn mutate(
         &self,
         customer: &str,
@@ -180,7 +180,7 @@ impl GoogleAdsClient {
             .unwrap_or_default())
     }
 
-    /// POST genérico em `customers/{c}{path_suffix}` (p.ex. `:generateKeywordIdeas`).
+    /// Generic POST to `customers/{c}{path_suffix}` (e.g. `:generateKeywordIdeas`).
     pub async fn post(
         &self,
         customer: &str,
@@ -201,8 +201,9 @@ impl GoogleAdsClient {
         self.send(Method::POST, &url, login, Some(body), kind).await
     }
 
-    /// Request com o token (só no header `Authorization`) e o `login-customer-id`,
-    /// sem corpo nem retry. Usado pelo upload resumable ([`crate::upload`]).
+    /// Request with the token (only in the `Authorization` header) and the
+    /// `login-customer-id`, with no body and no retry. Used by the resumable upload
+    /// ([`crate::upload`]).
     pub(crate) async fn authed(
         &self,
         method: Method,
@@ -221,13 +222,13 @@ impl GoogleAdsClient {
         &self.endpoints
     }
 
-    /// Conta `ops` operações no medidor (uma resposta HTTP recebida).
+    /// Records `ops` operations on the meter (one HTTP response received).
     pub(crate) fn record_ops(&self, ops: u32) {
         self.meter.record(ops);
     }
 
-    /// Envia com retry seguro. O medidor é acionado
-    /// a cada resposta HTTP recebida (retries e páginas contam).
+    /// Sends with safe retry. The meter is triggered on every HTTP response
+    /// received (retries and pages count).
     async fn send(
         &self,
         method: Method,
@@ -237,10 +238,10 @@ impl GoogleAdsClient {
         kind: CallKind,
     ) -> Result<Value, GoogleError> {
         let is_mutate = matches!(kind, CallKind::Mutate { .. });
-        // Num mutate, qualquer falha depois do envio pode ter aplicado a mudança.
+        // On a mutate, any failure after sending may have applied the change.
         let unsure = |e: GoogleError| match e {
             GoogleError::Timeout => GoogleError::MaybeApplied {
-                cause: "tempo esgotado".into(),
+                cause: "timed out".into(),
             },
             GoogleError::Transport(c) => GoogleError::MaybeApplied { cause: c },
             other => other,
@@ -285,10 +286,10 @@ impl GoogleAdsClient {
                 return serde_json::from_slice(&bytes).map_err(|_| {
                     if is_mutate {
                         GoogleError::MaybeApplied {
-                            cause: "resposta JSON malformada".into(),
+                            cause: "malformed JSON response".into(),
                         }
                     } else {
-                        GoogleError::Decode("resposta JSON malformada".into())
+                        GoogleError::Decode("malformed JSON response".into())
                     }
                 });
             }

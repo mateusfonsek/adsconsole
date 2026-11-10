@@ -65,7 +65,7 @@ async fn mock_start(server: &MockServer, granularity: Option<&str>) {
         .await;
 }
 
-/// PUTs na sessão: o último (finalize) devolve o nome do upload.
+/// PUTs to the session: the last one (finalize) returns the upload name.
 async fn mock_chunks(server: &MockServer) {
     Mock::given(method("PUT"))
         .and(path(SESSION))
@@ -116,8 +116,8 @@ async fn resumable_upload_protocol() {
         "1",
         Some("999"),
         len as u64,
-        "Título",
-        "Descrição",
+        "Title",
+        "Description",
         "UNLISTED",
         None,
     )
@@ -125,7 +125,7 @@ async fn resumable_upload_protocol() {
     .unwrap();
     assert_eq!(session.url, format!("{}{SESSION}", server.uri()));
     assert_eq!(session.granularity, MIB);
-    // Padrão: ~8 MiB, múltiplo da granularidade.
+    // Default: ~8 MiB, a multiple of the granularity.
     assert_eq!(session.chunk_bytes, 8 * MIB);
 
     let reqs = server.received_requests().await.unwrap();
@@ -143,11 +143,11 @@ async fn resumable_upload_protocol() {
     assert_eq!(
         body,
         json!({ "customer_id": "1", "you_tube_video_upload": {
-            "video_title": "Título", "video_description": "Descrição",
+            "video_title": "Title", "video_description": "Description",
             "video_privacy": "UNLISTED" } })
     );
 
-    // Pedaços de 1 MiB para ver vários PUTs.
+    // 1 MiB chunks to get several PUTs.
     session.chunk_bytes = MIB;
     let progress = Arc::new(Mutex::new(Vec::new()));
     let p = progress.clone();
@@ -275,8 +275,8 @@ async fn chunk_failure_is_maybe_applied_and_not_retried() {
         .await
         .unwrap_err();
     assert!(matches!(e, GoogleError::MaybeApplied { .. }), "{e:?}");
-    assert!(e.to_string().contains("0 de 2097152"), "{e}");
-    assert_eq!(puts(&server).await.len(), 1, "pedaço não é repetido");
+    assert!(e.to_string().contains("0 of 2097152"), "{e}");
+    assert_eq!(puts(&server).await.len(), 1, "chunk is not retried");
 }
 
 #[tokio::test]
@@ -285,7 +285,7 @@ async fn file_that_changed_size_is_refused() {
     mock_start(&server, Some(&MIB.to_string())).await;
     mock_chunks(&server).await;
     let (_dir, file, _) = video_file(MIB);
-    // A sessão foi aberta para 2 MiB, mas o arquivo tem 1 MiB.
+    // The session was opened for 2 MiB, but the file is 1 MiB.
     let session = UploadSession {
         url: format!("{}{SESSION}", server.uri()),
         granularity: MIB,
@@ -351,7 +351,7 @@ async fn poll_until_processed_or_timeout() {
         .count();
     assert_eq!(searches, 3);
 
-    // Prazo curto: devolve o último estado lido.
+    // Short deadline: returns the last state read.
     let (server, client) = setup().await;
     Mock::given(method("POST"))
         .and(path("/v26/customers/1/googleAds:search"))
@@ -373,7 +373,7 @@ async fn poll_until_processed_or_timeout() {
     assert_eq!(s.state, "UPLOADED");
     assert_eq!(s.video_id.as_deref(), Some("vid12345678"));
 
-    // FAILED é final.
+    // FAILED is final.
     let (server, client) = setup().await;
     Mock::given(method("POST"))
         .and(path("/v26/customers/1/googleAds:search"))

@@ -197,11 +197,7 @@ async fn web_client_json_is_field_error() {
         .google_console_links(&path.to_string_lossy())
         .unwrap_err();
     assert_eq!(err.field.as_deref(), Some("client_json"));
-    assert!(
-        err.message.contains("App para computador"),
-        "{}",
-        err.message
-    );
+    assert!(err.message.contains("Desktop app"), "{}", err.message);
 
     let err = svc
         .add_google(

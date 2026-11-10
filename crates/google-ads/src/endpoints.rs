@@ -1,4 +1,4 @@
-/// URLs do Google; configuráveis para os testes apontarem para `wiremock`.
+/// Google URLs; configurable so tests can point them at `wiremock`.
 #[derive(Debug, Clone)]
 pub struct GoogleEndpoints {
     pub api_base: String,
@@ -18,7 +18,7 @@ impl Default for GoogleEndpoints {
     }
 }
 
-/// Links do Console do Google Cloud usados nas instruções de configuração.
+/// Google Cloud Console links used in the setup instructions.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConsoleLinks {
     pub api: String,

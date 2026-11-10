@@ -18,7 +18,7 @@ use crate::token::{http_client, post_token};
 const SCOPE: &str = "https://www.googleapis.com/auth/adwords";
 const CONNECTION_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: u64 = 8192;
-const FAILURE_PAGE: &str = "A conexão não foi autorizada. Pode fechar esta aba.";
+const FAILURE_PAGE: &str = "The connection was not authorized. You can close this tab.";
 
 fn random_string(len: usize) -> String {
     rand::rng()
@@ -40,7 +40,7 @@ async fn respond(mut stream: TcpStream, status: &str, text: &str) {
     let _ = stream.shutdown().await;
 }
 
-/// Lê a primeira linha do request e devolve os parâmetros da query, ou `None` se não for um callback.
+/// Reads the first line of the request and returns the query parameters, or `None` if it is not a callback.
 async fn read_callback(stream: &mut TcpStream) -> Option<HashMap<String, String>> {
     let mut line = String::new();
     let mut reader = BufReader::new((&mut *stream).take(MAX_REQUEST_BYTES));
@@ -67,25 +67,25 @@ async fn wait_for_callback(
             Some(params) if params.get("state").map(String::as_str) == Some(state) => {
                 return Ok((stream, params));
             }
-            // State errado: outra página local não pode cancelar o login; segue esperando.
-            Some(_) => respond(stream, "400 Bad Request", "Requisição inválida.").await,
-            // Favicon, pré-conexão do navegador etc.: ignora e segue esperando.
-            None => respond(stream, "404 Not Found", "Não encontrado.").await,
+            // Wrong state: another local page must not cancel the login; keep waiting.
+            Some(_) => respond(stream, "400 Bad Request", "Invalid request.").await,
+            // Favicon, browser preconnect, etc.: ignore and keep waiting.
+            None => respond(stream, "404 Not Found", "Not found.").await,
         }
     }
 }
 
-/// Fluxo OAuth de app para computador: loopback em 127.0.0.1 com PKCE S256.
-/// Devolve o refresh token.
+/// OAuth flow for desktop apps: loopback on 127.0.0.1 with PKCE S256.
+/// Returns the refresh token.
 pub async fn authorize(
     endpoints: &GoogleEndpoints,
     creds: &ClientCreds,
     open: &(dyn Fn(&str) -> std::io::Result<()> + Send + Sync),
     wait: Duration,
 ) -> Result<Secret, GoogleError> {
-    let listener = TcpListener::bind("127.0.0.1:0").await.map_err(|e| {
-        GoogleError::Transport(format!("não foi possível abrir a porta local: {e}"))
-    })?;
+    let listener = TcpListener::bind("127.0.0.1:0")
+        .await
+        .map_err(|e| GoogleError::Transport(format!("could not open the local port: {e}")))?;
     let port = listener
         .local_addr()
         .map_err(|e| GoogleError::Transport(e.to_string()))?
@@ -109,10 +109,10 @@ pub async fn authorize(
             ("state", state.as_str()),
         ],
     )
-    .map_err(|e| GoogleError::Auth(format!("URL de autorização inválida: {e}")))?;
+    .map_err(|e| GoogleError::Auth(format!("invalid authorization URL: {e}")))?;
 
     open(auth_url.as_str())
-        .map_err(|e| GoogleError::Auth(format!("não foi possível abrir o navegador: {e}")))?;
+        .map_err(|e| GoogleError::Auth(format!("could not open the browser: {e}")))?;
 
     let (stream, params) = tokio::time::timeout(wait, wait_for_callback(&listener, &state))
         .await
@@ -120,11 +120,11 @@ pub async fn authorize(
 
     if let Some(error) = params.get("error") {
         respond(stream, "200 OK", FAILURE_PAGE).await;
-        return Err(GoogleError::Auth(format!("acesso negado: {error}")));
+        return Err(GoogleError::Auth(format!("access denied: {error}")));
     }
     let Some(code) = params.get("code") else {
         respond(stream, "400 Bad Request", FAILURE_PAGE).await;
-        return Err(GoogleError::Auth("callback sem code".into()));
+        return Err(GoogleError::Auth("callback without code".into()));
     };
 
     let client = http_client()?;
@@ -143,20 +143,27 @@ pub async fn authorize(
     .await
     .map_err(|e| match e {
         GoogleError::ReauthRequired => {
-            GoogleError::Auth("código de autorização inválido ou expirado".into())
+            GoogleError::Auth("invalid or expired authorization code".into())
         }
         other => other,
     })
     .and_then(|resp| {
         resp.refresh_token.filter(|t| !t.is_empty()).ok_or_else(|| {
             GoogleError::Auth(
-                "o Google não devolveu refresh token. Remova o acesso do app em myaccount.google.com (Segurança > Conexões de terceiros) e tente de novo.".into(),
+                "Google did not return a refresh token. Remove the app's access at myaccount.google.com (Security > Third-party connections) and try again.".into(),
             )
         })
     });
 
     match &exchanged {
-        Ok(_) => respond(stream, "200 OK", "Conexão concluída. Pode fechar esta aba.").await,
+        Ok(_) => {
+            respond(
+                stream,
+                "200 OK",
+                "Connection complete. You can close this tab.",
+            )
+            .await
+        }
         Err(_) => respond(stream, "200 OK", FAILURE_PAGE).await,
     }
     exchanged

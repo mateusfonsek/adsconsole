@@ -42,7 +42,7 @@ fn query(url: &str) -> HashMap<String, String> {
         .collect()
 }
 
-/// Faz o papel do navegador: GET no redirect_uri com os parâmetros extras.
+/// Plays the browser's role: GET on the redirect_uri with the extra parameters.
 fn browser(
     extra: impl Fn(&HashMap<String, String>) -> String + Send + Sync + 'static,
 ) -> (SeenUrl, impl Fn(&str) -> std::io::Result<()> + Send + Sync) {
@@ -74,7 +74,7 @@ fn client_json_kinds() {
     assert!(matches!(e, ClientJsonError::WebClient));
     assert_eq!(
         e.to_string(),
-        "Este JSON é de um client do tipo Aplicativo da Web. Crie um client do tipo App para computador."
+        "This JSON is for a Web application client. Create a Desktop app client instead."
     );
 
     assert!(matches!(
@@ -86,7 +86,7 @@ fn client_json_kinds() {
         ClientJsonError::Missing("client_secret")
     ));
     assert!(matches!(
-        ClientCreds::from_json(b"nao e json").unwrap_err(),
+        ClientCreds::from_json(b"not json").unwrap_err(),
         ClientJsonError::Invalid(_)
     ));
 }
@@ -181,7 +181,7 @@ async fn authorize_wrong_state_is_ignored_then_valid_callback_succeeds() {
         let state = q["state"].clone();
         let ws = ws.clone();
         tokio::spawn(async move {
-            let r = reqwest::get(format!("{base}/?code=evil&state=errado"))
+            let r = reqwest::get(format!("{base}/?code=evil&state=wrong"))
                 .await
                 .unwrap();
             *ws.lock().unwrap() = Some(r.status().as_u16());
@@ -205,7 +205,7 @@ async fn authorize_wrong_state_is_ignored_then_valid_callback_succeeds() {
 #[tokio::test]
 async fn authorize_lone_wrong_state_times_out_and_denied_is_auth() {
     let server = MockServer::start().await;
-    let (_, open) = browser(|_| "/?code=abc&state=errado".into());
+    let (_, open) = browser(|_| "/?code=abc&state=wrong".into());
     let err = oauth::authorize(
         &endpoints(&server),
         &creds(),
@@ -226,7 +226,7 @@ async fn authorize_lone_wrong_state_times_out_and_denied_is_auth() {
     .await
     .unwrap_err();
     assert!(
-        matches!(err, GoogleError::Auth(ref m) if m == "acesso negado: access_denied"),
+        matches!(err, GoogleError::Auth(ref m) if m == "access denied: access_denied"),
         "{err:?}"
     );
     assert!(server.received_requests().await.unwrap().is_empty());

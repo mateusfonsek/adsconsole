@@ -1,9 +1,9 @@
-/// Recebe a contagem de operações enviadas ao Google (quota por projeto do Cloud).
+/// Receives the count of operations sent to Google (quota is per Cloud project).
 pub trait OpsMeter: Send + Sync {
     fn record(&self, ops: u32);
 }
 
-/// Medidor que descarta a contagem.
+/// Meter that discards the count.
 pub struct NoopMeter;
 
 impl OpsMeter for NoopMeter {

@@ -1,16 +1,16 @@
-//! GAQL seguro: aspas, ids numéricos e cláusulas de data.
+//! Safe GAQL: quoting, numeric ids and date clauses.
 
 use chrono::NaiveDate;
 
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
 pub enum GaqlError {
-    #[error("id inválido (só dígitos): {0:?}")]
+    #[error("invalid id (digits only): {0:?}")]
     InvalidId(String),
-    #[error("intervalo de datas inválido: início {start} depois do fim {end}")]
+    #[error("invalid date range: start {start} is after end {end}")]
     InvalidRange { start: NaiveDate, end: NaiveDate },
 }
 
-/// Envolve em aspas simples, escapando `\` e `'`.
+/// Wraps in single quotes, escaping `\` and `'`.
 pub fn quote(s: &str) -> String {
     let mut out = String::with_capacity(s.len() + 2);
     out.push('\'');
@@ -24,7 +24,7 @@ pub fn quote(s: &str) -> String {
     out
 }
 
-/// Aceita só dígitos (e não vazio).
+/// Accepts only digits (and not empty).
 pub fn id(s: &str) -> Result<&str, GaqlError> {
     if !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()) {
         Ok(s)

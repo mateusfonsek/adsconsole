@@ -1,49 +1,49 @@
 use serde_json::Value;
 
-/// Um erro individual do `GoogleAdsFailure`.
+/// A single error from a `GoogleAdsFailure`.
 #[derive(Debug, Clone, PartialEq)]
 pub struct AdsError {
-    /// Chave do `errorCode`, p.ex. `campaignBudgetError`.
+    /// Key of the `errorCode`, e.g. `campaignBudgetError`.
     pub category: String,
-    /// Valor do `errorCode`, p.ex. `BUDGET_BELOW_PER_DAY_MINIMUM`.
+    /// Value of the `errorCode`, e.g. `BUDGET_BELOW_PER_DAY_MINIMUM`.
     pub code: String,
-    /// Mensagem original do Google.
+    /// Original message from Google.
     pub message: String,
-    /// Ex.: `operations[0].create.amount_micros`.
+    /// E.g. `operations[0].create.amount_micros`.
     pub field_path: Option<String>,
-    /// Índice da primeira operação citada no caminho.
+    /// Index of the first operation named in the path.
     pub operation_index: Option<usize>,
     pub details: Option<Value>,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum GoogleError {
-    #[error("Falha de autenticação no Google: {0}")]
+    #[error("Google authentication failed: {0}")]
     Auth(String),
-    #[error("A autorização do Google expirou ou foi revogada. Reconecte a conta.")]
+    #[error("The Google authorization expired or was revoked. Reconnect the account.")]
     ReauthRequired,
-    #[error("Falha de comunicação com o Google: {0}")]
+    #[error("Failed to communicate with Google: {0}")]
     Transport(String),
-    #[error("O Google demorou demais para responder.")]
+    #[error("Google took too long to respond.")]
     Timeout,
-    #[error("Resposta inesperada do Google: {0}")]
+    #[error("Unexpected response from Google: {0}")]
     Decode(String),
-    /// Arquivo local a enviar (upload de vídeo): sumiu, mudou ou não pôde ser lido.
-    #[error("Arquivo: {0}")]
+    /// Local file to upload (video upload): it disappeared, changed or could not be read.
+    #[error("File: {0}")]
     File(String),
     #[error(
-        "Não foi possível confirmar se a mudança foi aplicada; confira na conta antes de repetir. ({cause})"
+        "Could not confirm whether the change was applied; check the account before repeating it. ({cause})"
     )]
     MaybeApplied { cause: String },
     #[error("{}", api_display(*.http_status, status, message, errors, *.maybe_applied))]
     Api {
         http_status: u16,
         status: String,
-        /// Mensagem original do Google (em inglês).
+        /// Original message from Google.
         message: String,
         errors: Vec<AdsError>,
         request_id: Option<String>,
-        /// Um 5xx num mutate pode ter sido aplicado mesmo assim.
+        /// A 5xx on a mutate may have been applied anyway.
         maybe_applied: bool,
     },
 }
@@ -55,7 +55,7 @@ fn api_display(
     errors: &[AdsError],
     maybe_applied: bool,
 ) -> String {
-    let mut out = format!("O Google Ads recusou a requisição (HTTP {http_status}");
+    let mut out = format!("Google Ads rejected the request (HTTP {http_status}");
     if !status.is_empty() {
         out.push_str(&format!(", {status}"));
     }
@@ -63,19 +63,19 @@ fn api_display(
     for e in errors {
         out.push_str(&format!("\n- {}: {}", e.code, e.message));
         if let Some(p) = &e.field_path {
-            out.push_str(&format!(" (em {p})"));
+            out.push_str(&format!(" (at {p})"));
         }
     }
     if maybe_applied {
         out.push_str(
-            "\nA operação pode ter sido aplicada apesar do erro. Confira na conta do Google Ads antes de tentar de novo.",
+            "\nThe operation may have been applied despite the error. Check the Google Ads account before trying again.",
         );
     }
     out
 }
 
 impl GoogleError {
-    /// Erro de cota/limite de taxa, repetível mesmo em escrita.
+    /// Quota or rate-limit error; safe to retry even for writes.
     pub(crate) fn is_quota(&self) -> bool {
         matches!(self, GoogleError::Api { http_status, status, errors, .. }
             if *http_status == 429
@@ -143,7 +143,7 @@ fn parse_one(e: &Value) -> AdsError {
     }
 }
 
-/// Monta `GoogleError::Api` a partir de uma resposta HTTP de erro.
+/// Builds a `GoogleError::Api` from an HTTP error response.
 pub(crate) fn parse_api_error(
     http_status: u16,
     body: &[u8],

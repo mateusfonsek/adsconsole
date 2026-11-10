@@ -116,11 +116,7 @@ async fn add_connection_rejects_web_client() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
-    assert!(
-        err.message.contains("App para computador"),
-        "{}",
-        err.message
-    );
+    assert!(err.message.contains("Desktop app"), "{}", err.message);
 }
 
 #[tokio::test]

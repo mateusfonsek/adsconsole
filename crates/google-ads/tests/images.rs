@@ -1,6 +1,6 @@
-//! Imagens: referência (`ImageRef`), carga de arquivo e URL, conferência de
-//! dimensões e a operação de criação do asset. Nenhum teste sai para a rede: a URL
-//! vai a um `wiremock` local com `AllowHttp::ForTests`.
+//! Images: reference (`ImageRef`), loading from a file and from a URL, dimension
+//! checks and the asset creation operation. No test goes out to the network: the URL
+//! goes to a local `wiremock` with `AllowHttp::ForTests`.
 
 use adsconsole_google_ads::images::{
     self, AllowHttp, ImageError, ImageKind, ImageRef, Loaded, MAX_IMAGE_BYTES,
@@ -10,8 +10,8 @@ use serde_json::json;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// PNG mínimo: assinatura + cabeçalho `IHDR` com as dimensões (o suficiente para
-/// detectar o formato e ler o tamanho).
+/// Minimal PNG: signature + `IHDR` header with the dimensions (enough to detect
+/// the format and read the size).
 fn png(w: u32, h: u32) -> Vec<u8> {
     let mut b = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     b.extend_from_slice(&13u32.to_be_bytes());
@@ -26,7 +26,7 @@ fn png(w: u32, h: u32) -> Vec<u8> {
 fn new(l: Loaded) -> images::LoadedImage {
     match l {
         Loaded::New(img) => img,
-        Loaded::Existing(rn) => panic!("esperava imagem nova, veio {rn}"),
+        Loaded::Existing(rn) => panic!("expected a new image, got {rn}"),
     }
 }
 
@@ -36,7 +36,7 @@ fn image_checks() {
     assert!(images::check(ImageKind::Landscape, 600, 314).is_ok());
     let e = images::check(ImageKind::Landscape, 1200, 600).unwrap_err();
     assert!(e.contains("1.91:1"), "{e}");
-    assert!(images::check(ImageKind::Landscape, 573, 300).is_err()); // proporção ok, pequena
+    assert!(images::check(ImageKind::Landscape, 573, 300).is_err()); // aspect ratio ok, too small
     assert!(images::check(ImageKind::Square, 300, 300).is_ok());
     let e = images::check(ImageKind::Square, 200, 200).unwrap_err();
     assert!(e.contains("300x300"), "{e}");
@@ -121,7 +121,7 @@ async fn url_rules() {
         url: format!("{}{p}", server.uri()),
     };
 
-    // Produção: só https, e o http local é recusado antes de qualquer request.
+    // Production: https only, and local http is refused before any request.
     let e = images::load(&url("/ok.png"), &client).await.unwrap_err();
     assert!(matches!(e, ImageError::NotHttps), "{e:?}");
     assert!(e.to_string().contains("https"), "{e}");
@@ -134,7 +134,7 @@ async fn url_rules() {
     .await
     .unwrap_err();
     assert!(matches!(e, ImageError::NotHttps), "{e:?}");
-    // Hosts locais e privados: recusados sem request (nem DNS: são literais).
+    // Local and private hosts: refused without a request (no DNS either: they are literals).
     for u in [
         "https://localhost/x.png",
         "https://127.0.0.1/x.png",
@@ -150,7 +150,7 @@ async fn url_rules() {
         let r = ImageRef::Url { url: u.into() };
         let e = images::load(&r, images::http_client()).await.unwrap_err();
         assert!(matches!(e, ImageError::ForbiddenHost(_)), "{u}: {e:?}");
-        assert!(e.to_string().contains("local ou privado"), "{e}");
+        assert!(e.to_string().contains("local or private"), "{e}");
     }
     assert!(server.received_requests().await.unwrap().is_empty());
 
@@ -228,7 +228,7 @@ async fn file_rules() {
         .unwrap_err();
     assert!(matches!(e, ImageError::UnsupportedFormat), "{e:?}");
 
-    // Acima de 5 MB: recusado pelo tamanho do arquivo, sem ler tudo.
+    // Over 5 MB: refused based on the file size, without reading it all.
     let big = dir.path().join("big.png");
     std::fs::write(&big, png(1200, 628)).unwrap();
     std::fs::OpenOptions::new()
@@ -243,7 +243,7 @@ async fn file_rules() {
     let e = images::load(&r, &client).await.unwrap_err();
     assert!(matches!(e, ImageError::TooLarge), "{e:?}");
 
-    for bad in ["relativo/a.png", "/nao/existe/a.png"] {
+    for bad in ["relative/a.png", "/does/not/exist/a.png"] {
         let r = ImageRef::File {
             file_path: bad.into(),
         };

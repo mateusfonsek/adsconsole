@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-/// Máximo de tentativas a mais depois da primeira.
+/// Maximum number of extra attempts after the first.
 pub const MAX_RETRIES: u32 = 3;
 
 /// Backoff exponencial: `base`, `2*base`, `4*base`.
@@ -18,7 +18,7 @@ impl Default for RetryPolicy {
 }
 
 impl RetryPolicy {
-    /// Espera antes da `retry`-ésima repetição (começa em 0).
+    /// Wait before the `retry`-th repetition (starts at 0).
     pub fn delay(&self, retry: u32) -> Duration {
         self.base * 2u32.pow(retry.min(MAX_RETRIES))
     }

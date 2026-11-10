@@ -1,4 +1,4 @@
-//! Nomes de recurso, IDs temporários e chaves de `MutateOperation`.
+//! Resource names, temporary IDs and `MutateOperation` keys.
 
 use serde_json::{Value, json};
 
@@ -6,7 +6,7 @@ pub fn rn(customer: &str, collection: &str, id: &str) -> String {
     format!("customers/{customer}/{collection}/{id}")
 }
 
-/// Gera IDs temporários negativos (`-1`, `-2`, …) numa sequência única por mutate.
+/// Generates negative temporary IDs (`-1`, `-2`, …) in a single sequence per mutate.
 #[derive(Debug, Clone)]
 pub struct TempIds {
     customer: String,
@@ -47,18 +47,18 @@ const OP_KEYS: &[(&str, &str)] = &[
     ("adGroupAssets", "adGroupAssetOperation"),
 ];
 
-/// Chave do `MutateOperation` a partir de `customers/{c}/{colecao}/{id}`.
+/// `MutateOperation` key from `customers/{c}/{collection}/{id}`.
 pub fn op_key(resource_name: &str) -> Result<&'static str, String> {
     let mut parts = resource_name.split('/');
     let collection = match (parts.next(), parts.next(), parts.next()) {
         (Some("customers"), Some(_), Some(c)) => c,
-        _ => return Err(format!("nome de recurso inválido: {resource_name}")),
+        _ => return Err(format!("invalid resource name: {resource_name}")),
     };
     OP_KEYS
         .iter()
         .find(|(c, _)| *c == collection)
         .map(|(_, k)| *k)
-        .ok_or_else(|| format!("coleção sem operação de mutate: {collection}"))
+        .ok_or_else(|| format!("collection has no mutate operation: {collection}"))
 }
 
 pub fn remove_op(rn: &str) -> Result<Value, String> {
@@ -90,7 +90,7 @@ mod tests {
             "adGroupCriterionOperation"
         );
         assert!(op_key("customers/1/unknowns/5").is_err());
-        assert!(op_key("lixo").is_err());
+        assert!(op_key("garbage").is_err());
         assert_eq!(
             remove_op("customers/1/campaigns/5").unwrap(),
             json!({"campaignOperation":{"remove":"customers/1/campaigns/5"}})

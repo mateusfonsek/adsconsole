@@ -131,7 +131,7 @@ async fn parses_google_ads_failure() {
         maybe_applied,
     } = err
     else {
-        panic!("esperava Api");
+        panic!("expected Api");
     };
     assert_eq!(http_status, 400);
     assert_eq!(status, "INVALID_ARGUMENT");
@@ -171,7 +171,7 @@ async fn error_without_details_keeps_message() {
         errors, message, ..
     } = &err
     else {
-        panic!("esperava Api");
+        panic!("expected Api");
     };
     assert!(errors.is_empty());
     assert_eq!(message, "nope");
@@ -238,7 +238,7 @@ async fn mutate_5xx_not_retried() {
             ..
         }
     ));
-    assert!(err.to_string().contains("conta"), "{err}");
+    assert!(err.to_string().contains("account"), "{err}");
     assert_eq!(count(&server, MUTATE).await, 1);
 }
 
@@ -472,7 +472,7 @@ async fn mutate_timeout_is_maybe_applied_and_not_retried() {
         .await
         .unwrap_err();
     assert!(matches!(err, GoogleError::MaybeApplied { .. }), "{err:?}");
-    assert!(err.to_string().contains("confira na conta"));
+    assert!(err.to_string().contains("check the account"));
     assert_eq!(count(&server, MUTATE).await, 1);
 }
 
@@ -481,7 +481,7 @@ async fn mutate_2xx_malformed_body_is_maybe_applied() {
     let (server, client) = setup().await;
     Mock::given(method("POST"))
         .and(path(MUTATE))
-        .respond_with(ResponseTemplate::new(200).set_body_string("{nao e json"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("{not json"))
         .mount(&server)
         .await;
     let err = client

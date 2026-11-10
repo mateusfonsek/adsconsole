@@ -40,7 +40,7 @@ pub(crate) fn map_reqwest(e: reqwest::Error) -> GoogleError {
     }
 }
 
-/// POST de formulário no `token_url`. `invalid_grant` vira `ReauthRequired`.
+/// Form POST to `token_url`. `invalid_grant` becomes `ReauthRequired`.
 pub(crate) async fn post_token(
     client: &reqwest::Client,
     token_url: &str,
@@ -65,14 +65,14 @@ pub(crate) async fn post_token(
                 Some(d) => format!("{code}: {d}"),
                 None => code.to_string(),
             }),
-            None => GoogleError::Auth(format!("o servidor de tokens respondeu {status}")),
+            None => GoogleError::Auth(format!("the token server responded {status}")),
         });
     }
     serde_json::from_slice(&bytes)
-        .map_err(|_| GoogleError::Decode("resposta de token malformada".into()))
+        .map_err(|_| GoogleError::Decode("malformed token response".into()))
 }
 
-/// Mantém o access token em cache e o renova (um refresh por vez) quando falta menos de 60 s.
+/// Caches the access token and renews it (one refresh at a time) when less than 60 s remain.
 pub struct TokenManager {
     endpoints: GoogleEndpoints,
     creds: ClientCreds,
@@ -83,8 +83,8 @@ pub struct TokenManager {
 
 impl TokenManager {
     pub fn new(endpoints: GoogleEndpoints, creds: ClientCreds, refresh: Secret) -> Self {
-        // Falha só se o backend TLS não inicializar; sem isso nenhuma chamada funcionaria.
-        let http = http_client().expect("cliente HTTP");
+        // Fails only if the TLS backend cannot initialize; no call would work without it.
+        let http = http_client().expect("HTTP client");
         Self {
             http,
             endpoints,
@@ -115,7 +115,7 @@ impl TokenManager {
         let token = resp
             .access_token
             .filter(|t| !t.is_empty())
-            .ok_or_else(|| GoogleError::Decode("resposta de token malformada".into()))?;
+            .ok_or_else(|| GoogleError::Decode("malformed token response".into()))?;
         let lifetime = Duration::from_secs(resp.expires_in).saturating_sub(EXPIRY_MARGIN);
         *cache = Some((token.clone(), Instant::now() + lifetime));
         Ok(token)

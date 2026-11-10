@@ -3,21 +3,19 @@ use serde_json::Value;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClientJsonError {
-    #[error(
-        "Este JSON é de um client do tipo Aplicativo da Web. Crie um client do tipo App para computador."
-    )]
+    #[error("This JSON is for a Web application client. Create a Desktop app client instead.")]
     WebClient,
     #[error(
-        "Este JSON não parece ser de um client OAuth do Google (faltou a chave \"installed\")."
+        "This JSON does not look like a Google OAuth client (the \"installed\" key is missing)."
     )]
     NotOAuthClient,
-    #[error("O JSON do client está sem o campo \"{0}\".")]
+    #[error("The client JSON is missing the \"{0}\" field.")]
     Missing(&'static str),
-    #[error("JSON do client inválido: {0}")]
+    #[error("Invalid client JSON: {0}")]
     Invalid(String),
 }
 
-/// Credenciais de um client OAuth do tipo App para computador (chave `installed`).
+/// Credentials of a Desktop app OAuth client (the `installed` key).
 #[derive(Debug, Clone)]
 pub struct ClientCreds {
     pub client_id: String,

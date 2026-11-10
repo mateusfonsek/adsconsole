@@ -1,6 +1,6 @@
-//! Tabela de campos editáveis: operações de update com `updateMask`, queries de leitura
-//! e normalização. `normalize` é a única leitura usada no antes/depois/atual do undo,
-//! e é o inverso exato de `update_op`.
+//! Table of editable fields: update operations with `updateMask`, read queries
+//! and normalization. `normalize` is the only read used for the before/after/current
+//! values of undo, and it is the exact inverse of `update_op`.
 
 use rust_decimal::Decimal;
 use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
@@ -17,21 +17,21 @@ pub enum FieldKind {
     Bool,
     Double,
     Date,
-    /// Lista de `AdTextAsset` (títulos/descrições de RSA). Na leitura, cada item fica
-    /// só com `text` e `pinnedField`: os campos só de saída (`assetPerformanceLabel`,
-    /// `policySummaryInfo`, …) mudam sozinhos e não podem voltar no update.
+    /// List of `AdTextAsset` (RSA headlines/descriptions). On read, each item keeps
+    /// only `text` and `pinnedField`: the output-only fields (`assetPerformanceLabel`,
+    /// `policySummaryInfo`, …) change on their own and must not go back in the update.
     AdTexts,
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct EditableField {
-    /// Caminho GAQL completo, ex.: `campaign.target_spend.cpc_bid_ceiling_micros`.
+    /// Full GAQL path, e.g. `campaign.target_spend.cpc_bid_ceiling_micros`.
     pub gaql: &'static str,
-    /// Recurso GAQL (snake_case), ex.: `campaign`.
+    /// GAQL resource (snake_case), e.g. `campaign`.
     pub resource: &'static str,
-    /// Máscara do update (relativa ao recurso, snake_case).
+    /// Update mask (relative to the resource, snake_case).
     pub mask: &'static str,
-    /// Caminho camelCase relativo ao recurso (linha do search e corpo do update).
+    /// camelCase path relative to the resource (search row and update body).
     pub json_path: &'static [&'static str],
     pub kind: FieldKind,
 }
@@ -51,14 +51,14 @@ macro_rules! field {
 pub const FIELDS: &[EditableField] = &[
     field!("campaign.name", "campaign", "name", ["name"], Text),
     field!("campaign.status", "campaign", "status", ["status"], Enum),
-    // Datas da campanha: na v26 só existem `start_date_time`/`end_date_time`, no formato
-    // "yyyy-MM-dd HH:mm:ss" (fuso da conta); `start_date`/`end_date` foram removidos
-    // (confirmado na conta real: `Unknown name "startDate"`). A interface das
-    // ferramentas segue em AAAA-MM-DD: na escrita o início vira `00:00:00` e o término
-    // `23:59:59` (granularidade diária; ver `start_of_day`/`end_of_day`), e na leitura
-    // só a data volta (`date_part`). O valor normalizado do campo é o datetime completo,
-    // o mesmo que o update envia, para o desfazer não ver conflito falso. Término nulo =
-    // sem fim; restaurar nulo limpa o campo.
+    // Campaign dates: in v26 only `start_date_time`/`end_date_time` exist, in the format
+    // "yyyy-MM-dd HH:mm:ss" (account time zone); `start_date`/`end_date` were removed
+    // (confirmed against a real account: `Unknown name "startDate"`). The tools
+    // interface stays in YYYY-MM-DD: on write the start becomes `00:00:00` and the end
+    // `23:59:59` (daily granularity; see `start_of_day`/`end_of_day`), and on read
+    // only the date comes back (`date_part`). The field's normalized value is the full
+    // datetime, the same one the update sends, so undo does not see a false conflict.
+    // A null end means no end; restoring null clears the field.
     field!(
         "campaign.start_date_time",
         "campaign",
@@ -145,8 +145,8 @@ pub const FIELDS: &[EditableField] = &[
         ["status"],
         Enum
     ),
-    // Confirmado na conta real (2026-10-18, checklist T9.1): textos e URLs de um anúncio são editados no recurso `ad`
-    // (`customers/{c}/ads/{id}`, `AdOperation`); o status fica no `ad_group_ad`.
+    // Confirmed against a real account (2026-10-18): an ad's texts and URLs are edited on the
+    // `ad` resource (`customers/{c}/ads/{id}`, `AdOperation`); the status stays on `ad_group_ad`.
     field!("ad.final_urls", "ad", "final_urls", ["finalUrls"], Text),
     field!(
         "ad.responsive_search_ad.headlines",
@@ -177,7 +177,7 @@ pub const FIELDS: &[EditableField] = &[
         ["finalUrls"],
         Text
     ),
-    // Só leitura: não tem update (ver `is_read_only`).
+    // Read-only: has no update (see `is_read_only`).
     field!(
         "you_tube_video_upload.state",
         "you_tube_video_upload",
@@ -197,17 +197,17 @@ impl EditableField {
     }
 }
 
-/// Início do dia (`AAAA-MM-DD` -> `AAAA-MM-DD 00:00:00`), formato de `campaign.start_date_time`.
+/// Start of day (`YYYY-MM-DD` -> `YYYY-MM-DD 00:00:00`), format of `campaign.start_date_time`.
 pub fn start_of_day(date: &str) -> String {
     format!("{date} 00:00:00")
 }
 
-/// Fim do dia (`AAAA-MM-DD` -> `AAAA-MM-DD 23:59:59`), formato de `campaign.end_date_time`.
+/// End of day (`YYYY-MM-DD` -> `YYYY-MM-DD 23:59:59`), format of `campaign.end_date_time`.
 pub fn end_of_day(date: &str) -> String {
     format!("{date} 23:59:59")
 }
 
-/// Só a data (os 10 primeiros caracteres) de um datetime "yyyy-MM-dd HH:mm:ss".
+/// Only the date (the first 10 characters) of a datetime "yyyy-MM-dd HH:mm:ss".
 pub fn date_part(datetime: &str) -> &str {
     datetime.get(..10).unwrap_or(datetime)
 }
@@ -253,7 +253,7 @@ fn decimal_to_json(d: Decimal) -> Value {
         .map_or(Value::Null, Value::Number)
 }
 
-/// Lê o campo da linha do search (camelCase) em formato canônico.
+/// Reads the field from the search row (camelCase) in canonical form.
 pub fn normalize(field: &EditableField, row: &Value) -> Value {
     let mut cur = row.get(camel(field.resource));
     for p in field.json_path {
@@ -284,7 +284,7 @@ pub fn normalize(field: &EditableField, row: &Value) -> Value {
     }
 }
 
-/// `AdTextAsset` só com `text` e `pinnedField` (quando há).
+/// `AdTextAsset` with only `text` and `pinnedField` (when present).
 fn ad_text(item: &Value) -> Value {
     let mut out = Map::new();
     for key in ["text", "pinnedField"] {
@@ -295,7 +295,7 @@ fn ad_text(item: &Value) -> Value {
     Value::Object(out)
 }
 
-/// Valor normalizado -> valor da API (micros em string).
+/// Normalized value -> API value (micros as a string).
 fn to_api(field: &EditableField, v: &Value) -> Result<Value, String> {
     if field.kind != FieldKind::Micros || v.is_null() {
         return Ok(v.clone());
@@ -304,10 +304,10 @@ fn to_api(field: &EditableField, v: &Value) -> Result<Value, String> {
         Value::Number(_) => value_to_decimal(v),
         _ => None,
     }
-    .ok_or_else(|| format!("{}: esperado um número, veio {v}", field.gaql))?;
+    .ok_or_else(|| format!("{}: expected a number, got {v}", field.gaql))?;
     let micros = units * Decimal::from(1_000_000);
     if micros != micros.trunc() {
-        return Err(format!("{}: precisão além de micros: {v}", field.gaql));
+        return Err(format!("{}: precision beyond micros: {v}", field.gaql));
     }
     Ok(Value::String(micros.trunc().to_string()))
 }
@@ -331,14 +331,14 @@ fn set_path(obj: &mut Map<String, Value>, path: &[&str], v: Value) {
 pub fn update_op(rn: &str, changes: &[(&EditableField, Value)]) -> Result<Value, String> {
     let key = op_key(rn)?;
     if changes.is_empty() {
-        return Err("nenhuma alteração".to_string());
+        return Err("no changes".to_string());
     }
     let mut update = Map::new();
     update.insert("resourceName".to_string(), json!(rn));
     let mut masks = Vec::with_capacity(changes.len());
     for (f, v) in changes {
         if f.is_read_only() {
-            return Err(format!("{} é somente leitura", f.gaql));
+            return Err(format!("{} is read-only", f.gaql));
         }
         set_path(&mut update, f.json_path, to_api(f, v)?);
         masks.push(f.mask);
@@ -521,7 +521,7 @@ mod tests {
             ),
             h
         );
-        // Campos só de saída somem.
+        // Output-only fields are dropped.
         let raw = json!([
             {"text":"a","pinnedField":"HEADLINE_1","assetPerformanceLabel":"BEST",
              "policySummaryInfo":{"reviewStatus":"REVIEWED"}},
@@ -563,7 +563,7 @@ mod tests {
             let fld = f(g);
             let op = update_op(rn, &[(fld, x.clone())]).unwrap();
             let upd = op.as_object().unwrap().values().next().unwrap()["update"].clone();
-            // reconstrói a linha do search a partir do update
+            // rebuild the search row from the update
             let row = json!({ camel(fld.resource): upd });
             assert_eq!(normalize(fld, &row), x, "{g} {x}");
         }

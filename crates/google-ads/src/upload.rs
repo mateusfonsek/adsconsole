@@ -1,16 +1,17 @@
-//! Upload resumable de vídeo para o YouTube (`YouTubeVideoUploadService`).
+//! Resumable video upload to YouTube (`YouTubeVideoUploadService`).
 //!
-//! 1. [`start_youtube_upload`]: POST em `{upload_base}/customers/{c}/youTubeVideoUploads:create`
-//!    com o corpo em snake_case; a URL da sessão vem em `x-goog-upload-url`.
-//! 2. [`upload_chunks`]: PUTs na sessão, em pedaços múltiplos da granularidade; o último
-//!    leva `upload, finalize` e a resposta traz o nome do upload.
-//! 3. [`poll_upload`]: lê `you_tube_video_upload.state` até `PROCESSED`, `FAILED` ou
-//!    `REJECTED` (ou até o prazo).
-//! 4. [`REMOVE_SUFFIX`] e [`remove_body`]: `youTubeVideoUploads:remove` (o vídeo fica
-//!    `UNAVAILABLE`), enviado pelo desfazer como POST direto.
+//! 1. [`start_youtube_upload`]: POST to `{upload_base}/customers/{c}/youTubeVideoUploads:create`
+//!    with a snake_case body; the session URL comes in `x-goog-upload-url`.
+//! 2. [`upload_chunks`]: PUTs to the session, in chunks that are multiples of the
+//!    granularity; the last one carries `upload, finalize` and the response has the
+//!    upload name.
+//! 3. [`poll_upload`]: reads `you_tube_video_upload.state` until `PROCESSED`, `FAILED`
+//!    or `REJECTED` (or until the deadline).
+//! 4. [`REMOVE_SUFFIX`] and [`remove_body`]: `youTubeVideoUploads:remove` (the video
+//!    becomes `UNAVAILABLE`), sent by undo as a direct POST.
 //!
-//! O token vai só no header `Authorization`, e só para o mesmo host do `upload_base`.
-//! Nenhum pedaço é repetido: depois do primeiro byte enviado, qualquer falha é
+//! The token goes only in the `Authorization` header, and only to the same host as
+//! `upload_base`. No chunk is retried: after the first byte is sent, any failure is
 //! [`GoogleError::MaybeApplied`].
 
 use std::path::Path;
@@ -25,27 +26,27 @@ use crate::error::{GoogleError, parse_api_error};
 use crate::fields;
 use crate::token::map_reqwest;
 
-/// Timeout de cada PUT de pedaço.
+/// Timeout of each chunk PUT.
 pub const CHUNK_TIMEOUT: Duration = Duration::from_secs(300);
-/// Tamanho alvo de cada pedaço (arredondado para baixo na granularidade).
+/// Target size of each chunk (rounded down to the granularity).
 pub const TARGET_CHUNK_BYTES: usize = 8 * 1024 * 1024;
-/// Granularidade quando o Google não informa (a do protocolo resumable do Google).
+/// Granularity when Google does not provide one (the Google resumable protocol default).
 pub const DEFAULT_GRANULARITY: usize = 256 * 1024;
-/// Sufixo do `remove`, relativo a `customers/{c}`.
+/// Suffix of the `remove` call, relative to `customers/{c}`.
 pub const REMOVE_SUFFIX: &str = "/youTubeVideoUploads:remove";
-/// Estados finais do upload.
+/// Final states of the upload.
 pub const FINAL_STATES: [&str; 3] = ["PROCESSED", "FAILED", "REJECTED"];
 
-/// Sessão aberta por [`start_youtube_upload`].
+/// Session opened by [`start_youtube_upload`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UploadSession {
     pub url: String,
     pub granularity: usize,
-    /// Bytes por PUT: múltiplo de `granularity`, cerca de [`TARGET_CHUNK_BYTES`].
+    /// Bytes per PUT: a multiple of `granularity`, about [`TARGET_CHUNK_BYTES`].
     pub chunk_bytes: usize,
-    /// Tamanho declarado no start; o arquivo tem que ter exatamente isso.
+    /// Size declared at start; the file must be exactly this size.
     pub size: u64,
-    /// Nome do upload, se o start já o devolveu no corpo.
+    /// Upload name, if the start call already returned it in the body.
     pub resource_name: Option<String>,
 }
 
@@ -55,13 +56,13 @@ pub struct UploadState {
     pub video_id: Option<String>,
 }
 
-/// Maior múltiplo de `granularity` até [`TARGET_CHUNK_BYTES`] (no mínimo um).
+/// Largest multiple of `granularity` up to [`TARGET_CHUNK_BYTES`] (at least one).
 pub fn chunk_bytes(granularity: usize) -> usize {
     let g = granularity.max(1);
     (TARGET_CHUNK_BYTES / g).max(1) * g
 }
 
-/// Nome do upload numa resposta (`resourceName`, `resource_name` ou dentro de
+/// Upload name in a response (`resourceName`, `resource_name` or inside
 /// `youTubeVideoUpload`).
 pub fn upload_resource_name(v: &Value) -> Option<String> {
     let direct = |o: &Value| {
@@ -74,7 +75,7 @@ pub fn upload_resource_name(v: &Value) -> Option<String> {
     direct(v).or_else(|| v.get("youTubeVideoUpload").and_then(direct))
 }
 
-/// Mesmo esquema, host e porta: o token só vai para o host do `upload_base`.
+/// Same scheme, host and port: the token only goes to the `upload_base` host.
 fn same_origin(a: &str, b: &str) -> bool {
     match (url::Url::parse(a), url::Url::parse(b)) {
         (Ok(a), Ok(b)) => {
@@ -86,8 +87,8 @@ fn same_origin(a: &str, b: &str) -> bool {
     }
 }
 
-/// Abre a sessão de upload de `size` bytes. `channel_id` só quando o vídeo vai para o
-/// canal do anunciante; sem ele, vai para um canal gerenciado pelo Google. Sem retry.
+/// Opens the upload session for `size` bytes. `channel_id` only when the video goes to
+/// the advertiser's channel; without it, it goes to a Google-managed channel. No retry.
 #[allow(clippy::too_many_arguments)]
 pub async fn start_youtube_upload(
     client: &GoogleAdsClient,
@@ -139,11 +140,11 @@ pub async fn start_youtube_upload(
         ));
     }
     let session_url = hdr("x-goog-upload-url").ok_or_else(|| {
-        GoogleError::Decode("o início do upload não trouxe a URL da sessão".into())
+        GoogleError::Decode("the upload start did not return the session URL".into())
     })?;
     if !same_origin(&session_url, base) {
         return Err(GoogleError::Decode(
-            "a URL da sessão de upload não é do host do Google Ads".into(),
+            "the upload session URL is not on the Google Ads host".into(),
         ));
     }
     let granularity = hdr("x-goog-upload-chunk-granularity")
@@ -162,27 +163,27 @@ pub async fn start_youtube_upload(
     })
 }
 
-/// Falha depois de bytes enviados: o upload pode existir na conta (pendente ou até
-/// concluído, se foi o último pedaço).
+/// Failure after bytes were sent: the upload may exist in the account (pending or even
+/// complete, if it was the last chunk).
 fn interrupted(offset: u64, size: u64, why: impl std::fmt::Display) -> GoogleError {
     GoogleError::MaybeApplied {
-        cause: format!("envio do vídeo interrompido no byte {offset} de {size}: {why}"),
+        cause: format!("video upload interrupted at byte {offset} of {size}: {why}"),
     }
 }
 
 fn file_error(file: &Path, what: &str, e: std::io::Error) -> GoogleError {
-    GoogleError::File(format!("não foi possível {what} {}: {e}", file.display()))
+    GoogleError::File(format!("could not {what} {}: {e}", file.display()))
 }
 
-/// Envia o arquivo na sessão, lendo um pedaço por vez (nunca o arquivo inteiro).
-/// `on_progress` recebe o total de bytes já aceitos. Devolve o corpo da resposta do
-/// último pedaço (com o nome do upload; ver [`upload_resource_name`]).
+/// Sends the file to the session, reading one chunk at a time (never the whole file).
+/// `on_progress` receives the total of bytes already accepted. Returns the body of the
+/// last chunk's response (with the upload name; see [`upload_resource_name`]).
 ///
-/// Erros:
-/// - [`GoogleError::File`] se o arquivo não abre ou não tem `session.size` bytes,
-///   antes de qualquer PUT;
-/// - [`GoogleError::MaybeApplied`] em qualquer falha depois do primeiro PUT (inclusive
-///   o arquivo mudar no meio). Nenhum pedaço é repetido.
+/// Errors:
+/// - [`GoogleError::File`] if the file does not open or is not `session.size` bytes,
+///   before any PUT;
+/// - [`GoogleError::MaybeApplied`] on any failure after the first PUT (including the
+///   file changing midway). No chunk is retried.
 pub async fn upload_chunks(
     client: &GoogleAdsClient,
     session: &UploadSession,
@@ -192,11 +193,14 @@ pub async fn upload_chunks(
     let size = session.size;
     let mut f = tokio::fs::File::open(file)
         .await
-        .map_err(|e| file_error(file, "abrir", e))?;
-    let meta = f.metadata().await.map_err(|e| file_error(file, "ler", e))?;
+        .map_err(|e| file_error(file, "open", e))?;
+    let meta = f
+        .metadata()
+        .await
+        .map_err(|e| file_error(file, "read", e))?;
     if !meta.is_file() || meta.len() != size {
         return Err(GoogleError::File(format!(
-            "{} mudou: tinha {size} bytes e agora tem {}.",
+            "{} changed: it had {size} bytes and now has {}.",
             file.display(),
             meta.len()
         )));
@@ -208,7 +212,7 @@ pub async fn upload_chunks(
         let last = offset + len == size;
         let mut buf = vec![0u8; len as usize];
         if let Err(e) = f.read_exact(&mut buf).await {
-            let msg = format!("o arquivo mudou durante o envio ({e})");
+            let msg = format!("the file changed during the upload ({e})");
             return Err(if offset == 0 {
                 GoogleError::File(msg)
             } else {
@@ -252,7 +256,7 @@ pub async fn upload_chunks(
                 return Ok(Value::Null);
             }
             return serde_json::from_slice(&bytes)
-                .map_err(|_| interrupted(offset, size, "resposta final malformada"));
+                .map_err(|_| interrupted(offset, size, "malformed final response"));
         }
     }
 }
@@ -271,9 +275,9 @@ fn state_of(row: &Value) -> UploadState {
     }
 }
 
-/// Lê o estado do upload a cada `every` até um estado final ([`FINAL_STATES`]) ou até
-/// `max`; no prazo, devolve o último estado lido. Upload que a busca não encontra
-/// fica `UNSPECIFIED`.
+/// Reads the upload state every `every` until a final state ([`FINAL_STATES`]) or until
+/// `max`; at the deadline, returns the last state read. An upload the search does not
+/// find stays `UNSPECIFIED`.
 pub async fn poll_upload(
     client: &GoogleAdsClient,
     customer: &str,
@@ -308,7 +312,7 @@ pub async fn poll_upload(
     }
 }
 
-/// Corpo do `youTubeVideoUploads:remove` (snake_case, validado na API real).
+/// Body of `youTubeVideoUploads:remove` (snake_case, validated against the real API).
 pub fn remove_body(customer: &str, rn: &str) -> Value {
     json!({ "customer_id": customer, "resource_names": [rn] })
 }
