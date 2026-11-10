@@ -14,7 +14,7 @@ use crate::retry::{MAX_RETRIES, MAX_WAIT, RetryPolicy};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Nível de acesso da Marketing API (`ads_api_access_tier`).
+/// Marketing API access tier (`ads_api_access_tier`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AccessTier {
     /// `development_access` (Limited Access).
@@ -33,13 +33,13 @@ impl AccessTier {
     }
 }
 
-/// Uso informado pela Meta nos headers de uma resposta.
+/// Usage reported by Meta in the headers of a response.
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Usage {
     pub tier: Option<AccessTier>,
-    /// Maior percentual de uso entre os headers (BUC, conta e insights).
+    /// Highest usage percentage across the headers (BUC, account and insights).
     pub buc_max_pct: Option<f64>,
-    /// Tempo até a Meta liberar de novo, quando bloqueado.
+    /// Time until Meta allows calls again, when blocked.
     pub regain_after: Option<Duration>,
 }
 
@@ -55,7 +55,7 @@ fn max_opt(a: Option<f64>, b: Option<f64>) -> Option<f64> {
     }
 }
 
-/// `reset_time_duration` do `X-Ad-Account-Usage`, se positivo.
+/// `reset_time_duration` from `X-Ad-Account-Usage`, if positive.
 fn account_reset(headers: &HeaderMap) -> Option<Duration> {
     header_json(headers, "x-ad-account-usage")?["reset_time_duration"]
         .as_u64()
@@ -64,7 +64,7 @@ fn account_reset(headers: &HeaderMap) -> Option<Duration> {
 }
 
 impl Usage {
-    /// Lê `X-Business-Use-Case-Usage`, `X-Ad-Account-Usage` e `X-FB-Ads-Insights-Throttle`.
+    /// Reads `X-Business-Use-Case-Usage`, `X-Ad-Account-Usage` e `X-FB-Ads-Insights-Throttle`.
     pub fn from_headers(headers: &HeaderMap) -> Option<Usage> {
         let mut u = Usage::default();
         let mut seen = false;
@@ -90,9 +90,9 @@ impl Usage {
             seen = true;
             let util = acc["acc_id_util_pct"].as_f64();
             u.buc_max_pct = max_opt(u.buc_max_pct, util);
-            // `reset_time_duration` vem em toda resposta (a documentação traz 9,67% com
-            // 100 s): só é bloqueio com a conta em 100%. Num erro de limite, vira o
-            // `retry_after` (ver `account_reset`).
+            // `reset_time_duration` comes in every response (the documentation shows 9.67%
+            // with 100 s): it only means a block when the account is at 100%. On a rate
+            // limit error, it becomes the `retry_after` (see `account_reset`).
             if util.is_some_and(|p| p >= 100.0)
                 && let Some(s) = account_reset(headers)
             {
@@ -121,8 +121,8 @@ impl Usage {
     }
 }
 
-/// Tipo de uma escrita: `Validate` (`execution_options=["validate_only"]`) segue a
-/// política de retry de leitura e nunca é "possivelmente aplicada".
+/// Kind of write: `Validate` (`execution_options=["validate_only"]`) follows the read
+/// retry policy and is never "possibly applied".
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WriteKind {
     Validate,
@@ -136,16 +136,16 @@ enum Kind {
     Write,
 }
 
-/// Onde continuar uma listagem: o cursor `after` da página (`None` = a primeira) e
-/// quantos itens daquela página já foram entregues.
+/// Where to resume a listing: the page's `after` cursor (`None` = the first page) and
+/// how many items of that page were already returned.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PageCursor {
     pub after: Option<String>,
     pub skip: usize,
 }
 
-/// Itens de uma listagem; `next` diz onde continuar, ou `None` se acabou.
-/// `starts[i]` é o cursor que começa em `data[i]` (para cortar a resposta no meio).
+/// Items of a listing; `next` says where to resume, or `None` when there are no more.
+/// `starts[i]` is the cursor that begins at `data[i]` (to cut the response in the middle).
 #[derive(Debug, Clone, PartialEq)]
 pub struct Page {
     pub data: Vec<Value>,
@@ -153,7 +153,7 @@ pub struct Page {
     pub next: Option<PageCursor>,
 }
 
-/// Cliente da Graph API de uma conexão.
+/// Graph API client for one connection.
 #[derive(Clone)]
 pub struct MetaClient {
     http: reqwest::Client,
@@ -165,15 +165,15 @@ pub struct MetaClient {
     timeout: Duration,
     usage: Arc<Mutex<Option<Usage>>>,
     limiter: Option<Arc<AccountLimiter>>,
-    /// Conta das chamadas deste cliente, para o rate limiter (ver [`MetaClient::for_account`]).
+    /// Account of this client's calls, for the rate limiter (see [`MetaClient::for_account`]).
     account: Option<String>,
-    /// Não passa pelo `acquire` do limiter (ver [`MetaClient::bypass_limiter`]).
+    /// Skips the limiter's `acquire` (see [`MetaClient::bypass_limiter`]).
     bypass: bool,
 }
 
 fn appsecret_proof(secret: &Secret, token: &Secret) -> String {
     let mut mac = Hmac::<Sha256>::new_from_slice(secret.expose().as_bytes())
-        .expect("HMAC aceita chave de qualquer tamanho");
+        .expect("HMAC accepts a key of any size");
     mac.update(token.expose().as_bytes());
     mac.finalize()
         .into_bytes()
@@ -182,7 +182,7 @@ fn appsecret_proof(secret: &Secret, token: &Secret) -> String {
         .collect()
 }
 
-/// Valores de formulário: strings como estão, o resto como JSON.
+/// Form values: strings as they are, everything else as JSON.
 fn form_value(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
@@ -208,14 +208,14 @@ impl MetaClient {
         }
     }
 
-    /// Usa `limiter` nas chamadas de clientes criados por [`for_account`](Self::for_account).
+    /// Uses `limiter` for calls from clients created by [`for_account`](Self::for_account).
     pub fn with_limiter(mut self, limiter: Arc<AccountLimiter>) -> MetaClient {
         self.limiter = Some(limiter);
         self
     }
 
-    /// Cópia deste cliente com outro token (ex.: o de uma Página), com o
-    /// `appsecret_proof` recalculado.
+    /// Copy of this client with another token (e.g. a Page's), with the
+    /// `appsecret_proof` recomputed.
     pub fn with_token(&self, token: Secret) -> MetaClient {
         let mut c = self.clone();
         c.proof = c.app_secret.as_ref().map(|s| appsecret_proof(s, &token));
@@ -224,15 +224,16 @@ impl MetaClient {
         c
     }
 
-    /// Cópia que não espera nem recusa pelo limiter local (só a Meta decide), mas ainda
-    /// registra o uso informado. Para o rollback: apagar o que ficou não pode esperar.
+    /// Copy that neither waits nor refuses because of the local limiter (only Meta
+    /// decides), but still records the reported usage. For rollback: deleting what was
+    /// left behind cannot wait.
     pub fn bypass_limiter(&self) -> MetaClient {
         let mut c = self.clone();
         c.bypass = true;
         c
     }
 
-    /// Cópia deste cliente cujas chamadas contam (e esperam) no rate limiter da conta.
+    /// Copy of this client whose calls count against (and wait on) the account's rate limiter.
     pub fn for_account(&self, account: &str) -> MetaClient {
         let mut c = self.clone();
         c.account = Some(account.to_string());
@@ -250,7 +251,7 @@ impl MetaClient {
         self
     }
 
-    /// Uso informado na resposta mais recente deste cliente.
+    /// Usage reported in this client's most recent response.
     pub fn last_usage(&self) -> Option<Usage> {
         *self.usage.lock().unwrap_or_else(|e| e.into_inner())
     }
@@ -262,7 +263,7 @@ impl MetaClient {
             path.trim_start_matches('/')
         );
         let mut url = url::Url::parse(&base)
-            .map_err(|e| MetaError::Transport(format!("URL inválida: {e}")))?;
+            .map_err(|e| MetaError::Transport(format!("invalid URL: {e}")))?;
         {
             let mut q = url.query_pairs_mut();
             for (k, v) in query {
@@ -283,7 +284,7 @@ impl MetaClient {
         self.send(Kind::Read, || self.http.get(url.clone())).await
     }
 
-    /// Segue `paging.cursors.after` enquanto houver `paging.next`, até `max_items`.
+    /// Follows `paging.cursors.after` while there is a `paging.next`, up to `max_items`.
     pub async fn get_all(
         &self,
         path: &str,
@@ -297,7 +298,7 @@ impl MetaClient {
         self.get_from(path, query, &start, max_items).await
     }
 
-    /// Como [`get_all`](Self::get_all), começando de `start`.
+    /// Like [`get_all`](Self::get_all), starting from `start`.
     pub async fn get_from(
         &self,
         path: &str,
@@ -354,7 +355,7 @@ impl MetaClient {
         }
     }
 
-    /// POST form-encoded (strings como estão, o resto como JSON).
+    /// Form-encoded POST (strings as they are, everything else as JSON).
     pub async fn post(
         &self,
         path: &str,
@@ -374,8 +375,8 @@ impl MetaClient {
             .await
     }
 
-    /// POST multipart (upload de vídeo). `make_form` monta o formulário de novo a cada
-    /// tentativa, porque um `Form` não pode ser reenviado.
+    /// Multipart POST (video upload). `make_form` rebuilds the form on every attempt,
+    /// because a `Form` cannot be resent.
     pub async fn post_multipart(
         &self,
         path: &str,
@@ -454,10 +455,10 @@ impl MetaClient {
             .send()
             .await
             .map_err(|e| match (kind, e.is_timeout(), e.is_connect()) {
-                // Sem conexão, o request nem saiu: dá para repetir.
+                // No connection: the request never left, so it is safe to repeat.
                 (_, _, true) => MetaError::Transport(net_text(e)),
                 (Kind::Write, true, _) => MetaError::MaybeApplied {
-                    cause: "tempo esgotado".into(),
+                    cause: "timed out".into(),
                 },
                 (Kind::Write, false, _) => MetaError::MaybeApplied { cause: net_text(e) },
                 (_, true, _) => MetaError::Timeout,
@@ -486,12 +487,12 @@ impl MetaClient {
             match serde_json::from_slice(&bytes) {
                 Ok(v) => v,
                 Err(_) if (200..300).contains(&status) => {
-                    return Err(MetaError::Decode("a resposta não é JSON".into()));
+                    return Err(MetaError::Decode("the response is not JSON".into()));
                 }
                 Err(_) => Value::Null,
             }
         };
-        // A Meta às vezes responde 200 com `error` no corpo (visto na criação de anúncio).
+        // Meta sometimes answers 200 with `error` in the body (seen when creating an ad).
         let error_in_body = body.get("error").is_some_and(Value::is_object);
         if (200..300).contains(&status) && !error_in_body {
             return Ok(body);

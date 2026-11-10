@@ -16,11 +16,11 @@ async fn limiter_waits_before_80_percent() {
     for _ in 0..8 {
         l.acquire("act_1", COST_WRITE).await.unwrap();
     }
-    // 48 pontos = 80% de 60: a próxima escrita espera os primeiros 24 decaírem (t0 + 300 s).
+    // 48 points = 80% of 60: the next write waits for the first 24 to decay (t0 + 300 s).
     assert_eq!(t0.elapsed(), Duration::from_secs(250));
     l.acquire("act_1", COST_WRITE).await.unwrap();
     assert_eq!(t0.elapsed(), Duration::from_secs(300));
-    // Outra conta não espera.
+    // Another account does not wait.
     let t1 = Instant::now();
     l.acquire("act_2", COST_WRITE).await.unwrap();
     assert_eq!(t1.elapsed(), Duration::ZERO);
@@ -32,14 +32,14 @@ async fn burst_over_limit_gives_up() {
     for _ in 0..16 {
         l.acquire("act_1", COST_WRITE).await.unwrap();
     }
-    // Tudo no mesmo instante: só decai em 300 s, mais que os 60 s que o limiter espera.
+    // All at the same instant: it only decays after 300 s, more than the 60 s the limiter waits.
     let err = l.acquire("act_1", COST_WRITE).await.unwrap_err();
     match err {
         MetaError::RateLimited { account, wait } => {
             assert_eq!(account, "act_1");
             assert_eq!(wait, Duration::from_secs(300));
         }
-        other => panic!("esperava RateLimited: {other:?}"),
+        other => panic!("expected RateLimited: {other:?}"),
     }
 }
 
@@ -75,7 +75,7 @@ async fn short_block_is_waited() {
     let t0 = Instant::now();
     l.acquire("act_1", COST_READ).await.unwrap();
     assert_eq!(t0.elapsed(), Duration::from_secs(30));
-    // Sem regain, 90% bloqueia por 60 s.
+    // Without regain, 90% blocks for 60 s.
     l.observe(
         "act_1",
         &Usage {

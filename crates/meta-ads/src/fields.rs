@@ -1,5 +1,5 @@
-//! Campos editáveis de campanhas, ad sets e anúncios, e a conversão entre o formato
-//! da Meta e o das ferramentas (o mesmo em leitura, "antes" e "depois").
+//! Editable fields of campaigns, ad sets and ads, and the conversion between Meta's
+//! format and the tools' format (the same for reads, "before" and "after").
 
 use adsconsole_core::money::{from_minor_units, to_minor_units};
 use rust_decimal::Decimal;
@@ -17,12 +17,12 @@ pub enum ObjectKind {
 pub enum FieldKind {
     Text,
     Status,
-    /// Dinheiro em unidades mínimas (string de inteiro na Meta).
+    /// Money in minor units (an integer string in Meta).
     Minor,
     Enum,
     Json,
     DateTime,
-    /// Id do criativo de um anúncio (`creative{id}` na leitura, `{"creative_id"}` na escrita).
+    /// Creative id of an ad (`creative{id}` on read, `{"creative_id"}` on write).
     CreativeId,
 }
 
@@ -31,7 +31,7 @@ pub struct EditableField {
     pub name: &'static str,
     pub kinds: &'static [ObjectKind],
     pub value: FieldKind,
-    /// O que pedir em `?fields=` para ler o campo.
+    /// What to request in `?fields=` to read the field.
     pub read: &'static str,
 }
 
@@ -99,7 +99,7 @@ fn decimal_of(v: &Value) -> Option<Decimal> {
     }
 }
 
-/// Valor do campo num objeto lido da Meta, no formato das ferramentas. Ausente vira `null`.
+/// Value of the field in an object read from Meta, in the tools' format. Missing becomes `null`.
 pub fn normalize(field: &EditableField, object: &Value, exponent: u32) -> Value {
     match field.value {
         FieldKind::CreativeId => object["creative"]["id"].clone(),
@@ -124,18 +124,18 @@ pub fn normalize(field: &EditableField, object: &Value, exponent: u32) -> Value 
     }
 }
 
-/// O inverso de [`normalize`]: o valor como a Meta espera no POST.
+/// The inverse of [`normalize`]: the value as Meta expects it in the POST.
 pub fn to_param(field: &EditableField, value: &Value, exponent: u32) -> Result<Value, String> {
     match field.value {
         FieldKind::CreativeId => match value.as_str() {
             Some(id) => Ok(json!({ "creative_id": id })),
-            None => Err(format!("{}: informe o id do criativo", field.name)),
+            None => Err(format!("{}: provide the creative id", field.name)),
         },
         FieldKind::Minor if value.is_null() => Ok(Value::Null),
         FieldKind::Minor => {
             let amount = decimal_of(value)
                 .filter(|_| value.is_number())
-                .ok_or_else(|| format!("{}: informe um número", field.name))?;
+                .ok_or_else(|| format!("{}: provide a number", field.name))?;
             to_minor_units(amount, exponent)
                 .map(|u| Value::String(u.to_string()))
                 .map_err(|e| format!("{}: {e}", field.name))

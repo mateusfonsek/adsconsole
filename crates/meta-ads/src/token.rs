@@ -10,7 +10,7 @@ use crate::error::{MetaError, net_text};
 
 const HTTP_TIMEOUT: Duration = Duration::from_secs(60);
 
-/// Permissões que toda conexão precisa ter.
+/// Permissions every connection must have.
 pub const REQUIRED_SCOPES: [&str; 6] = [
     "ads_read",
     "ads_management",
@@ -39,12 +39,12 @@ impl TokenKind {
     }
 }
 
-/// O que o `debug_token` diz de um token.
+/// What `debug_token` says about a token.
 #[derive(Debug, Clone, PartialEq)]
 pub struct TokenInfo {
     pub kind: TokenKind,
     pub is_valid: bool,
-    /// `None`: não expira.
+    /// `None`: does not expire.
     pub expires_at: Option<DateTime<Utc>>,
     pub data_access_expires_at: Option<DateTime<Utc>>,
     pub scopes: Vec<String>,
@@ -58,17 +58,17 @@ pub(crate) fn http_client() -> Result<reqwest::Client, MetaError> {
         .map_err(|e| MetaError::Transport(net_text(e)))
 }
 
-/// Erro de uma resposta do Graph fora do cliente principal (login e debug_token).
+/// Error from a Graph response outside the main client (login and debug_token).
 fn graph_error(body: &Value) -> MetaError {
     let err = &body["error"];
     if err["code"].as_i64() == Some(190) {
         return MetaError::ReauthRequired;
     }
-    let msg = err["message"].as_str().unwrap_or("erro desconhecido");
+    let msg = err["message"].as_str().unwrap_or("unknown error");
     MetaError::Auth(msg.to_string())
 }
 
-/// Envia e lê a resposta JSON. O erro de rede vem sem a URL (ver [`net_text`]).
+/// Sends and reads the JSON response. Network errors come without the URL (see [`net_text`]).
 async fn send_json(req: reqwest::RequestBuilder) -> Result<Value, MetaError> {
     let resp = req.send().await.map_err(|e| {
         if e.is_timeout() {
@@ -81,7 +81,7 @@ async fn send_json(req: reqwest::RequestBuilder) -> Result<Value, MetaError> {
     let body: Value = resp
         .json()
         .await
-        .map_err(|_| MetaError::Decode("a resposta não é JSON".into()))?;
+        .map_err(|_| MetaError::Decode("the response is not JSON".into()))?;
     if ok {
         Ok(body)
     } else {
@@ -89,8 +89,8 @@ async fn send_json(req: reqwest::RequestBuilder) -> Result<Value, MetaError> {
     }
 }
 
-/// `POST /oauth/access_token` com os parâmetros no corpo (o app secret e os códigos
-/// não vão na URL); devolve o `access_token`.
+/// `POST /oauth/access_token` with the parameters in the body (the app secret and the
+/// codes stay out of the URL); returns the `access_token`.
 pub(crate) async fn exchange(
     client: &reqwest::Client,
     endpoints: &MetaEndpoints,
@@ -102,7 +102,7 @@ pub(crate) async fn exchange(
         .as_str()
         .filter(|t| !t.is_empty())
         .map(Secret::new)
-        .ok_or_else(|| MetaError::Decode("a troca de token não devolveu access_token".into()))
+        .ok_or_else(|| MetaError::Decode("the token exchange did not return access_token".into()))
 }
 
 #[derive(Deserialize)]
@@ -126,9 +126,9 @@ fn timestamp(secs: i64) -> Option<DateTime<Utc>> {
         .flatten()
 }
 
-/// `GET /debug_token`. Com app, autentica com o token de app (`app_id|app_secret`);
-/// sem, com o próprio token. A autenticação vai no header; só `input_token` fica na
-/// URL (a Meta não aceita em outro lugar).
+/// `GET /debug_token`. With an app, authenticates with the app token (`app_id|app_secret`);
+/// without one, with the token itself. Authentication goes in the header; only
+/// `input_token` stays in the URL (Meta does not accept it elsewhere).
 pub async fn debug_token(
     endpoints: &MetaEndpoints,
     token: &Secret,
@@ -140,7 +140,7 @@ pub async fn debug_token(
     };
     let url = format!("{}/debug_token", endpoints.graph_base);
     let url = url::Url::parse_with_params(&url, &[("input_token", token.expose())])
-        .map_err(|e| MetaError::Transport(format!("URL inválida: {e}")))?;
+        .map_err(|e| MetaError::Transport(format!("invalid URL: {e}")))?;
     let req = http_client()?.get(url).bearer_auth(auth);
     let body = send_json(req).await?;
     let data: DebugData = serde_json::from_value(body["data"].clone())
@@ -155,7 +155,7 @@ pub async fn debug_token(
     })
 }
 
-/// Permissões de [`REQUIRED_SCOPES`] que o token não tem, na ordem da lista.
+/// Permissions from [`REQUIRED_SCOPES`] that the token lacks, in list order.
 pub fn missing_scopes(info: &TokenInfo) -> Vec<&'static str> {
     REQUIRED_SCOPES
         .into_iter()

@@ -38,7 +38,7 @@ fn image_url_rules() {
         "https://192.168.0.5/a.png",
         "https://[::1]/a.png",
         "ftp://x/a.png",
-        "nada",
+        "nothing",
     ] {
         assert!(check_image_url(bad).is_err(), "{bad}");
     }
@@ -82,7 +82,7 @@ async fn video_phases_in_order() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"success": true})))
         .mount(&server)
         .await;
-    let id = upload_video(&client(&server), "act_1", &file, "Meu vídeo")
+    let id = upload_video(&client(&server), "act_1", &file, "My video")
         .await
         .unwrap();
     assert_eq!(id, "V1");
@@ -91,7 +91,7 @@ async fn video_phases_in_order() {
     assert!(has(&reqs[0], "file_size=8"));
     assert!(has(&reqs[1], "ABCD") && has(&reqs[1], "S1"));
     assert!(has(&reqs[2], "EFGH"));
-    assert!(has(&reqs[3], "finish") && has(&reqs[3], "Meu"));
+    assert!(has(&reqs[3], "finish") && has(&reqs[3], "My"));
 }
 
 #[tokio::test]

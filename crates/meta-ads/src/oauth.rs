@@ -13,18 +13,19 @@ use crate::token::{exchange, http_client};
 
 const CONNECTION_READ_TIMEOUT: Duration = Duration::from_secs(5);
 const MAX_REQUEST_BYTES: u64 = 8192;
-const SUCCESS_PAGE: &str = "Conexão concluída. Pode fechar esta aba.";
-const FAILURE_PAGE: &str = "A conexão não foi concluída. Volte ao AdsConsole.";
+const SUCCESS_PAGE: &str = "Connection complete. You can close this tab.";
+const FAILURE_PAGE: &str = "The connection was not completed. Go back to AdsConsole.";
 
-/// Credenciais do app BYO e a configuração do Login do Facebook para Empresas.
+/// Credentials of the BYO app and the Facebook Login for Business configuration.
 #[derive(Clone)]
 pub struct AppCreds {
     pub app_id: String,
     pub app_secret: Secret,
     pub config_id: String,
-    /// Página https que recebe o retorno do login e o repassa à porta local (que vai no
-    /// `state` como `<porta>.<aleatório>`). Necessária com o app publicado: a Meta só
-    /// aceita `localhost` no modo de desenvolvimento. `None`: retorno direto ao localhost.
+    /// https page that receives the login redirect and forwards it to the local port
+    /// (carried in `state` as `<port>.<random>`). Required once the app is published:
+    /// Meta only accepts `localhost` in development mode. `None`: redirect straight to
+    /// localhost.
     pub relay_url: Option<String>,
 }
 
@@ -48,7 +49,7 @@ async fn respond(mut stream: TcpStream, status: &str, text: &str) {
     let _ = stream.shutdown().await;
 }
 
-/// Lê a primeira linha do request; devolve os parâmetros se for `GET /callback`.
+/// Reads the first line of the request; returns the parameters if it is `GET /callback`.
 async fn read_callback(stream: &mut TcpStream) -> Option<HashMap<String, String>> {
     let mut line = String::new();
     let mut reader = BufReader::new((&mut *stream).take(MAX_REQUEST_BYTES));
@@ -74,16 +75,17 @@ async fn wait_for_callback(
             Some(params) if params.get("state").map(String::as_str) == Some(state) => {
                 return Ok((stream, params));
             }
-            // State errado: outra página local não pode cancelar o login; segue esperando.
-            Some(_) => respond(stream, "400 Bad Request", "Requisição inválida.").await,
-            // Favicon e outros caminhos: segue esperando.
-            None => respond(stream, "404 Not Found", "Não encontrado.").await,
+            // Wrong state: another local page must not cancel the login; keep waiting.
+            Some(_) => respond(stream, "400 Bad Request", "Invalid request.").await,
+            // Favicon and other paths: keep waiting.
+            None => respond(stream, "404 Not Found", "Not found.").await,
         }
     }
 }
 
-/// Login no navegador do sistema com loopback em `localhost` (`port = 0` escolhe uma
-/// porta livre), direto ou pela página de retorno de `relay_url`. Troca o `code` pelo token curto e este pelo de longa duração (~60 dias).
+/// Logs in through the system browser with a loopback on `localhost` (`port = 0` picks a
+/// free port), directly or through the redirect page at `relay_url`. Exchanges the `code`
+/// for the short-lived token and that one for the long-lived token (~60 days).
 pub async fn login(
     endpoints: &MetaEndpoints,
     app: &AppCreds,
@@ -93,7 +95,7 @@ pub async fn login(
 ) -> Result<Secret, MetaError> {
     let listener = TcpListener::bind(("127.0.0.1", port))
         .await
-        .map_err(|e| MetaError::Transport(format!("não foi possível abrir a porta local: {e}")))?;
+        .map_err(|e| MetaError::Transport(format!("could not open the local port: {e}")))?;
     let port = listener
         .local_addr()
         .map_err(|e| MetaError::Transport(e.to_string()))?
@@ -103,7 +105,7 @@ pub async fn login(
             let ok = url::Url::parse(relay).is_ok_and(|u| u.scheme() == "https");
             if !ok {
                 return Err(MetaError::Auth(format!(
-                    "a página de retorno precisa ser https: {relay}"
+                    "the redirect page must be https: {relay}"
                 )));
             }
             (relay.clone(), format!("{port}.{}", random_string(32)))
@@ -123,9 +125,9 @@ pub async fn login(
             ("state", state.as_str()),
         ],
     )
-    .map_err(|e| MetaError::Auth(format!("URL de login inválida: {e}")))?;
+    .map_err(|e| MetaError::Auth(format!("invalid login URL: {e}")))?;
     open(dialog.as_str())
-        .map_err(|e| MetaError::Auth(format!("não foi possível abrir o navegador: {e}")))?;
+        .map_err(|e| MetaError::Auth(format!("could not open the browser: {e}")))?;
 
     let (stream, params) = tokio::time::timeout(wait, wait_for_callback(&listener, &state))
         .await
@@ -134,11 +136,11 @@ pub async fn login(
     if let Some(error) = params.get("error") {
         respond(stream, "200 OK", FAILURE_PAGE).await;
         let reason = params.get("error_reason").unwrap_or(error);
-        return Err(MetaError::Auth(format!("acesso negado: {reason}")));
+        return Err(MetaError::Auth(format!("access denied: {reason}")));
     }
     let Some(code) = params.get("code") else {
         respond(stream, "400 Bad Request", FAILURE_PAGE).await;
-        return Err(MetaError::Auth("callback sem code".into()));
+        return Err(MetaError::Auth("callback without code".into()));
     };
 
     let result = async {
@@ -155,9 +157,7 @@ pub async fn login(
         )
         .await
         .map_err(|e| match e {
-            MetaError::ReauthRequired => {
-                MetaError::Auth("código de login inválido ou expirado".into())
-            }
+            MetaError::ReauthRequired => MetaError::Auth("login code invalid or expired".into()),
             other => other,
         })?;
         exchange(

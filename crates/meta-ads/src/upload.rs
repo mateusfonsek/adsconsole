@@ -1,4 +1,4 @@
-//! Mídia: imagens (arquivo ou URL) e vídeo em fases (start, transfer, finish).
+//! Media: images (file or URL) and video in phases (start, transfer, finish).
 
 use std::io::{Read, Seek, SeekFrom};
 use std::net::IpAddr;
@@ -13,9 +13,9 @@ use serde_json::{Map, Value, json};
 use crate::client::{MetaClient, WriteKind};
 use crate::error::{MetaError, net_text};
 
-/// Teto de uma imagem.
+/// Size cap for an image.
 pub const MAX_IMAGE_BYTES: u64 = 30 * 1024 * 1024;
-/// Teto de um vídeo.
+/// Size cap for a video.
 pub const MAX_VIDEO_BYTES: u64 = 4 * 1024 * 1024 * 1024;
 const URL_TIMEOUT: Duration = Duration::from_secs(30);
 const CHUNK_TIMEOUT: Duration = Duration::from_secs(300);
@@ -44,11 +44,11 @@ fn private_ip(ip: IpAddr) -> bool {
     }
 }
 
-/// Só `https`, sem localhost nem IP privado.
+/// `https` only, no localhost and no private IP.
 pub fn check_image_url(raw: &str) -> Result<url::Url, String> {
-    let url = url::Url::parse(raw).map_err(|_| "URL inválida.".to_string())?;
+    let url = url::Url::parse(raw).map_err(|_| "Invalid URL.".to_string())?;
     if url.scheme() != "https" {
-        return Err("Use uma URL https.".into());
+        return Err("Use an https URL.".into());
     }
     let local = match url.host() {
         Some(url::Host::Domain(d)) => {
@@ -60,19 +60,19 @@ pub fn check_image_url(raw: &str) -> Result<url::Url, String> {
         None => true,
     };
     if local {
-        return Err("Endereços locais ou de rede privada não são aceitos.".into());
+        return Err("Local and private network addresses are not accepted.".into());
     }
     Ok(url)
 }
 
-/// Lê a imagem (até 30 MB).
+/// Reads the image (up to 30 MB).
 pub async fn load_image(source: &ImageSource) -> Result<Vec<u8>, MetaError> {
     match source {
         ImageSource::File(p) => {
             let meta = std::fs::metadata(p)
                 .map_err(|e| MetaError::File(format!("{}: {e}", p.display())))?;
             if meta.len() > MAX_IMAGE_BYTES {
-                return Err(MetaError::File(format!("{} passa de 30 MB", p.display())));
+                return Err(MetaError::File(format!("{} exceeds 30 MB", p.display())));
             }
             std::fs::read(p).map_err(|e| MetaError::File(format!("{}: {e}", p.display())))
         }
@@ -84,32 +84,32 @@ pub async fn load_image(source: &ImageSource) -> Result<Vec<u8>, MetaError> {
                 .build()
                 .map_err(|e| MetaError::Transport(net_text(e)))?;
             let resp = client.get(url).send().await.map_err(|e| {
-                MetaError::Transport(format!("não deu para baixar a imagem: {}", net_text(e)))
+                MetaError::Transport(format!("could not download the image: {}", net_text(e)))
             })?;
             if !resp.status().is_success() {
                 return Err(MetaError::File(format!(
-                    "a URL respondeu {}",
+                    "the URL responded {}",
                     resp.status()
                 )));
             }
             if resp.content_length().is_some_and(|n| n > MAX_IMAGE_BYTES) {
-                return Err(MetaError::File("a imagem passa de 30 MB".into()));
+                return Err(MetaError::File("the image exceeds 30 MB".into()));
             }
             let bytes = resp
                 .bytes()
                 .await
                 .map_err(|e| MetaError::Transport(net_text(e)))?;
             if bytes.len() as u64 > MAX_IMAGE_BYTES {
-                return Err(MetaError::File("a imagem passa de 30 MB".into()));
+                return Err(MetaError::File("the image exceeds 30 MB".into()));
             }
             Ok(bytes.to_vec())
         }
     }
 }
 
-/// Quando a imagem `hash` foi criada na biblioteca da conta, ou `None` se ela não está
-/// lá (`GET {act}/adimages?hashes=[...]`). O hash é o que a Meta devolve no envio: ele
-/// não é o MD5 dos bytes, então não dá para calculá-lo antes.
+/// When the image `hash` was created in the account's library, or `None` if it is not
+/// there (`GET {act}/adimages?hashes=[...]`). The hash is what Meta returns on upload:
+/// it is not the MD5 of the bytes, so it cannot be computed beforehand.
 pub async fn image_created_time(
     client: &MetaClient,
     account: &str,
@@ -132,7 +132,7 @@ pub async fn image_created_time(
         .map(|t| t.with_timezone(&Utc)))
 }
 
-/// `POST {act}/adimages` com os bytes em base64; devolve `{image_hash, url, name}`.
+/// `POST {act}/adimages` with the bytes in base64; returns `{image_hash, url, name}`.
 pub async fn upload_image(
     client: &MetaClient,
     account: &str,
@@ -176,8 +176,8 @@ fn read_range(path: &Path, start: u64, end: u64) -> Result<Vec<u8>, MetaError> {
     Ok(buf)
 }
 
-/// Envia o vídeo em fases (`start`, `transfer` nos offsets que a Meta pede, `finish`).
-/// Devolve o `video_id`.
+/// Uploads the video in phases (`start`, `transfer` at the offsets Meta asks for,
+/// `finish`). Returns the `video_id`.
 pub async fn upload_video(
     client: &MetaClient,
     account: &str,
@@ -194,12 +194,12 @@ pub async fn upload_video(
     let started = client.post(&path, &start, WriteKind::Write).await?;
     let session = started["upload_session_id"]
         .as_str()
-        .ok_or_else(|| MetaError::Decode("advideos start sem upload_session_id".into()))?
+        .ok_or_else(|| MetaError::Decode("advideos start without upload_session_id".into()))?
         .to_string();
     let video_id = match &started["video_id"] {
         Value::String(s) => s.clone(),
         Value::Number(n) => n.to_string(),
-        _ => return Err(MetaError::Decode("advideos start sem video_id".into())),
+        _ => return Err(MetaError::Decode("advideos start without video_id".into())),
     };
     let chunk_client = client.clone().with_timeout(CHUNK_TIMEOUT);
     let (mut from, mut to) = (
@@ -250,7 +250,7 @@ pub async fn video_status(client: &MetaClient, video_id: &str) -> Result<VideoSt
         "error" => VideoState::Error(
             st["processing_phase"]["errors"][0]["message"]
                 .as_str()
-                .unwrap_or("a Meta não conseguiu processar o vídeo")
+                .unwrap_or("Meta could not process the video")
                 .to_string(),
         ),
         _ => VideoState::Processing {

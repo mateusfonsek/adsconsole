@@ -98,13 +98,13 @@ async fn parses_graph_error() {
         ..
     } = err
     else {
-        panic!("esperava Api: {err:?}")
+        panic!("expected Api: {err:?}")
     };
     assert_eq!(http_status, 400);
     assert_eq!(code, 100);
     assert_eq!(subcode, Some(1487390));
-    assert_eq!(user_title.as_deref(), Some("Público inválido"));
-    assert!(user_msg.unwrap().contains("local"));
+    assert_eq!(user_title.as_deref(), Some("Invalid audience"));
+    assert!(user_msg.unwrap().contains("location"));
     assert_eq!(blame_fields, ["targeting.geo_locations"]);
     assert_eq!(fbtrace_id.as_deref(), Some("AbCdEf123"));
     assert!(!maybe_applied);
@@ -112,12 +112,12 @@ async fn parses_graph_error() {
 
 #[tokio::test]
 async fn error_in_200_body_is_api_error() {
-    // Visto na conta real: o POST do anúncio voltou 200 com `error` no corpo.
+    // Seen on a real account: the ad POST came back 200 with `error` in the body.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"error": {
-            "message": "Bloqueado", "code": 31, "error_subcode": 3858385,
-            "error_user_msg": "Acreditamos que alguém pode ter acessado sua conta."
+            "message": "Blocked", "code": 31, "error_subcode": 3858385,
+            "error_user_msg": "We believe someone may have accessed your account."
         }})))
         .mount(&server)
         .await;
@@ -133,11 +133,11 @@ async fn error_in_200_body_is_api_error() {
         ..
     } = err
     else {
-        panic!("esperava Api: {err:?}")
+        panic!("expected Api: {err:?}")
     };
     assert_eq!(code, 31);
     assert_eq!(subcode, Some(3858385));
-    assert!(user_msg.unwrap().contains("Acreditamos"));
+    assert!(user_msg.unwrap().contains("We believe"));
     assert!(!maybe_applied);
 }
 
@@ -382,7 +382,7 @@ async fn get_all_follows_cursors() {
     let c = client(&server, None);
     let all = c.get_all("act_1/campaigns", &[], 100).await.unwrap();
     assert_eq!(all.data.len(), 5);
-    assert_eq!(all.next, None, "a 2ª página não tem paging.next");
+    assert_eq!(all.next, None, "the 2nd page has no paging.next");
     let four = c.get_all("act_1/campaigns", &[], 4).await.unwrap();
     assert_eq!(four.data.len(), 4);
     let next = four.next.unwrap();
@@ -479,7 +479,7 @@ async fn rate_limit_error_carries_retry_after() {
         .unwrap_err();
     assert!(err.is_rate_limit());
     assert_eq!(err.retry_after(), Some(Duration::from_secs(300)));
-    // Espera maior que 60 s: não insiste.
+    // Wait longer than 60 s: it does not insist.
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
 }
 

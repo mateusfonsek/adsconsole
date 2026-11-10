@@ -1,9 +1,9 @@
-/// URLs da Meta. Configuráveis para os testes apontarem para o `wiremock`.
+/// Meta URLs. Configurable so tests can point them at `wiremock`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetaEndpoints {
-    /// Base da Graph API, com a versão (`https://graph.facebook.com/v26.0`).
+    /// Graph API base, with the version (`https://graph.facebook.com/v26.0`).
     pub graph_base: String,
-    /// Diálogo de login (`https://www.facebook.com/v26.0/dialog/oauth`).
+    /// Login dialog (`https://www.facebook.com/v26.0/dialog/oauth`).
     pub dialog_url: String,
 }
 

@@ -3,34 +3,34 @@ use std::time::Duration;
 use serde_json::Value;
 use thiserror::Error;
 
-/// Códigos de limite de chamadas: a Meta recusa sem aplicar.
+/// Rate limit codes: Meta refuses without applying.
 const RATE_LIMIT_CODES: [i64; 4] = [4, 17, 32, 613];
 const RATE_LIMIT_SUBCODES: [i64; 4] = [1487742, 5044001, 1487632, 1487225];
 
-/// Erros da biblioteca da Meta.
+/// Errors of the Meta library.
 #[derive(Debug, Clone, PartialEq, Error)]
 pub enum MetaError {
-    #[error("falha de autenticação: {0}")]
+    #[error("Meta authentication failed: {0}")]
     Auth(String),
-    /// Token inválido, vencido ou revogado: é preciso logar de novo.
-    #[error("o token da Meta não vale mais; é preciso reconectar")]
+    /// Token invalid, expired or revoked: the user must log in again.
+    #[error("The Meta token expired or was revoked. Reconnect the account.")]
     ReauthRequired,
-    #[error("falha de rede: {0}")]
+    #[error("Failed to communicate with Meta: {0}")]
     Transport(String),
-    #[error("tempo esgotado")]
+    #[error("Meta took too long to respond.")]
     Timeout,
-    #[error("resposta inesperada da Meta: {0}")]
+    #[error("Unexpected response from Meta: {0}")]
     Decode(String),
-    /// Arquivo ou URL de mídia inválido.
-    #[error("arquivo: {0}")]
+    /// Invalid media file or URL.
+    #[error("File: {0}")]
     File(String),
-    /// Uma escrita sem resposta (timeout ou queda de rede): pode ter sido aplicada.
-    #[error("a Meta não confirmou a escrita: {cause}")]
+    /// A write with no response (timeout or network drop): it may have been applied.
+    #[error("Meta did not confirm the write: {cause}")]
     MaybeApplied { cause: String },
-    /// O rate limiter local recusou: esperar `wait` antes de chamar de novo esta conta.
-    #[error("limite de chamadas da conta {account}; tente de novo em {} s", wait.as_secs())]
+    /// The local rate limiter refused: wait `wait` before calling this account again.
+    #[error("Rate limit for account {account}; try again in {} s", wait.as_secs())]
     RateLimited { account: String, wait: Duration },
-    #[error("erro da Meta {code}: {message}")]
+    #[error("Meta error {code}: {message}")]
     Api {
         http_status: u16,
         code: i64,
@@ -40,17 +40,17 @@ pub enum MetaError {
         user_msg: Option<String>,
         is_transient: bool,
         fbtrace_id: Option<String>,
-        /// `error_data.blame_field_specs`, com os caminhos juntados por `.`.
+        /// `error_data.blame_field_specs`, with the paths joined by `.`.
         blame_fields: Vec<String>,
-        /// Escrita que recebeu 5xx: pode ter sido aplicada.
+        /// A write that got a 5xx: it may have been applied.
         maybe_applied: bool,
-        /// `estimated_time_to_regain_access` (ou `reset_time_duration`) da resposta.
+        /// `estimated_time_to_regain_access` (or `reset_time_duration`) from the response.
         retry_after: Option<Duration>,
     },
 }
 
-/// Texto de um erro do reqwest sem a URL: ela leva `appsecret_proof` e, no login e no
-/// `debug_token`, tokens e o app secret.
+/// Text of a reqwest error without the URL: it carries `appsecret_proof` and, in login
+/// and `debug_token`, tokens and the app secret.
 pub(crate) fn net_text(e: reqwest::Error) -> String {
     let e = e.without_url();
     let mut out = e.to_string();
@@ -64,7 +64,7 @@ pub(crate) fn net_text(e: reqwest::Error) -> String {
 }
 
 impl MetaError {
-    /// Lê `{"error": {...}}` de uma resposta do Graph.
+    /// Reads `{"error": {...}}` from a Graph response.
     pub(crate) fn from_body(http_status: u16, body: &Value) -> MetaError {
         let e = &body["error"];
         let code = e["code"].as_i64().unwrap_or(0);
@@ -107,7 +107,7 @@ impl MetaError {
         }
     }
 
-    /// Limite de chamadas (códigos 4, 17, 32, 613, 80000–80014 e os subcódigos de limite).
+    /// Rate limit (codes 4, 17, 32, 613, 80000–80014 and the rate limit subcodes).
     pub fn is_rate_limit(&self) -> bool {
         match self {
             MetaError::Api { code, subcode, .. } => {
@@ -119,7 +119,7 @@ impl MetaError {
         }
     }
 
-    /// Quanto esperar antes de tentar de novo, quando a Meta informa.
+    /// How long to wait before retrying, when Meta provides it.
     pub fn retry_after(&self) -> Option<Duration> {
         match self {
             MetaError::Api { retry_after, .. } => *retry_after,

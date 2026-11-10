@@ -21,7 +21,7 @@ fn endpoints(server: &MockServer) -> MetaEndpoints {
 fn app() -> AppCreds {
     AppCreds {
         app_id: "123".into(),
-        app_secret: Secret::new("segredo"),
+        app_secret: Secret::new("secret"),
         config_id: "cfg9".into(),
         relay_url: None,
     }
@@ -35,8 +35,8 @@ fn query(url: &str) -> HashMap<String, String> {
         .collect()
 }
 
-/// Navegador de mentira: recebe a URL do diálogo e faz os GETs pedidos no callback.
-/// Cada item de `visits` é o caminho+query a pedir; `{state}` vira o state da URL.
+/// Fake browser: receives the dialog URL and makes the requested GETs to the callback.
+/// Each item of `visits` is the path+query to request; `{state}` becomes the URL's state.
 fn browser(
     visits: Vec<&'static str>,
     seen: Arc<Mutex<Vec<(String, u16)>>>,
@@ -72,7 +72,7 @@ fn form(r: &Request) -> HashMap<String, String> {
     url::form_urlencoded::parse(&r.body).into_owned().collect()
 }
 
-/// O corpo (form) do request tem `key=value`.
+/// The request's (form) body has `key=value`.
 fn body_has(key: &'static str, value: &'static str) -> impl wiremock::Match {
     move |r: &Request| form(r).get(key).is_some_and(|v| v == value)
 }
@@ -83,7 +83,7 @@ async fn mock_exchanges(server: &MockServer) {
         .and(query_param_is_missing("client_secret"))
         .and(body_has("grant_type", "fb_exchange_token"))
         .and(body_has("fb_exchange_token", "s"))
-        .and(body_has("client_secret", "segredo"))
+        .and(body_has("client_secret", "secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(
             json!({"access_token": "L", "token_type": "bearer", "expires_in": 5183944}),
         ))
@@ -139,7 +139,7 @@ async fn login_happy_path() {
     assert!(q["state"].len() >= 16);
     assert!(!q.contains_key("client_secret"));
     assert_eq!(seen[1], ("/favicon.ico".to_string(), 404));
-    // A 2ª troca usa o redirect_uri da 1ª.
+    // The 2nd exchange uses the redirect_uri of the 1st.
     let requests = server.received_requests().await.unwrap();
     let first = requests
         .iter()
@@ -156,7 +156,7 @@ async fn login_rejects_wrong_state_then_accepts() {
     let seen = Arc::new(Mutex::new(Vec::new()));
     let open = browser(
         vec![
-            "/callback?code=abc&state=outro",
+            "/callback?code=abc&state=other",
             "/callback?code=abc&state={state}",
         ],
         seen.clone(),
@@ -191,7 +191,7 @@ async fn login_denied_and_timeout() {
     )
     .await
     .unwrap_err();
-    assert_eq!(err, MetaError::Auth("acesso negado: user_denied".into()));
+    assert_eq!(err, MetaError::Auth("access denied: user_denied".into()));
 
     let idle = |_: &str| Ok(());
     let err = login(
@@ -208,8 +208,8 @@ async fn login_denied_and_timeout() {
 
 #[tokio::test]
 async fn login_through_relay() {
-    // App publicado: a Meta não aceita localhost, então ela devolve o login a uma página
-    // https que repassa o code à porta local que veio no state.
+    // Published app: Meta does not accept localhost, so it returns the login to an https
+    // page that forwards the code to the local port carried in the state.
     let server = MockServer::start().await;
     Mock::given(method("POST"))
         .and(path("/oauth/access_token"))
@@ -235,7 +235,7 @@ async fn login_through_relay() {
     let open = move |url: &str| {
         let q = query(url);
         *s2.lock().unwrap() = Some(q.clone());
-        // A página de retorno: lê a porta do state e repassa code e state.
+        // The redirect page: reads the port from the state and forwards code and state.
         let state = q["state"].clone();
         let port: u16 = state.split('.').next().unwrap().parse().unwrap();
         tokio::spawn(async move {
@@ -318,7 +318,7 @@ async fn debug_token_parses() {
         .and(path("/debug_token"))
         .and(query_param("input_token", "SYS"))
         .and(query_param_is_missing("access_token"))
-        .and(header("authorization", "Bearer 123|segredo"))
+        .and(header("authorization", "Bearer 123|secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
             "app_id": "123", "type": "SYSTEM_USER", "is_valid": true, "expires_at": 0,
             "data_access_expires_at": 0, "scopes": all_scopes(), "user_id": "77"
@@ -337,7 +337,7 @@ async fn debug_token_parses() {
         .mount(&server)
         .await;
     let ep = endpoints(&server);
-    let secret = Secret::new("segredo");
+    let secret = Secret::new("secret");
 
     let sys = debug_token(&ep, &Secret::new("SYS"), Some(("123", &secret)))
         .await
@@ -381,7 +381,7 @@ async fn debug_token_graph_error() {
     assert_eq!(err, MetaError::ReauthRequired);
 }
 
-/// Servidor que aceita a conexão, lê o request e fecha sem responder.
+/// Server that accepts the connection, reads the request and closes without responding.
 async fn dropping_server() -> MetaEndpoints {
     use tokio::io::AsyncReadExt;
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -405,13 +405,13 @@ async fn dropping_server() -> MetaEndpoints {
 #[tokio::test]
 async fn network_errors_hide_secrets() {
     let ep = dropping_server().await;
-    let secret = Secret::new("segredo");
+    let secret = Secret::new("secret");
     let err = debug_token(&ep, &Secret::new("EAAUSR"), Some(("123", &secret)))
         .await
         .unwrap_err();
     let text = format!("{err} {err:?}");
     assert!(!text.contains("EAAUSR"), "{text}");
-    assert!(!text.contains("segredo"), "{text}");
+    assert!(!text.contains("secret"), "{text}");
     let err = debug_token(&ep, &Secret::new("EAAUSR"), None)
         .await
         .unwrap_err();
@@ -424,6 +424,6 @@ async fn network_errors_hide_secrets() {
         .await
         .unwrap_err();
     let text = format!("{err} {err:?}");
-    assert!(!text.contains("segredo"), "{text}");
+    assert!(!text.contains("secret"), "{text}");
     assert!(!text.contains("abc"), "{text}");
 }

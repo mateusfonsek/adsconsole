@@ -5,8 +5,8 @@
     "code": 100,
     "error_subcode": 1487390,
     "is_transient": false,
-    "error_user_title": "Público inválido",
-    "error_user_msg": "Escolha ao menos um local para o público.",
+    "error_user_title": "Invalid audience",
+    "error_user_msg": "Choose at least one location for the audience.",
     "error_data": {"blame_field_specs": [["targeting", "geo_locations"]]},
     "fbtrace_id": "AbCdEf123"
   }

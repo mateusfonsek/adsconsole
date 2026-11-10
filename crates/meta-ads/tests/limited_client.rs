@@ -35,11 +35,11 @@ async fn account_client_observes_and_refuses() {
         .with_limiter(limiter.clone());
     let acct = base.for_account("act_1");
     acct.get("act_1", &[]).await.unwrap();
-    // A resposta disse 96% e 10 min para liberar: a próxima nem sai.
+    // The response said 96% and 10 min to regain access: the next call never leaves.
     let err = acct.get("act_1", &[]).await.unwrap_err();
     assert!(matches!(err, MetaError::RateLimited { .. }), "{err:?}");
     assert_eq!(server.received_requests().await.unwrap().len(), 1);
-    // Chamada sem conta (ex.: me/adaccounts) não passa pelo limiter.
+    // A call without an account (e.g. me/adaccounts) skips the limiter.
     base.get("me/adaccounts", &[]).await.unwrap();
     assert_eq!(server.received_requests().await.unwrap().len(), 2);
 }
@@ -59,7 +59,7 @@ fn account_client(server: &MockServer) -> MetaClient {
 
 #[tokio::test]
 async fn account_usage_reset_blocks_only_at_100() {
-    // Exemplo da documentação: 9,67% de uso com reset_time_duration=100 é uma resposta normal.
+    // Example from the documentation: 9.67% usage with reset_time_duration=100 is a normal response.
     let server = MockServer::start().await;
     let acc = json!({"acc_id_util_pct": 9.67, "reset_time_duration": 100, "ads_api_access_tier": "standard_access"});
     Mock::given(method("GET"))
@@ -75,9 +75,9 @@ async fn account_usage_reset_blocks_only_at_100() {
     assert_eq!(c.last_usage().unwrap().regain_after, None);
     let t0 = std::time::Instant::now();
     c.get("act_1", &[]).await.unwrap();
-    assert!(t0.elapsed() < Duration::from_secs(1), "não espera");
+    assert!(t0.elapsed() < Duration::from_secs(1), "does not wait");
 
-    // Em 100%, o reset bloqueia a conta.
+    // At 100%, the reset blocks the account.
     let full = MockServer::start().await;
     let acc = json!({"acc_id_util_pct": 100, "reset_time_duration": 100, "ads_api_access_tier": "standard_access"});
     Mock::given(method("GET"))
@@ -97,7 +97,7 @@ async fn account_usage_reset_blocks_only_at_100() {
     let err = c.get("act_1", &[]).await.unwrap_err();
     assert!(matches!(err, MetaError::RateLimited { .. }), "{err:?}");
 
-    // Num erro de limite, o reset vira o retry_after mesmo abaixo de 100%.
+    // On a rate limit error, the reset becomes the retry_after even below 100%.
     let limited = MockServer::start().await;
     let acc = json!({"acc_id_util_pct": 9.67, "reset_time_duration": 100});
     Mock::given(method("GET"))

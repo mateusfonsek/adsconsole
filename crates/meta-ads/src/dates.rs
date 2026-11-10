@@ -1,4 +1,4 @@
-//! Período das leituras de insights: um preset da Meta ou um intervalo de datas.
+//! Period of insights reads: a Meta preset or a date range.
 
 use chrono::NaiveDate;
 use schemars::JsonSchema;
@@ -34,16 +34,16 @@ impl DatePreset {
     }
 }
 
-/// Um preset (`"last_30d"`) ou `{"since": "AAAA-MM-DD", "until": "AAAA-MM-DD"}`.
+/// A preset (`"last_30d"`) or `{"since": "YYYY-MM-DD", "until": "YYYY-MM-DD"}`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Period {
     Preset(DatePreset),
     Range {
-        /// Primeiro dia (AAAA-MM-DD).
+        /// First day (YYYY-MM-DD).
         #[schemars(with = "String")]
         since: NaiveDate,
-        /// Último dia (AAAA-MM-DD), inclusive.
+        /// Last day (YYYY-MM-DD), inclusive.
         #[schemars(with = "String")]
         until: NaiveDate,
     },
@@ -56,18 +56,18 @@ impl Default for Period {
 }
 
 impl Period {
-    /// `since` depois de `until` é erro.
+    /// `since` after `until` is an error.
     pub fn check(&self) -> Result<(), String> {
         match self {
             Period::Range { since, until } if since > until => {
-                Err(format!("since ({since}) é depois de until ({until})"))
+                Err(format!("since ({since}) is after until ({until})"))
             }
             _ => Ok(()),
         }
     }
 }
 
-/// O parâmetro da Meta: `("date_preset", "last_30d")` ou `("time_range", "{…}")`.
+/// The Meta parameter: `("date_preset", "last_30d")` or `("time_range", "{…}")`.
 pub fn insights_param(p: &Period) -> (&'static str, String) {
     match p {
         Period::Preset(d) => ("date_preset", d.as_str().to_string()),
@@ -96,6 +96,6 @@ mod tests {
         let bad: Period =
             serde_json::from_str(r#"{"since":"2026-02-01","until":"2026-01-31"}"#).unwrap();
         assert!(bad.check().is_err());
-        assert!(serde_json::from_str::<Period>(r#""ontem""#).is_err());
+        assert!(serde_json::from_str::<Period>(r#""tomorrow""#).is_err());
     }
 }

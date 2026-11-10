@@ -1,6 +1,6 @@
-//! Biblioteca de operação da Meta Marketing API (Graph v26.0), sem MCP: login no
-//! navegador do sistema, tokens, cliente Graph, erros, retry, rate limiter, upload e
-//! campos editáveis.
+//! Library for operating the Meta Marketing API (Graph v26.0), without MCP: login in the
+//! system browser, tokens, Graph client, errors, retry, rate limiter, upload and
+//! editable fields.
 #![allow(clippy::result_large_err)]
 
 pub mod client;

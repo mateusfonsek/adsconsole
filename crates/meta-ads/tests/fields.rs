@@ -17,7 +17,7 @@ fn table_has_the_planned_fields() {
         ("end_time", ObjectKind::AdSet),
         ("creative", ObjectKind::Ad),
     ] {
-        assert!(find(name, kind).is_some(), "{name} em {kind:?}");
+        assert!(find(name, kind).is_some(), "{name} in {kind:?}");
     }
     assert!(find("daily_budget", ObjectKind::Ad).is_none());
     assert!(find("targeting", ObjectKind::Campaign).is_none());

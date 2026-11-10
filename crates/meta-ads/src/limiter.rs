@@ -1,6 +1,6 @@
-//! Rate limiter local por conta: leitura 1 ponto, escrita 3, decaimento em 300 s.
-//! O máximo depende do tier (60 no Limited, 9 000 no Full); o limiter espera antes de
-//! passar de 80% e desiste se a espera passar de 60 s.
+//! Local per-account rate limiter: a read costs 1 point, a write 3, decaying over 300 s.
+//! The maximum depends on the tier (60 for Limited, 9,000 for Full); the limiter waits
+//! before going over 80% and gives up if the wait exceeds 60 s.
 
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -39,7 +39,7 @@ impl AccountState {
         }
     }
 
-    /// Quanto esperar para `cost` caber abaixo do limiar.
+    /// How long to wait for `cost` to fit under the threshold.
     fn wait_for(&self, now: Instant, cost: u32) -> Duration {
         let blocked = self
             .blocked_until
@@ -58,7 +58,7 @@ impl AccountState {
     }
 }
 
-/// Compartilhado por todos os clientes do adapter.
+/// Shared by all the adapter's clients.
 #[derive(Default)]
 pub struct AccountLimiter {
     accounts: Mutex<HashMap<String, AccountState>>,
@@ -73,7 +73,7 @@ impl AccountLimiter {
         self.accounts.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Reserva `cost` pontos para `account`, esperando se preciso.
+    /// Reserves `cost` points for `account`, waiting if needed.
     pub async fn acquire(&self, account: &str, cost: u32) -> Result<(), MetaError> {
         loop {
             let wait = {
@@ -98,7 +98,7 @@ impl AccountLimiter {
         }
     }
 
-    /// Calibra pelo uso que a Meta informou na resposta.
+    /// Calibrates from the usage Meta reported in the response.
     pub fn observe(&self, account: &str, usage: &Usage) {
         let now = Instant::now();
         let mut map = self.lock();
