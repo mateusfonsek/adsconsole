@@ -1,4 +1,4 @@
-//! Operações da Demand Gen: grupo, critérios, assets novos e anúncios.
+//! Demand Gen operations: ad group, criteria, new assets and ads.
 
 use adsconsole_google_ads::images::ImageKind;
 use adsconsole_google_ads::resources::TempIds;
@@ -11,19 +11,19 @@ use super::{AdPlan, CardPlan, Common, GroupPlan, VideoIn};
 use crate::error::ToolError;
 use crate::google::ctx::Ctx;
 
-/// Estado da montagem compartilhado pela chamada: ids, operações, imagens e vídeos
-/// já criados (id do YouTube → asset).
+/// Build state shared across the call: ids, operations, and the images and videos
+/// already created (YouTube id → asset).
 pub(super) struct Builder<'a> {
     pub ctx: &'a Ctx,
     pub temps: TempIds,
-    /// Campanha, grupos, critérios e cards (assets que referenciam outros assets).
+    /// Campaign, ad groups, criteria and cards (assets that reference other assets).
     pub ops: Vec<Value>,
-    /// Imagens e vídeos novos: vão antes de tudo (ver [`Builder::finish`]).
+    /// New images and videos: they go before everything (see [`Builder::finish`]).
     pub assets: Vec<Value>,
     pub pool: ImagePool,
     pub videos: Vec<(String, String)>,
-    /// `adGroupAd` de todos os grupos: vão depois de qualquer criação de asset
-    /// (ver [`Builder::finish`]).
+    /// `adGroupAd` of every ad group: they go after every asset creation
+    /// (see [`Builder::finish`]).
     pub ads: Vec<Value>,
 }
 
@@ -59,7 +59,7 @@ impl Builder<'_> {
         Ok(rn)
     }
 
-    /// Cards do carrossel: imagens (todas na mesma proporção) e os assets de card.
+    /// Carousel cards: images (all in the same aspect ratio) and the card assets.
     async fn cards(&mut self, cards: &[CardPlan]) -> Result<Vec<Value>, ToolError> {
         let mut resolved = Vec::new();
         for card in cards {
@@ -77,8 +77,8 @@ impl Builder<'_> {
                     .await?,
             );
         }
-        // Asset existente (proporção desconhecida) segue os outros cards.
-        // Regra documentada do Google, confirmada só indiretamente (T15.5, 2026-10-18).
+        // An existing asset (unknown aspect ratio) follows the other cards.
+        // Documented Google rule, confirmed only indirectly (2026-10-18).
         let kind = resolved
             .iter()
             .find_map(|(_, k)| *k)
@@ -86,12 +86,12 @@ impl Builder<'_> {
         let mut refs = Vec::new();
         let mut used: Vec<String> = Vec::new();
         for (card, (img_rn, k)) in cards.iter().zip(resolved) {
-            // O Google recusa a mesma imagem em dois cards (mesmo arquivo, URL, asset ou
-            // conteúdo): `DUPLICATE_IMAGE_ACROSS_CAROUSEL_CARDS`.
+            // Google refuses the same image on two cards (same file, URL, asset or
+            // content): `DUPLICATE_IMAGE_ACROSS_CAROUSEL_CARDS`.
             if used.contains(&img_rn) {
                 let f = &card.image.field;
                 return Err(invalid(format!(
-                    "{f}: a imagem se repete em outro card; cada card do carrossel precisa de uma imagem diferente."
+                    "{f}: the image is repeated on another card; each carousel card needs a different image."
                 ))
                 .with_field(f.clone()));
             }
@@ -99,7 +99,7 @@ impl Builder<'_> {
             if k.is_some_and(|k| k != kind) {
                 let f = &card.image.field;
                 return Err(invalid(format!(
-                    "{f}: todos os cards do carrossel usam a mesma proporção (1.91:1 ou 1:1)."
+                    "{f}: all carousel cards must use the same aspect ratio (1.91:1 or 1:1)."
                 ))
                 .with_field(f.clone()));
             }
@@ -122,7 +122,7 @@ impl Builder<'_> {
         Ok(refs)
     }
 
-    /// Campo `ad` do `adGroupAd`, criando antes os assets que ele usa.
+    /// The `ad` field of the `adGroupAd`, creating the assets it uses first.
     async fn ad(&mut self, ad: &AdPlan) -> Result<Value, ToolError> {
         Ok(match ad {
             AdPlan::Multi {
@@ -162,7 +162,7 @@ impl Builder<'_> {
                     .iter()
                     .map(|v| Ok(json!({ "asset": self.video(v)? })))
                     .collect::<Result<Vec<_>, ToolError>>()?;
-                // Confirmado na conta real (2026-10-18, T15.3): business_name é AdTextAsset no vídeo responsivo.
+                // Verified on a real account (2026-10-18): business_name is an AdTextAsset in the video responsive ad.
                 json!({ "finalUrls": [c.url], "demandGenVideoResponsiveAd": {
                     "headlines": text_assets(headlines),
                     "longHeadlines": text_assets(long_headlines),
@@ -191,15 +191,15 @@ impl Builder<'_> {
         })
     }
 
-    /// Operações na ordem de envio: imagens e vídeos novos, depois campanha, grupos e
-    /// cards, e por fim os anúncios.
+    /// Operations in send order: new images and videos, then campaign, ad groups and
+    /// cards, and finally the ads.
     ///
-    /// O Google trata operações seguidas do mesmo tipo como um lote, e um temporário
-    /// criado num lote só pode ser referenciado por operações de lotes seguintes
-    /// (inferido dos erros reais da conta: card criado logo depois da imagem dele dava
-    /// `RESOURCE_NOT_FOUND`, assim como o anúncio que usava o card). Por isso imagem e
-    /// card nunca ficam colados: a campanha e o grupo (outros tipos) ficam entre eles, e
-    /// os anúncios, que referenciam assets e cards, vão depois de todos.
+    /// Google treats consecutive operations of the same type as one batch, and a
+    /// temporary id created in a batch can only be referenced by operations in later
+    /// batches (inferred from real account errors: a card created right after its image
+    /// got `RESOURCE_NOT_FOUND`, and so did the ad that used the card). So an image and
+    /// a card are never adjacent: the campaign and the ad group (other types) sit
+    /// between them, and the ads, which reference assets and cards, go after all of them.
     pub(super) fn finish(self) -> Vec<Value> {
         let mut ops = self.assets;
         ops.extend(self.ops);
@@ -213,13 +213,13 @@ impl Builder<'_> {
         g: &GroupPlan,
     ) -> Result<(), ToolError> {
         let ag_rn = self.temps.next("adGroups");
-        // Confirmado na conta real (2026-10-18, T15.2): grupo de Demand Gen sem `type`.
+        // Verified on a real account (2026-10-18): a Demand Gen ad group has no `type`.
         self.ops.push(create_op(
             &ag_rn,
             json!({ "name": g.name, "campaign": campaign_rn, "status": "ENABLED" }),
         )?);
-        // Confirmado na conta real (2026-10-18, T15.1): local e idioma da Demand Gen como critérios do grupo
-        // (adGroupCriterion location/language).
+        // Verified on a real account (2026-10-18): Demand Gen location and language are ad
+        // group criteria (adGroupCriterion location/language).
         self.ops.extend(geo_lang_criteria(
             "adGroupCriterionOperation",
             "adGroup",

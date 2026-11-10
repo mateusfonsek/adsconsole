@@ -1,10 +1,11 @@
-//! `create_search_campaign`: uma campanha de Pesquisa completa num único
-//! `googleAds:mutate` atômico, com ids temporários.
+//! `create_search_campaign`: a complete Search campaign in a single atomic
+//! `googleAds:mutate`, with temporary ids.
 //!
-//! Ordem das operações: orçamento → campanha (pausada) → critérios de campanha (local,
-//! idioma, negativas) → sitelinks → por grupo: grupo → keywords → negativas → RSAs.
-//! A inversa remove a campanha e depois o orçamento; os filhos somem com a campanha.
-//! Grupos, keywords e anúncios nascem ativos: a campanha pausada já impede a veiculação.
+//! Operation order: budget → campaign (paused) → campaign criteria (location,
+//! language, negative keywords) → sitelinks → per ad group: ad group → keywords →
+//! negative keywords → RSAs. The inverse removes the campaign and then the budget; the
+//! children go away with the campaign. Ad groups, keywords and ads are created enabled:
+//! the paused campaign already prevents serving.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::Decimal;
@@ -40,10 +41,10 @@ const PATH_CHARS: usize = 15;
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct KeywordSpec {
-    /// Texto (até 80 caracteres e 10 palavras).
+    /// Text (up to 80 characters and 10 words).
     #[serde(default)]
     text: Option<String>,
-    /// `EXACT`, `PHRASE` ou `BROAD` (minúsculas também valem).
+    /// `EXACT`, `PHRASE` or `BROAD` (lowercase also accepted).
     #[serde(default)]
     #[schemars(with = "Option<super::keywords::MatchType>")]
     match_type: Option<String>,
@@ -51,16 +52,16 @@ struct KeywordSpec {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RsaIn {
-    /// 3 a 15 títulos de até 30 caracteres.
+    /// 3 to 15 headlines of up to 30 characters.
     headlines: Vec<String>,
-    /// 2 a 4 descrições de até 90 caracteres.
+    /// 2 to 4 descriptions of up to 90 characters.
     descriptions: Vec<String>,
-    /// URL final (`https://…`).
+    /// Final URL (`https://…`).
     final_url: String,
-    /// Caminho 1 da URL exibida (até 15 caracteres).
+    /// Display URL path 1 (up to 15 characters).
     #[serde(default)]
     path1: Option<String>,
-    /// Caminho 2 da URL exibida (até 15 caracteres).
+    /// Display URL path 2 (up to 15 characters).
     #[serde(default)]
     path2: Option<String>,
 }
@@ -68,16 +69,16 @@ struct RsaIn {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AdGroupIn {
     name: String,
-    /// Lance de CPC máximo do grupo, na moeda da conta. Só com `manual_cpc`.
+    /// Max CPC bid of the ad group, in the account currency. Only with `manual_cpc`.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     cpc_bid: Option<Decimal>,
-    /// 1 a 200 keywords.
+    /// 1 to 200 keywords.
     keywords: Vec<KeywordSpec>,
-    /// Keywords negativas do grupo.
+    /// Negative keywords of the ad group.
     #[serde(default)]
     negatives: Vec<KeywordSpec>,
-    /// 1 a 3 anúncios responsivos de pesquisa.
+    /// 1 to 3 responsive search ads.
     ads: Vec<RsaIn>,
 }
 
@@ -87,41 +88,41 @@ struct CreateSearchInput {
     #[allow(dead_code)]
     account: AccountRef,
     name: String,
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
-    /// Estratégia de lance; padrão `maximize_clicks` sem limite de CPC.
+    /// Bidding strategy; defaults to `maximize_clicks` with no CPC cap.
     /// `{"maximize_clicks": {"cpc_cap": 2.5}}`, `{"maximize_conversions": {"target_cpa": 40}}`,
-    /// `{"maximize_conversion_value": {"target_roas": 3.5}}` ou `"manual_cpc"`.
+    /// `{"maximize_conversion_value": {"target_roas": 3.5}}` or `"manual_cpc"`.
     #[serde(default)]
     #[schemars(with = "Option<Bidding>")]
     bidding: Option<Value>,
-    /// Exibir também nos parceiros de pesquisa (padrão false).
+    /// Also serve on search partners (default false).
     #[serde(default)]
     search_partners: bool,
-    /// Exibir também na Rede de Display (padrão false).
+    /// Also serve on the Display Network (default false).
     #[serde(default)]
     display_network: bool,
-    /// Ids de local (`geoTargetConstants`), ex.: "2076" (Brasil).
+    /// Location ids (`geoTargetConstants`), e.g. "2076" (Brazil).
     #[serde(default)]
     locations: Vec<String>,
-    /// Ids de idioma (`languageConstants`), ex.: "1014" (português).
+    /// Language ids (`languageConstants`), e.g. "1014" (Portuguese).
     #[serde(default)]
     languages: Vec<String>,
-    /// AAAA-MM-DD.
+    /// YYYY-MM-DD.
     #[serde(default)]
     start_date: Option<String>,
-    /// AAAA-MM-DD.
+    /// YYYY-MM-DD.
     #[serde(default)]
     end_date: Option<String>,
-    /// Keywords negativas da campanha.
+    /// Negative keywords of the campaign.
     #[serde(default)]
     negatives: Vec<KeywordSpec>,
-    /// Até 20 sitelinks da campanha.
+    /// Up to 20 campaign sitelinks.
     #[serde(default)]
     sitelinks: Vec<SitelinkIn>,
-    /// 1 a 20 grupos de anúncios.
+    /// 1 to 20 ad groups.
     ad_groups: Vec<AdGroupIn>,
 }
 
@@ -132,11 +133,11 @@ impl WriteTool for CreateSearchCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreateSearchInput>(
             CREATE_SEARCH_CAMPAIGN,
-            "Cria uma campanha de Pesquisa completa no Google Ads numa única operação \
-             atômica: orçamento, campanha (nasce pausada), local, idioma, negativas, \
-             sitelinks e grupos de anúncios com keywords e anúncios responsivos. Desfazer \
-             remove a campanha e o orçamento; os assets dos sitelinks continuam na conta \
-             (o Google não remove assets).",
+            "Creates a complete Google Ads Search campaign in a single atomic operation: \
+             budget, campaign (created paused), locations, languages, negative keywords, \
+             sitelinks and ad groups with keywords and responsive search ads. Undo removes \
+             the campaign and the budget; the sitelink assets stay in the account (Google \
+             does not remove assets).",
             ToolGroup::Create,
             true,
         )
@@ -148,7 +149,7 @@ impl WriteTool for CreateSearchCampaign {
     }
 }
 
-/// Critérios de keyword (positivas ou negativas) de `parent_field` = `parent_rn`.
+/// Keyword criteria (positive or negative) of `parent_field` = `parent_rn`.
 fn keyword_ops(
     op_key: &str,
     parent_field: &str,
@@ -200,14 +201,14 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
         input.ad_groups.len(),
         1,
         MAX_AD_GROUPS,
-        "grupos de anúncios",
+        "ad groups",
         "ad_groups",
     )?;
     count(
         input.negatives.len(),
         0,
         MAX_NEGATIVES,
-        "negativas",
+        "negative keywords",
         "negatives",
     )?;
 
@@ -264,7 +265,7 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
         let group_name = name_text(&group.name, &field("name"))?;
         if names.contains(&group_name) {
             return Err(invalid(format!(
-                "{}: já existe um grupo chamado '{group_name}' nesta campanha.",
+                "{}: an ad group named '{group_name}' already exists in this campaign.",
                 field("name")
             ))
             .with_field(field("name")));
@@ -281,10 +282,10 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
             group.negatives.len(),
             0,
             MAX_NEGATIVES,
-            "negativas",
+            "negative keywords",
             &field("negatives"),
         )?;
-        count(group.ads.len(), 1, MAX_ADS, "anúncios", &field("ads"))?;
+        count(group.ads.len(), 1, MAX_ADS, "ads", &field("ads"))?;
 
         let ag_rn = temps.next("adGroups");
         let mut ad_group = json!({
@@ -296,7 +297,7 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
         if let Some(bid) = group.cpc_bid {
             if !bidding.is_manual() {
                 return Err(invalid(format!(
-                    "{}: o lance por grupo só vale com a estratégia manual_cpc.",
+                    "{}: an ad group bid is only allowed with the manual_cpc strategy.",
                     field("cpc_bid")
                 ))
                 .with_field(field("cpc_bid")));
@@ -329,8 +330,8 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
 
     Ok(WritePlan {
         summary: format!(
-            "Criar campanha Search '{name}' (pausada), {} ad groups, {keywords} keywords, \
-             orçamento {} {}/dia",
+            "Creates Search campaign '{name}' (paused), {} ad groups, {keywords} keywords, \
+             budget {} {}/day",
             input.ad_groups.len(),
             input.daily_budget.normalize(),
             ctx.currency

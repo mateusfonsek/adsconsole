@@ -1,9 +1,9 @@
-//! Valores aceitos em `call_to_action_text` (Demand Gen): a lista fixa de traduções do
-//! Google (https://developers.google.com/google-ads/api/reference/data/call-to-action-translations).
-//! Fora dela a API devolve `INVALID_CALL_TO_ACTION_TEXT`. Gerada da tabela oficial (um
-//! locale por linha; célula vazia = sem tradução naquele locale).
+//! Values accepted in `call_to_action_text` (Demand Gen): Google's fixed list of
+//! translations (https://developers.google.com/google-ads/api/reference/data/call-to-action-translations).
+//! Outside it the API returns `INVALID_CALL_TO_ACTION_TEXT`. Generated from the official
+//! table (one locale per row; empty cell = no translation in that locale).
 
-/// Cabeçalho da tabela: os 12 textos em inglês.
+/// Table header: the 12 English texts.
 pub(super) const ENGLISH: [&str; 12] = [
     "Apply Now",
     "Book Now",
@@ -19,7 +19,7 @@ pub(super) const ENGLISH: [&str; 12] = [
     "See More",
 ];
 
-/// `(locale, textos)`, na ordem de [`ENGLISH`].
+/// `(locale, texts)`, in the order of [`ENGLISH`].
 const TABLE: &[(&str, [&str; 12])] = &[
     (
         "ar",
@@ -792,8 +792,8 @@ fn locale(name: &str) -> Option<&'static [&'static str; 12]> {
     TABLE.iter().find(|(l, _)| *l == name).map(|(_, t)| t)
 }
 
-/// Forma canônica de `typed`: qualquer valor da tabela (qualquer locale e o inglês),
-/// sem diferenciar maiúsculas nem espaços nas pontas. Igualdade exata tem preferência.
+/// Canonical form of `typed`: any value in the table (any locale, plus English),
+/// ignoring case and surrounding spaces. An exact match wins.
 pub(super) fn canonical(typed: &str) -> Option<&'static str> {
     let typed = typed.trim();
     let all = || {
@@ -809,13 +809,13 @@ pub(super) fn canonical(typed: &str) -> Option<&'static str> {
     })
 }
 
-/// Opções em pt-BR e em inglês, para a mensagem de erro.
+/// Options in pt-BR and in English, for the error message.
 pub(super) fn options() -> String {
     let pt: Vec<&str> = locale("pt-BR")
         .map(|t| t.iter().copied().filter(|s| !s.is_empty()).collect())
         .unwrap_or_default();
     format!(
-        "Português: {}. Inglês: {}.",
+        "Portuguese (pt-BR): {}. English: {}.",
         pt.join(", "),
         ENGLISH.join(", ")
     )

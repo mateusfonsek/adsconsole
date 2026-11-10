@@ -1,5 +1,5 @@
-//! Criação no Google Ads: `create_search_campaign`, `create_pmax_campaign`, `create_demand_gen_campaign` e `create_display_campaign`, contra um Google falso com estado
-//! (o mutate grava no mapa, troca os ids temporários e o search lê por nome de recurso).
+//! Google Ads creation: `create_search_campaign`, `create_pmax_campaign`, `create_demand_gen_campaign` and `create_display_campaign`, against a stateful fake Google
+//! (mutate writes to the map and swaps the temporary ids, and search reads by resource name).
 
 mod common;
 
@@ -29,9 +29,9 @@ const CAMPAIGN_REAL: &str = "customers/111/campaigns/102";
 
 type State = Arc<Mutex<HashMap<String, Value>>>;
 
-// ------------------------------------------------------------ Google falso
+// ------------------------------------------------------------- fake Google
 
-/// Nome real de um temporário: `-N` vira `100 + N` (também em ids compostos).
+/// Real name of a temporary id: `-N` becomes `100 + N` (also in composite ids).
 fn real_name(rn: &str) -> String {
     let (head, id) = rn.rsplit_once('/').unwrap();
     let id: Vec<String> = id
@@ -57,7 +57,7 @@ fn subst(v: &mut Value, temps: &HashMap<String, String>) {
     }
 }
 
-/// Coleção de uma criação sem `resourceName` (o Google gera o nome).
+/// Collection of a create without a `resourceName` (Google generates the name).
 fn collection(key: &str) -> &'static str {
     match key {
         "campaignCriterionOperation" => "campaignCriteria",
@@ -66,7 +66,7 @@ fn collection(key: &str) -> &'static str {
         "campaignAssetOperation" => "campaignAssets",
         "assetGroupAssetOperation" => "assetGroupAssets",
         "assetGroupSignalOperation" => "assetGroupSignals",
-        other => panic!("criação sem resourceName inesperada: {other}"),
+        other => panic!("unexpected create without resourceName: {other}"),
     }
 }
 
@@ -77,7 +77,7 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
     for op in ops {
         let (_, inner) = op.as_object().unwrap().iter().next().unwrap();
         if let Some(n) = inner["create"]["resourceName"].as_str() {
-            assert!(n.contains("/-"), "nome não temporário na criação: {n}");
+            assert!(n.contains("/-"), "non-temporary name in create: {n}");
             temps.insert(n.to_string(), real_name(n));
         }
     }
@@ -87,12 +87,12 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
         let rn = if let Some(rn) = inner["remove"].as_str() {
             if apply {
                 st.remove(rn)
-                    .unwrap_or_else(|| panic!("remove de {rn} inexistente"));
+                    .unwrap_or_else(|| panic!("remove of missing {rn}"));
             }
             rn.to_string()
         } else {
             let mut obj = inner["create"].clone();
-            assert!(obj.is_object(), "operação inesperada: {op}");
+            assert!(obj.is_object(), "unexpected operation: {op}");
             subst(&mut obj, &temps);
             let rn = match obj["resourceName"].as_str() {
                 Some(rn) => rn.to_string(),
@@ -117,7 +117,7 @@ fn search_rows(st: &HashMap<String, Value>, q: &str) -> Vec<Value> {
         .collect();
     let i = q
         .find("resource_name = '")
-        .unwrap_or_else(|| panic!("consulta inesperada: {q}"));
+        .unwrap_or_else(|| panic!("unexpected query: {q}"));
     let rest = &q[i + 17..];
     let rn = &rest[..rest.find('\'').unwrap()];
     st.get(rn)
@@ -194,21 +194,21 @@ fn texts(prefix: &str, n: usize) -> Value {
 }
 
 fn rsa() -> Value {
-    json!({ "headlines": texts("Título", 3), "descriptions": texts("Descrição", 2),
-            "final_url": "https://exemplo.com.br" })
+    json!({ "headlines": texts("Headline", 3), "descriptions": texts("Description", 2),
+            "final_url": "https://example.com" })
 }
 
-/// Entrada mínima: 1 ad group, 2 keywords e 1 RSA.
+/// Minimal input: 1 ad group, 2 keywords and 1 RSA.
 fn minimal() -> Value {
     json!({
         "account_id": "111",
-        "name": "Busca Sapatos",
+        "name": "Shoe Search",
         "daily_budget": 50,
         "ad_groups": [{
-            "name": "Sapatos",
+            "name": "Shoes",
             "keywords": [
-                { "text": "sapato social", "match_type": "PHRASE" },
-                { "text": "sapato couro", "match_type": "exact" }
+                { "text": "dress shoes", "match_type": "PHRASE" },
+                { "text": "leather shoes", "match_type": "exact" }
             ],
             "ads": [rsa()]
         }]
@@ -228,7 +228,7 @@ async fn assert_invalid(h: &GoogleHarness, input: Value, field: &str) {
     assert_eq!(e.field.as_deref(), Some(field), "{e:?}");
 }
 
-/// Ops do único `validateOnly` mandado por um `validate` que passa.
+/// Ops of the single `validateOnly` sent by a passing `validate`.
 async fn validated_ops(h: &GoogleHarness, input: Value) -> Vec<Value> {
     h.adapter
         .validate(&call(CONN, "111", TOOL, input))
@@ -240,7 +240,7 @@ async fn validated_ops(h: &GoogleHarness, input: Value) -> Vec<Value> {
     last["mutateOperations"].as_array().unwrap().clone()
 }
 
-// ------------------------------------------------------------------ testes
+// ------------------------------------------------------------------ tests
 
 #[tokio::test]
 async fn search_campaign_operations() {
@@ -252,8 +252,8 @@ async fn search_campaign_operations() {
     assert_eq!(out["reversible"], true);
     assert_eq!(
         out["summary"],
-        "Criar campanha Search 'Busca Sapatos' (pausada), 1 ad groups, 2 keywords, \
-         orçamento 50 BRL/dia"
+        "Creates Search campaign 'Shoe Search' (paused), 1 ad groups, 2 keywords, \
+         budget 50 BRL/day"
     );
 
     let bodies = mutate_bodies(&h).await;
@@ -261,7 +261,7 @@ async fn search_campaign_operations() {
     assert_eq!(bodies[0]["validateOnly"], true);
     assert_eq!(bodies[1]["validateOnly"], false);
     assert_eq!(bodies[1]["partialFailure"], false);
-    // Mesmas operações nas duas chamadas, menos o nome do orçamento (tem o horário).
+    // Same operations in both calls, except the budget name (it has the timestamp).
     let without_budget_name = |b: &Value| {
         let mut ops = b["mutateOperations"].clone();
         ops[0]["campaignBudgetOperation"]["create"]["name"].take();
@@ -285,7 +285,7 @@ async fn search_campaign_operations() {
     );
     let mut budget = create(ops, 0).clone();
     let budget_name = budget["name"].take();
-    assert_budget_name(budget_name.as_str().unwrap(), "Busca Sapatos");
+    assert_budget_name(budget_name.as_str().unwrap(), "Shoe Search");
     assert_eq!(
         budget,
         json!({ "resourceName": BUDGET_TEMP, "name": null,
@@ -294,7 +294,7 @@ async fn search_campaign_operations() {
     );
     assert_eq!(
         *create(ops, 1),
-        json!({ "resourceName": CAMPAIGN_TEMP, "name": "Busca Sapatos", "status": "PAUSED",
+        json!({ "resourceName": CAMPAIGN_TEMP, "name": "Shoe Search", "status": "PAUSED",
                 "advertisingChannelType": "SEARCH", "campaignBudget": BUDGET_TEMP,
                 "targetSpend": {},
                 "containsEuPoliticalAdvertising": "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING",
@@ -304,30 +304,30 @@ async fn search_campaign_operations() {
     let ag = "customers/111/adGroups/-3";
     assert_eq!(
         *create(ops, 2),
-        json!({ "resourceName": ag, "name": "Sapatos", "campaign": CAMPAIGN_TEMP,
+        json!({ "resourceName": ag, "name": "Shoes", "campaign": CAMPAIGN_TEMP,
                 "type": "SEARCH_STANDARD", "status": "ENABLED" })
     );
     assert_eq!(
         *create(ops, 3),
-        json!({ "adGroup": ag, "keyword": { "text": "sapato social", "matchType": "PHRASE" } })
+        json!({ "adGroup": ag, "keyword": { "text": "dress shoes", "matchType": "PHRASE" } })
     );
     assert_eq!(create(ops, 4)["keyword"]["matchType"], "EXACT");
     assert_eq!(
         *create(ops, 5),
         json!({ "adGroup": ag, "status": "ENABLED", "ad": {
-            "finalUrls": ["https://exemplo.com.br"],
+            "finalUrls": ["https://example.com"],
             "responsiveSearchAd": {
-                "headlines": [{ "text": "Título 0" }, { "text": "Título 1" }, { "text": "Título 2" }],
-                "descriptions": [{ "text": "Descrição 0" }, { "text": "Descrição 1" }] } } })
+                "headlines": [{ "text": "Headline 0" }, { "text": "Headline 1" }, { "text": "Headline 2" }],
+                "descriptions": [{ "text": "Description 0" }, { "text": "Description 1" }] } } })
     );
 
-    // Depois: a campanha real, pausada.
+    // After: the real campaign, paused.
     let changes = h.db.list_changes(&ChangeFilter::default()).unwrap();
     assert_eq!(changes.len(), 1);
     assert_eq!(
         changes[0].after,
         Some(json!({ CAMPAIGN_REAL: { "campaign.status": "PAUSED",
-                                      "campaign.name": "Busca Sapatos" } }))
+                                      "campaign.name": "Shoe Search" } }))
     );
     assert_eq!(changes[0].before, Some(json!({})));
     let st = state.lock().unwrap();
@@ -344,7 +344,7 @@ async fn search_campaign_full_order_and_fields() {
     fake(&h).await;
     let input = json!({
         "account_id": "111",
-        "name": "Completa",
+        "name": "Full",
         "daily_budget": 30.5,
         "bidding": { "manual_cpc": {} },
         "search_partners": true,
@@ -353,18 +353,18 @@ async fn search_campaign_full_order_and_fields() {
         "languages": ["1014"],
         "start_date": "2026-11-01",
         "end_date": "2026-12-31",
-        "negatives": [{ "text": "grátis", "match_type": "BROAD" }],
+        "negatives": [{ "text": "free", "match_type": "BROAD" }],
         "sitelinks": [
-            { "link_text": "Contato", "final_url": "https://exemplo.com.br/contato",
-              "description1": "Fale com a gente", "description2": "Atendimento rápido" },
-            { "link_text": "Loja", "final_url": "https://exemplo.com.br/loja" }
+            { "link_text": "Contact", "final_url": "https://example.com/contact",
+              "description1": "Talk to us", "description2": "Fast support" },
+            { "link_text": "Store", "final_url": "https://example.com/store" }
         ],
         "ad_groups": [
             { "name": "G1", "cpc_bid": 1.25,
               "keywords": [{ "text": "a b", "match_type": "EXACT" }],
-              "negatives": [{ "text": "usado", "match_type": "PHRASE" }],
+              "negatives": [{ "text": "used", "match_type": "PHRASE" }],
               "ads": [{ "headlines": texts("H", 3), "descriptions": texts("D", 2),
-                        "final_url": "https://exemplo.com.br", "path1": "sapatos",
+                        "final_url": "https://example.com", "path1": "shoes",
                         "path2": "promo" }] },
             { "name": "G2",
               "keywords": [{ "text": "c", "match_type": "BROAD" }],
@@ -419,14 +419,14 @@ async fn search_campaign_full_order_and_fields() {
     assert_eq!(
         *create(&ops, 4),
         json!({ "campaign": CAMPAIGN_TEMP, "negative": true,
-                "keyword": { "text": "grátis", "matchType": "BROAD" } })
+                "keyword": { "text": "free", "matchType": "BROAD" } })
     );
     assert_eq!(
         *create(&ops, 5),
         json!({ "resourceName": "customers/111/assets/-3",
-                "finalUrls": ["https://exemplo.com.br/contato"],
-                "sitelinkAsset": { "linkText": "Contato", "description1": "Fale com a gente",
-                                   "description2": "Atendimento rápido" } })
+                "finalUrls": ["https://example.com/contact"],
+                "sitelinkAsset": { "linkText": "Contact", "description1": "Talk to us",
+                                   "description2": "Fast support" } })
     );
     assert_eq!(
         *create(&ops, 6),
@@ -435,7 +435,7 @@ async fn search_campaign_full_order_and_fields() {
     );
     assert_eq!(
         create(&ops, 7)["sitelinkAsset"],
-        json!({ "linkText": "Loja" })
+        json!({ "linkText": "Store" })
     );
     assert_eq!(create(&ops, 8)["asset"], "customers/111/assets/-4");
     let g1 = create(&ops, 9);
@@ -445,10 +445,10 @@ async fn search_campaign_full_order_and_fields() {
     assert_eq!(
         *create(&ops, 11),
         json!({ "adGroup": "customers/111/adGroups/-5", "negative": true,
-                "keyword": { "text": "usado", "matchType": "PHRASE" } })
+                "keyword": { "text": "used", "matchType": "PHRASE" } })
     );
     let rsa = &create(&ops, 12)["ad"]["responsiveSearchAd"];
-    assert_eq!(rsa["path1"], "sapatos");
+    assert_eq!(rsa["path1"], "shoes");
     assert_eq!(rsa["path2"], "promo");
     assert_eq!(
         create(&ops, 13)["resourceName"],
@@ -550,7 +550,7 @@ async fn search_campaign_limits() {
             "ad_groups[0].ads[0].path2",
         ),
         (
-            |i| i["ad_groups"][0]["ads"][0]["final_url"] = json!("exemplo.com"),
+            |i| i["ad_groups"][0]["ads"][0]["final_url"] = json!("example.com"),
             "ad_groups[0].ads[0].final_url",
         ),
         (|i| i["ad_groups"][0]["ads"] = json!([]), "ad_groups[0].ads"),
@@ -612,13 +612,13 @@ async fn search_campaign_limits() {
             "ad_groups[1].name",
         ),
         (|i| i["name"] = json!("  "), "name"),
-        // Limite de nome em bytes UTF-8: 128 "ã" são 128 caracteres e 256 bytes.
+        // Name limit in UTF-8 bytes: 128 "ã" are 128 characters and 256 bytes.
         (|i| i["name"] = json!("ã".repeat(128)), "name"),
         (
             |i| i["ad_groups"][0]["name"] = json!("ã".repeat(128)),
             "ad_groups[0].name",
         ),
-        (|i| i["bidding"] = json!("lance_magico"), "bidding"),
+        (|i| i["bidding"] = json!("magic_bid"), "bidding"),
         (
             |i| i["bidding"] = json!({ "maximize_clicks": { "cpc_cap": "x" } }),
             "bidding",
@@ -650,7 +650,7 @@ async fn search_campaign_limits() {
         (
             |i| {
                 i["sitelinks"] = json!([{ "link_text": "ok", "final_url": "https://a.com",
-                                       "description1": "só uma" }])
+                                       "description1": "only one" }])
             },
             "sitelinks[0].description2",
         ),
@@ -671,10 +671,10 @@ async fn search_campaign_limits() {
         edit(&mut input);
         assert_invalid(&h, input, field).await;
     }
-    // Tudo local: nenhuma chamada saiu.
+    // All local: no call went out.
     assert!(mutate_bodies(&h).await.is_empty());
 
-    // Limites contados em caracteres, não bytes.
+    // Limits counted in characters, not bytes.
     let mut input = minimal();
     input["ad_groups"][0]["ads"][0]["headlines"][0] = json!("ç".repeat(30));
     input["ad_groups"][0]["ads"][0]["descriptions"][0] = json!("ã".repeat(90));
@@ -723,7 +723,7 @@ async fn search_campaign_approval_mode() {
     let engine = engine(&h, WriteMode::Approval);
     let out = engine.call_tool(TOOL, minimal(), None).await.unwrap();
     assert_eq!(out["status"], "pending", "{out}");
-    // Pendente: só o validateOnly, nada criado.
+    // Pending: only the validateOnly, nothing created.
     let bodies = mutate_bodies(&h).await;
     assert_eq!(bodies.len(), 1);
     assert_eq!(bodies[0]["validateOnly"], true);
@@ -736,7 +736,7 @@ async fn search_campaign_approval_mode() {
     assert_eq!(
         rec.after,
         Some(json!({ CAMPAIGN_REAL: { "campaign.status": "PAUSED",
-                                      "campaign.name": "Busca Sapatos" } }))
+                                      "campaign.name": "Shoe Search" } }))
     );
 }
 
@@ -760,11 +760,11 @@ async fn search_campaign_budget_decimals() {
     assert_eq!(e.field.as_deref(), Some("daily_budget"));
 }
 
-/// `<nome> (orçamento aaaammdd-HHMMSSmmm)` com até 255 bytes; `campaign` começa com o
-/// pedaço do nome que ficou.
+/// `<name> (budget yyyymmdd-HHMMSSmmm)` with up to 255 bytes; `campaign` starts with the
+/// part of the name that was kept.
 fn assert_budget_name(budget: &str, campaign: &str) {
     assert!(budget.len() <= 255, "{} bytes", budget.len());
-    let (head, stamp) = budget.rsplit_once(" (orçamento ").expect(budget);
+    let (head, stamp) = budget.rsplit_once(" (budget ").expect(budget);
     assert!(campaign.starts_with(head), "{budget}");
     let stamp = stamp.strip_suffix(')').expect(budget);
     assert_eq!(stamp.len(), 18, "{stamp}");
@@ -781,7 +781,7 @@ fn assert_budget_name(budget: &str, campaign: &str) {
 async fn budget_name_is_unique_and_bounded() {
     let h = google_harness().await;
     fake(&h).await;
-    // Nome de campanha com 254 bytes (127 "ã"): aceito, e o do orçamento é cortado.
+    // Campaign name with 254 bytes (127 "ã"): accepted, and the budget name is cut.
     let long = "ã".repeat(127);
     let mut input = minimal();
     input["name"] = json!(long);
@@ -791,7 +791,7 @@ async fn budget_name_is_unique_and_bounded() {
     let first = create(&ops, 0)["name"].as_str().unwrap().to_string();
     assert_budget_name(&first, &long);
     assert!(first.starts_with("ããã"), "{first}");
-    // O mesmo pedido duas vezes: nomes de orçamento diferentes.
+    // The same request twice: different budget names.
     tokio::time::sleep(std::time::Duration::from_millis(5)).await;
     let ops = validated_ops(&h, input).await;
     let second = create(&ops, 0)["name"].as_str().unwrap();
@@ -820,7 +820,7 @@ async fn spec_is_reversible_create() {
         .tools()
         .into_iter()
         .find(|t| t.name == TOOL)
-        .expect("create_search_campaign registrada");
+        .expect("create_search_campaign registered");
     assert!(spec.reversible);
     assert!(spec.exposed);
     assert_eq!(spec.group, adsconsole_core::config::ToolGroup::Create);
@@ -831,7 +831,7 @@ async fn spec_is_reversible_create() {
 
 const PMAX: &str = "create_pmax_campaign";
 
-/// PNG mínimo: assinatura + `IHDR` com as dimensões.
+/// Minimal PNG: signature + `IHDR` with the dimensions.
 fn png(w: u32, h: u32) -> Vec<u8> {
     let mut b = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     b.extend_from_slice(&13u32.to_be_bytes());
@@ -871,20 +871,20 @@ fn b64(bytes: &[u8]) -> String {
     base64::engine::general_purpose::STANDARD.encode(bytes)
 }
 
-/// Entrada mínima da PMax: logo, 1 asset group com 3 títulos, 1 título longo,
-/// 2 descrições, 1 imagem 1.91:1 e 1 imagem 1:1.
+/// Minimal PMax input: logo, 1 asset group with 3 headlines, 1 long headline,
+/// 2 descriptions, 1 1.91:1 image and 1 1:1 image.
 fn pmax_minimal(img: &Images) -> Value {
     json!({
         "account_id": "111",
-        "name": "PMax Sapatos",
+        "name": "PMax Shoes",
         "daily_budget": 80,
-        "brand": { "business_name": "Sapatos Ltda", "logo": { "file_path": img.square } },
+        "brand": { "business_name": "Shoes Inc", "logo": { "file_path": img.square } },
         "asset_groups": [{
-            "name": "Grupo 1",
-            "final_urls": ["https://exemplo.com.br"],
-            "headlines": ["Sapatos", "Sapatos de couro legítimo", "Frete grátis"],
-            "long_headlines": ["Sapatos de couro com frete grátis para todo o Brasil"],
-            "descriptions": ["Compre hoje.", "Modelos sociais e casuais com entrega rápida."],
+            "name": "Group 1",
+            "final_urls": ["https://example.com"],
+            "headlines": ["Shoes", "Genuine leather shoes", "Free shipping"],
+            "long_headlines": ["Leather shoes with free shipping across the country"],
+            "descriptions": ["Buy today.", "Dress and casual styles with fast delivery."],
             "images": {
                 "landscape": [{ "file_path": img.landscape }],
                 "square": [{ "file_path": img.square }]
@@ -917,7 +917,7 @@ async fn pmax_ops(h: &GoogleHarness, input: Value) -> Vec<Value> {
     last["mutateOperations"].as_array().unwrap().clone()
 }
 
-/// Corpos `create` das operações com chave `key`.
+/// `create` bodies of the operations with key `key`.
 fn creates<'a>(ops: &'a [Value], key: &str) -> Vec<&'a Value> {
     ops.iter()
         .filter_map(|o| o.get(key))
@@ -940,13 +940,13 @@ async fn pmax_single_mutate_with_assets() {
     assert_eq!(
         out["summary"],
         format!(
-            "Criar campanha Performance Max 'PMax Sapatos' (pausada), 1 asset groups, \
-             orçamento 80 BRL/dia; imagens de {}, {}",
+            "Creates Performance Max campaign 'PMax Shoes' (paused), 1 asset groups, \
+             budget 80 BRL/day; images from {}, {}",
             img.square, img.landscape
         )
     );
 
-    // Um validateOnly e um mutate real, cada um com tudo.
+    // One validateOnly and one real mutate, each with everything.
     let bodies = mutate_bodies(&h).await;
     assert_eq!(bodies.len(), 2, "{bodies:?}");
     assert_eq!(bodies[0]["validateOnly"], true);
@@ -965,13 +965,13 @@ async fn pmax_single_mutate_with_assets() {
         [
             "campaignBudgetOperation",
             "campaignOperation",
-            // Marca: nome da empresa e logo, com o vínculo à campanha.
+            // Brand: business name and logo, with the link to the campaign.
             "assetOperation",
             "campaignAssetOperation",
             "assetOperation",
             "campaignAssetOperation",
-            // Grupo: 3 títulos, 1 longo, 2 descrições e a imagem 1.91:1 (a 1:1 é o
-            // mesmo arquivo do logo e reaproveita o asset).
+            // Asset group: 3 headlines, 1 long, 2 descriptions and the 1.91:1 image (the
+            // 1:1 is the same file as the logo and reuses its asset).
             "assetOperation",
             "assetOperation",
             "assetOperation",
@@ -1007,11 +1007,8 @@ async fn pmax_single_mutate_with_assets() {
                  "assetAutomationStatus": "OPTED_OUT" }])
     );
 
-    // Marca.
-    assert_eq!(
-        create(ops, 2)["textAsset"],
-        json!({ "text": "Sapatos Ltda" })
-    );
+    // Brand.
+    assert_eq!(create(ops, 2)["textAsset"], json!({ "text": "Shoes Inc" }));
     let biz = create(ops, 2)["resourceName"].clone();
     assert_eq!(
         *create(ops, 3),
@@ -1037,12 +1034,12 @@ async fn pmax_single_mutate_with_assets() {
     assert_eq!(images.len(), 2, "{images:?}");
     assert_eq!(images[1]["imageAsset"]["data"], b64(&landscape));
 
-    // Grupo e vínculos.
+    // Asset group and links.
     let group = creates(ops, "assetGroupOperation")[0];
     assert_eq!(group["campaign"], CAMPAIGN_TEMP);
-    assert_eq!(group["name"], "Grupo 1");
+    assert_eq!(group["name"], "Group 1");
     assert_eq!(group["status"], "ENABLED");
-    assert_eq!(group["finalUrls"], json!(["https://exemplo.com.br"]));
+    assert_eq!(group["finalUrls"], json!(["https://example.com"]));
     let links = creates(ops, "assetGroupAssetOperation");
     assert!(
         links
@@ -1061,7 +1058,7 @@ async fn pmax_single_mutate_with_assets() {
         .unwrap();
     assert_eq!(sq["asset"], logo_rn);
 
-    // Gravado no Google falso com os nomes reais.
+    // Stored in the fake Google with the real names.
     let st = state.lock().unwrap();
     assert_eq!(st[CAMPAIGN_REAL]["status"], "PAUSED");
     assert_eq!(st[CAMPAIGN_REAL]["campaignBudget"], BUDGET_REAL);
@@ -1073,7 +1070,7 @@ async fn pmax_single_mutate_with_assets() {
     assert_eq!(
         rec.after,
         Some(json!({ CAMPAIGN_REAL: { "campaign.status": "PAUSED",
-                                      "campaign.name": "PMax Sapatos" } }))
+                                      "campaign.name": "PMax Shoes" } }))
     );
 }
 
@@ -1102,11 +1099,11 @@ async fn pmax_full_options() {
     group["youtube_video_ids"] = json!(["dQw4w9WgXcQ"]);
     group["signals"] = json!({
         "audiences": ["customers/111/audiences/5"],
-        "search_themes": ["sapato social"]
+        "search_themes": ["dress shoes"]
     });
     let mut second = group.clone();
-    second["name"] = json!("Grupo 2");
-    // Link do YouTube: o id extraído é o mesmo vídeo do grupo 1 (um asset só).
+    second["name"] = json!("Group 2");
+    // YouTube link: the extracted id is the same video as group 1 (a single asset).
     second["youtube_video_ids"] = json!(["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]);
     input["asset_groups"].as_array_mut().unwrap().push(second);
 
@@ -1132,7 +1129,7 @@ async fn pmax_full_options() {
                 "fieldType": "LOGO" })
     );
     assert_eq!(brand[2]["fieldType"], "LANDSCAPE_LOGO");
-    // Imagens iguais em dois grupos viram um asset só: logo largo, 1.91:1, 1:1, 4:5.
+    // Identical images in two groups become a single asset: wide logo, 1.91:1, 1:1, 4:5.
     let image_assets = creates(&ops, "assetOperation")
         .into_iter()
         .filter(|a| a.get("imageAsset").is_some())
@@ -1143,7 +1140,7 @@ async fn pmax_full_options() {
         .into_iter()
         .filter(|a| a.get("youtubeVideoAsset").is_some())
         .collect();
-    // O mesmo vídeo nos dois grupos: um asset, dois vínculos.
+    // The same video in both groups: one asset, two links.
     assert_eq!(videos.len(), 1);
     assert_eq!(
         videos[0]["youtubeVideoAsset"],
@@ -1173,9 +1170,9 @@ async fn pmax_full_options() {
     );
     assert_eq!(
         *signals[1],
-        json!({ "assetGroup": ag, "searchTheme": { "text": "sapato social" } })
+        json!({ "assetGroup": ag, "searchTheme": { "text": "dress shoes" } })
     );
-    // Sinais logo depois dos vínculos do próprio grupo, antes do grupo seguinte.
+    // Signals right after the group's own links, before the next group.
     let k = keys(&ops);
     let first_signal = k
         .iter()
@@ -1199,15 +1196,15 @@ async fn pmax_minimums() {
     let g = "asset_groups[0]";
     let cases: Vec<(Value, String)> = vec![
         (
-            with(&|v| v["asset_groups"][0]["headlines"] = json!(["Sapatos", "Frete grátis"])),
+            with(&|v| v["asset_groups"][0]["headlines"] = json!(["Shoes", "Free shipping"])),
             format!("{g}.headlines"),
         ),
         (
             with(&|v| {
                 v["asset_groups"][0]["headlines"] = json!([
-                    "Sapatos de couro legítimo",
-                    "Frete grátis para o Brasil",
-                    "Couro legítimo e durável"
+                    "Genuine leather shoes",
+                    "Free shipping nationwide",
+                    "Durable genuine leather"
                 ])
             }),
             format!("{g}.headlines"),
@@ -1229,7 +1226,7 @@ async fn pmax_minimums() {
             format!("{g}.long_headlines"),
         ),
         (
-            with(&|v| v["asset_groups"][0]["descriptions"] = json!(["Compre hoje."])),
+            with(&|v| v["asset_groups"][0]["descriptions"] = json!(["Buy today."])),
             format!("{g}.descriptions"),
         ),
         (
@@ -1239,8 +1236,8 @@ async fn pmax_minimums() {
         (
             with(&|v| {
                 v["asset_groups"][0]["descriptions"] = json!([
-                    "Modelos sociais e casuais com entrega rápida para todo o país.",
-                    "Couro legítimo, solado confortável e garantia de um ano inteiro."
+                    "Dress and casual styles with fast delivery across the whole country.",
+                    "Genuine leather, comfortable soles and a warranty for one full year."
                 ])
             }),
             format!("{g}.descriptions"),
@@ -1280,7 +1277,7 @@ async fn pmax_minimums() {
         (
             with(&|v| {
                 v["asset_groups"][0]["images"]["square"] =
-                    json!([{ "url": "http://exemplo.com.br/a.png" }])
+                    json!([{ "url": "http://example.com/a.png" }])
             }),
             format!("{g}.images.square[0]"),
         ),
@@ -1289,7 +1286,7 @@ async fn pmax_minimums() {
             format!("{g}.final_urls"),
         ),
         (
-            with(&|v| v["asset_groups"][0]["final_urls"] = json!(["exemplo.com.br"])),
+            with(&|v| v["asset_groups"][0]["final_urls"] = json!(["example.com"])),
             format!("{g}.final_urls[0]"),
         ),
         (
@@ -1302,7 +1299,7 @@ async fn pmax_minimums() {
         ),
         (
             with(&|v| {
-                v["asset_groups"][0]["signals"] = json!({ "search_themes": texts("tema", 26) })
+                v["asset_groups"][0]["signals"] = json!({ "search_themes": texts("theme", 26) })
             }),
             format!("{g}.signals.search_themes"),
         ),
@@ -1334,7 +1331,7 @@ async fn pmax_minimums() {
         (
             with(&|v| {
                 let mut g1 = v["asset_groups"][0].clone();
-                g1["name"] = json!("Grupo 1");
+                g1["name"] = json!("Group 1");
                 v["asset_groups"].as_array_mut().unwrap().push(g1);
             }),
             "asset_groups[1].name".into(),
@@ -1384,7 +1381,7 @@ async fn pmax_minimums() {
     for (input, field) in cases {
         assert_pmax_invalid(&h, input, &field).await;
     }
-    // Nada chegou ao Google.
+    // Nothing reached Google.
     assert!(mutate_bodies(&h).await.is_empty());
 }
 
@@ -1461,13 +1458,13 @@ async fn pmax_spec_is_reversible_create() {
         .tools()
         .into_iter()
         .find(|t| t.name == PMAX)
-        .expect("create_pmax_campaign registrada");
+        .expect("create_pmax_campaign registered");
     assert!(spec.reversible);
     assert!(spec.exposed);
     assert_eq!(spec.group, adsconsole_core::config::ToolGroup::Create);
     assert!(!spec.destructive);
     assert!(
-        spec.description.contains("conversões"),
+        spec.description.contains("conversion tracking"),
         "{}",
         spec.description
     );
@@ -1486,10 +1483,10 @@ async fn pmax_warns_assets_stay_and_lists_sources() {
         .await
         .unwrap();
     let warning = v.warning.unwrap();
-    assert!(warning.contains("ficam na conta"), "{warning}");
+    assert!(warning.contains("stay in the account"), "{warning}");
     assert!(
         v.summary.ends_with(&format!(
-            "imagens de asset 77, {}, {}",
+            "images from asset 77, {}, {}",
             img.landscape, img.square
         )),
         "{}",
@@ -1497,14 +1494,14 @@ async fn pmax_warns_assets_stay_and_lists_sources() {
     );
 }
 
-/// Os mesmos bytes têm o mesmo nome de asset em qualquer campanha, e dois arquivos
-/// com os mesmos bytes viram um asset só.
+/// The same bytes get the same asset name in any campaign, and two files with the
+/// same bytes become a single asset.
 #[tokio::test]
 async fn pmax_image_assets_are_named_by_content() {
     let h = google_harness().await;
     fake(&h).await;
     let img = Images::new();
-    let copy = format!("{}.copia.png", img.square);
+    let copy = format!("{}.copy.png", img.square);
     std::fs::copy(&img.square, &copy).unwrap();
     let image_names = |ops: &[Value]| -> Vec<String> {
         creates(ops, "assetOperation")
@@ -1518,7 +1515,7 @@ async fn pmax_image_assets_are_named_by_content() {
     a["asset_groups"][0]["images"]["square"] = json!([{ "file_path": copy }]);
     let ops = pmax_ops(&h, a).await;
     let names_a = image_names(&ops);
-    assert_eq!(names_a.len(), 2, "{names_a:?}"); // logo/quadrada (mesmos bytes) e 1.91:1
+    assert_eq!(names_a.len(), 2, "{names_a:?}"); // logo/square (same bytes) and 1.91:1
     let logo_rn = &creates(&ops, "campaignAssetOperation")[1]["asset"];
     let square = creates(&ops, "assetGroupAssetOperation")
         .into_iter()
@@ -1527,26 +1524,26 @@ async fn pmax_image_assets_are_named_by_content() {
     assert_eq!(square["asset"], *logo_rn);
 
     let mut b = pmax_minimal(&img);
-    b["name"] = json!("Outra campanha");
+    b["name"] = json!("Another campaign");
     let names_b = image_names(&pmax_ops(&h, b).await);
     assert_eq!(names_a, names_b);
 }
 
-/// A validação local de todos os grupos roda antes de carregar qualquer imagem.
+/// Local validation of every group runs before any image is loaded.
 #[tokio::test]
 async fn pmax_validates_texts_before_loading_images() {
     let h = google_harness().await;
     fake(&h).await;
     let img = Images::new();
     let mut input = pmax_minimal(&img);
-    input["brand"]["logo"] = json!({ "file_path": "/nao/existe/logo.png" });
+    input["brand"]["logo"] = json!({ "file_path": "/does/not/exist/logo.png" });
     let mut g1 = input["asset_groups"][0].clone();
-    g1["name"] = json!("Grupo 2");
-    g1["descriptions"] = json!(["Só uma."]);
+    g1["name"] = json!("Group 2");
+    g1["descriptions"] = json!(["Only one."]);
     input["asset_groups"].as_array_mut().unwrap().push(g1);
     assert_pmax_invalid(&h, input.clone(), "asset_groups[1].descriptions").await;
-    // Corrigido o texto, aí sim o logo inexistente aparece.
-    input["asset_groups"][1]["descriptions"] = json!(["Compre hoje.", "Entrega rápida."]);
+    // Once the text is fixed, the missing logo shows up.
+    input["asset_groups"][1]["descriptions"] = json!(["Buy today.", "Fast delivery."]);
     assert_pmax_invalid(&h, input, "brand.logo").await;
 }
 
@@ -1564,7 +1561,7 @@ async fn pmax_repeated_video_in_a_group() {
         Some("asset_groups[0].youtube_video_ids[1]")
     );
     assert!(
-        e.message.contains("aparece mais de uma vez"),
+        e.message.contains("appears more than once"),
         "{}",
         e.message
     );
@@ -1576,12 +1573,12 @@ const DG: &str = "create_demand_gen_campaign";
 const DISPLAY: &str = "create_display_campaign";
 const AD_GROUP_TEMP: &str = "customers/111/adGroups/-3";
 
-/// Imagens extras: logo 400x400 (bytes diferentes da 1:1) e retrato 4:5.
+/// Extra images: 400x400 logo (different bytes from the 1:1) and 4:5 portrait.
 struct DgImages {
     base: Images,
     logo: String,
     portrait: String,
-    /// Mesmas dimensões de `base.landscape` / `base.square`, bytes diferentes.
+    /// Same dimensions as `base.landscape` / `base.square`, different bytes.
     landscape2: String,
     square2: String,
 }
@@ -1607,26 +1604,26 @@ impl DgImages {
 
 fn multi_asset(img: &DgImages) -> Value {
     json!({ "multi_asset": {
-        "headlines": ["Sapatos de couro", "Frete grátis"],
-        "descriptions": ["Modelos sociais e casuais com entrega rápida."],
-        "business_name": "Sapatos Ltda",
+        "headlines": ["Leather shoes", "Free shipping"],
+        "descriptions": ["Dress and casual styles with fast delivery."],
+        "business_name": "Shoes Inc",
         "logo": { "file_path": img.logo },
         "images": {
             "landscape": [{ "file_path": img.base.landscape }],
             "square": [{ "file_path": img.base.square }]
         },
-        "final_url": "https://exemplo.com.br",
-        "call_to_action": "Comprar agora"
+        "final_url": "https://example.com",
+        "call_to_action": "Shop Now"
     } })
 }
 
 fn dg_input(ads: Value) -> Value {
     json!({
         "account_id": "111",
-        "name": "DG Sapatos",
+        "name": "DG Shoes",
         "daily_budget": 30,
         "ad_groups": [{
-            "name": "Grupo 1",
+            "name": "Group 1",
             "locations": ["2076"],
             "languages": ["1014"],
             "ads": ads
@@ -1636,17 +1633,17 @@ fn dg_input(ads: Value) -> Value {
 
 fn card(img: &str, n: usize) -> Value {
     json!({ "headline": format!("Card {n}"), "image": { "file_path": img },
-            "final_url": format!("https://exemplo.com.br/{n}") })
+            "final_url": format!("https://example.com/{n}") })
 }
 
 fn carousel(img: &DgImages, cards: Vec<Value>) -> Value {
     json!({ "carousel": {
-        "headline": "Coleção nova",
-        "description": "Veja os modelos da estação.",
-        "business_name": "Sapatos Ltda",
+        "headline": "New collection",
+        "description": "See this season's styles.",
+        "business_name": "Shoes Inc",
         "logo": { "file_path": img.logo },
         "cards": cards,
-        "final_url": "https://exemplo.com.br"
+        "final_url": "https://example.com"
     } })
 }
 
@@ -1674,7 +1671,7 @@ async fn tool_ops(h: &GoogleHarness, tool: &str, input: Value) -> Vec<Value> {
     last["mutateOperations"].as_array().unwrap().clone()
 }
 
-/// Grava `value` no JSON Pointer `ptr`, criando a chave final se faltar.
+/// Writes `value` at JSON Pointer `ptr`, creating the final key if missing.
 fn set_ptr(v: &mut Value, ptr: &str, value: Value) {
     let (parent, key) = ptr.rsplit_once('/').unwrap();
     let target = v.pointer_mut(parent).unwrap_or_else(|| panic!("{ptr}"));
@@ -1703,8 +1700,8 @@ async fn demand_gen_multi_asset_ops() {
     assert_eq!(
         out["summary"],
         format!(
-            "Criar campanha Demand Gen 'DG Sapatos' (pausada), 1 ad groups, 1 anúncios, \
-             orçamento 30 BRL/dia; imagens de {}, {}, {}",
+            "Creates Demand Gen campaign 'DG Shoes' (paused), 1 ad groups, 1 ads, \
+             budget 30 BRL/day; images from {}, {}, {}",
             img.logo, img.base.landscape, img.base.square
         )
     );
@@ -1739,9 +1736,9 @@ async fn demand_gen_multi_asset_ops() {
     let group = create(ops, 5);
     assert_eq!(group["resourceName"], AD_GROUP_TEMP);
     assert_eq!(group["campaign"], CAMPAIGN_TEMP);
-    assert_eq!(group["name"], "Grupo 1");
+    assert_eq!(group["name"], "Group 1");
     assert_eq!(group["status"], "ENABLED");
-    // Local e idioma no grupo, não na campanha.
+    // Location and language on the ad group, not on the campaign.
     assert_eq!(
         *create(ops, 6),
         json!({ "adGroup": AD_GROUP_TEMP,
@@ -1763,15 +1760,15 @@ async fn demand_gen_multi_asset_ops() {
     assert_eq!(
         ad_group_ad["ad"],
         json!({
-            "finalUrls": ["https://exemplo.com.br"],
+            "finalUrls": ["https://example.com"],
             "demandGenMultiAssetAd": {
-                "headlines": [{ "text": "Sapatos de couro" }, { "text": "Frete grátis" }],
-                "descriptions": [{ "text": "Modelos sociais e casuais com entrega rápida." }],
-                "businessName": "Sapatos Ltda",
+                "headlines": [{ "text": "Leather shoes" }, { "text": "Free shipping" }],
+                "descriptions": [{ "text": "Dress and casual styles with fast delivery." }],
+                "businessName": "Shoes Inc",
                 "logoImages": [{ "asset": asset_rn(0) }],
                 "marketingImages": [{ "asset": asset_rn(1) }],
                 "squareMarketingImages": [{ "asset": asset_rn(2) }],
-                "callToActionText": "Comprar agora"
+                "callToActionText": "Shop Now"
             }
         })
     );
@@ -1786,7 +1783,7 @@ async fn demand_gen_multi_asset_ops() {
     assert_eq!(
         rec.after,
         Some(json!({ CAMPAIGN_REAL: { "campaign.status": "PAUSED",
-                                      "campaign.name": "DG Sapatos" } }))
+                                      "campaign.name": "DG Shoes" } }))
     );
 }
 
@@ -1797,16 +1794,16 @@ async fn demand_gen_video_by_id() {
     let img = DgImages::new();
     let video = |videos: Value| {
         json!({ "video_responsive": {
-            "headlines": ["Sapatos de couro"],
-            "long_headlines": ["Sapatos de couro com frete grátis para todo o Brasil"],
-            "descriptions": ["Compre hoje."],
-            "business_name": "Sapatos Ltda",
+            "headlines": ["Leather shoes"],
+            "long_headlines": ["Leather shoes with free shipping across the country"],
+            "descriptions": ["Buy today."],
+            "business_name": "Shoes Inc",
             "logo": { "file_path": img.logo },
             "videos": videos,
-            "final_url": "https://exemplo.com.br"
+            "final_url": "https://example.com"
         } })
     };
-    // O mesmo id em dois anúncios vira um asset só.
+    // The same id in two ads becomes a single asset.
     let input = dg_input(json!([
         video(json!(["dQw4w9WgXcQ", "customers/111/assets/55"])),
         video(json!([" dQw4w9WgXcQ "])),
@@ -1816,7 +1813,7 @@ async fn demand_gen_video_by_id() {
         .validate(&call(CONN, "111", DG, input.clone()))
         .await
         .unwrap();
-    assert!(v.warning.unwrap().contains("ficam na conta"));
+    assert!(v.warning.unwrap().contains("stay in the account"));
     let ops = tool_ops(&h, DG, input).await;
     let videos: Vec<&Value> = creates(&ops, "assetOperation")
         .into_iter()
@@ -1835,22 +1832,22 @@ async fn demand_gen_video_by_id() {
     );
     assert_eq!(
         ad["longHeadlines"],
-        json!([{ "text": "Sapatos de couro com frete grátis para todo o Brasil" }])
+        json!([{ "text": "Leather shoes with free shipping across the country" }])
     );
-    assert_eq!(ad["businessName"], json!({ "text": "Sapatos Ltda" }));
+    assert_eq!(ad["businessName"], json!({ "text": "Shoes Inc" }));
     assert_eq!(ad["logoImages"].as_array().unwrap().len(), 1);
     assert_eq!(
         ad_of(&ops, 1)["demandGenVideoResponsiveAd"]["videos"],
         json!([{ "asset": video_rn }])
     );
-    // O asset do vídeo vem antes do primeiro anúncio que o usa.
+    // The video asset comes before the first ad that uses it.
     let pos = |pred: &dyn Fn(&Value) -> bool| ops.iter().position(pred).unwrap();
     assert!(
         pos(&|o| o["assetOperation"]["create"]["youtubeVideoAsset"].is_object())
             < pos(&|o| o.get("adGroupAdOperation").is_some())
     );
 
-    // Link do YouTube vira o id extraído; link malformado é recusado no campo.
+    // A YouTube link becomes the extracted id; a malformed link is refused on the field.
     let ops = tool_ops(
         &h,
         DG,
@@ -1865,7 +1862,7 @@ async fn demand_gen_video_by_id() {
         linked[0]["youtubeVideoAsset"],
         json!({ "youtubeVideoId": "dQw4w9WgXcQ" })
     );
-    let mut bad = dg_input(json!([video(json!(["https://youtu.be/curto"]))]));
+    let mut bad = dg_input(json!([video(json!(["https://youtu.be/short"]))]));
     assert_tool_invalid(&h, DG, bad.clone(), "ad_groups[0].ads[0].videos[0]").await;
     bad["ad_groups"][0]["ads"] = json!([video(json!([
         "dQw4w9WgXcQ",
@@ -1890,7 +1887,7 @@ async fn demand_gen_carousel_card_limits() {
     assert_tool_invalid(&h, DG, one, field).await;
     let eleven = (0..11).map(|n| card(&img.base.landscape, n)).collect();
     assert_tool_invalid(&h, DG, dg_input(json!([carousel(&img, eleven)])), field).await;
-    // Card com imagem fora de 1.91:1 e 1:1.
+    // Card with an image that is neither 1.91:1 nor 1:1.
     let wrong = vec![card(&img.base.landscape, 0), card(&img.base.wide, 1)];
     assert_tool_invalid(
         &h,
@@ -1899,7 +1896,7 @@ async fn demand_gen_carousel_card_limits() {
         "ad_groups[0].ads[0].cards[1].image",
     )
     .await;
-    // Proporções misturadas entre os cards.
+    // Mixed aspect ratios across the cards.
     let mixed = vec![card(&img.base.landscape, 0), card(&img.base.square, 1)];
     assert_tool_invalid(
         &h,
@@ -1909,8 +1906,8 @@ async fn demand_gen_carousel_card_limits() {
     )
     .await;
 
-    // A mesma imagem em dois cards (mesmo arquivo, ou outro arquivo com o mesmo
-    // conteúdo) é recusada antes de ir ao Google: DUPLICATE_IMAGE_ACROSS_CAROUSEL_CARDS.
+    // The same image on two cards (same file, or another file with the same content)
+    // is refused before reaching Google: DUPLICATE_IMAGE_ACROSS_CAROUSEL_CARDS.
     let copy = img.square2.replace("square2", "square_copy");
     std::fs::copy(&img.base.square, &copy).unwrap();
     for second in [&img.base.square, &copy] {
@@ -1921,12 +1918,12 @@ async fn demand_gen_carousel_card_limits() {
             e.field.as_deref(),
             Some("ad_groups[0].ads[0].cards[1].image")
         );
-        assert!(e.message.contains("imagem"), "{}", e.message);
+        assert!(e.message.contains("image"), "{}", e.message);
     }
 
-    // Dois cards 1:1: assets de card com a imagem quadrada e a URL de cada um.
+    // Two 1:1 cards: card assets with the square image and each one's URL.
     let mut cards = vec![card(&img.base.square, 0), card(&img.square2, 1)];
-    cards[1]["call_to_action"] = json!("Ver mais");
+    cards[1]["call_to_action"] = json!("See More");
     let ops = tool_ops(&h, DG, dg_input(json!([carousel(&img, cards)]))).await;
     let assets = creates(&ops, "assetOperation");
     let image_rn = assets
@@ -1951,21 +1948,21 @@ async fn demand_gen_carousel_card_limits() {
     assert_eq!(
         card_assets[1]["demandGenCarouselCardAsset"],
         json!({ "squareMarketingImageAsset": image2_rn, "headline": "Card 1",
-                "callToActionText": "Ver mais" })
+                "callToActionText": "See More" })
     );
     assert_eq!(
         card_assets[1]["finalUrls"],
-        json!(["https://exemplo.com.br/1"])
+        json!(["https://example.com/1"])
     );
     let ad = ad_of(&ops, 0);
-    assert_eq!(ad["finalUrls"], json!(["https://exemplo.com.br"]));
+    assert_eq!(ad["finalUrls"], json!(["https://example.com"]));
     let c = &ad["demandGenCarouselAd"];
-    assert_eq!(c["headline"], json!({ "text": "Coleção nova" }));
+    assert_eq!(c["headline"], json!({ "text": "New collection" }));
     assert_eq!(
         c["description"],
-        json!({ "text": "Veja os modelos da estação." })
+        json!({ "text": "See this season's styles." })
     );
-    assert_eq!(c["businessName"], "Sapatos Ltda");
+    assert_eq!(c["businessName"], "Shoes Inc");
     assert!(c["logoImage"]["asset"].is_string(), "{c}");
     assert_eq!(
         c["carouselCards"],
@@ -1973,7 +1970,7 @@ async fn demand_gen_carousel_card_limits() {
                { "asset": card_assets[1]["resourceName"] }])
     );
 
-    // Cards 1.91:1 usam o marketingImageAsset.
+    // 1.91:1 cards use marketingImageAsset.
     let cards = vec![card(&img.base.landscape, 0), card(&img.landscape2, 1)];
     let ops = tool_ops(&h, DG, dg_input(json!([carousel(&img, cards)]))).await;
     let card_asset = creates(&ops, "assetOperation")
@@ -1991,15 +1988,15 @@ async fn demand_gen_carousel_new_images_are_created_before_the_cards_that_use_th
     let h = google_harness().await;
     fake(&h).await;
     let img = DgImages::new();
-    // Multi-asset (imagem nova 1.91:1 e 1:1) e carrossel (a mesma 1.91:1 no card 1,
-    // outra só no card 2) no mesmo grupo.
+    // Multi-asset (new 1.91:1 and 1:1 images) and carousel (the same 1.91:1 on card 1,
+    // another one only on card 2) in the same ad group.
     let cards = vec![card(&img.base.landscape, 1), card(&img.landscape2, 2)];
     let input = dg_input(json!([multi_asset(&img), carousel(&img, cards)]));
     let ops = tool_ops(&h, DG, input).await;
     let pos = |name: &Value| {
         ops.iter()
             .position(|o| o["assetOperation"]["create"]["resourceName"] == *name)
-            .unwrap_or_else(|| panic!("sem create de {name}"))
+            .unwrap_or_else(|| panic!("no create for {name}"))
     };
     let card_ops: Vec<(usize, &Value)> = ops
         .iter()
@@ -2010,10 +2007,10 @@ async fn demand_gen_carousel_new_images_are_created_before_the_cards_that_use_th
     for (i, o) in &card_ops {
         let image =
             &o["assetOperation"]["create"]["demandGenCarouselCardAsset"]["marketingImageAsset"];
-        assert!(pos(image) < *i, "imagem {image} depois do card {i}");
+        assert!(pos(image) < *i, "image {image} after card {i}");
     }
-    // Toda criação de asset vem antes de qualquer anúncio (o validateOnly real recusou a
-    // imagem de um card criada depois do anúncio multi-asset: RESOURCE_NOT_FOUND).
+    // Every asset creation comes before any ad (the real validateOnly refused a card
+    // image created after the multi-asset ad: RESOURCE_NOT_FOUND).
     let first_ad = ops
         .iter()
         .position(|o| o.get("adGroupAdOperation").is_some())
@@ -2024,14 +2021,14 @@ async fn demand_gen_carousel_new_images_are_created_before_the_cards_that_use_th
         .unwrap();
     assert!(
         last_asset < first_ad,
-        "asset em {last_asset}, anúncio em {first_ad}"
+        "asset at {last_asset}, ad at {first_ad}"
     );
     let ad = ops
         .iter()
         .position(|o| o["adGroupAdOperation"]["create"]["ad"]["demandGenCarouselAd"].is_object())
         .unwrap();
     assert!(card_ops.iter().all(|(i, _)| *i < ad));
-    // Imagens distintas, nomes temporários únicos.
+    // Distinct images, unique temporary names.
     let imgs: Vec<&Value> = card_ops
         .iter()
         .map(|(_, o)| &o["assetOperation"]["create"]["demandGenCarouselCardAsset"]["marketingImageAsset"])
@@ -2044,13 +2041,13 @@ async fn demand_gen_carousel_new_images_are_created_before_the_cards_that_use_th
     let n = names.len();
     names.sort_unstable();
     names.dedup();
-    assert_eq!(n, names.len(), "temporário repetido");
+    assert_eq!(n, names.len(), "repeated temporary id");
 }
 
-/// O Google trata operações seguidas do mesmo tipo como um lote e não resolve, dentro
-/// dele, um temporário criado nele mesmo (card colado à imagem dele: RESOURCE_NOT_FOUND).
-/// O resumo marca essas referências com `!!`; nenhuma pode sobrar, e toda referência a
-/// temporário tem de apontar para uma criação anterior.
+/// Google treats consecutive operations of the same type as one batch and does not
+/// resolve, inside it, a temporary id created in that same batch (a card right after its
+/// image: RESOURCE_NOT_FOUND). The description marks those references with `!!`; none
+/// may remain, and every reference to a temporary id must point to an earlier create.
 #[tokio::test]
 async fn demand_gen_references_never_point_into_their_own_batch() {
     let h = google_harness().await;
@@ -2058,9 +2055,9 @@ async fn demand_gen_references_never_point_into_their_own_batch() {
     let img = DgImages::new();
     let two_cards = || vec![card(&img.base.landscape, 1), card(&img.landscape2, 2)];
     let cases = [
-        // O do checklist: multi-asset e carrossel com uma imagem nova só no card.
+        // Multi-asset and carousel with a new image used only on the card.
         dg_input(json!([multi_asset(&img), carousel(&img, two_cards())])),
-        // Carrossel sozinho: nada entre a imagem e o card além do que a ordem garante.
+        // Carousel alone: nothing between the image and the card except what the order guarantees.
         dg_input(json!([carousel(&img, two_cards())])),
     ];
     for input in cases {
@@ -2089,8 +2086,8 @@ async fn demand_gen_call_to_action_comes_from_googles_list() {
     fake(&h).await;
     let img = DgImages::new();
     let cta_of = |ops: &[Value]| ad_of(ops, 0)["demandGenMultiAssetAd"]["callToActionText"].clone();
-    // Qualquer locale (e o inglês), sem diferenciar maiúsculas nem espaços nas pontas;
-    // vai a forma canônica da tabela.
+    // Any locale (and English), ignoring case and surrounding spaces; the table's
+    // canonical form is sent.
     for (typed, canonical) in [
         ("  comprar AGORA ", "Comprar agora"),
         ("Shop Now", "Shop Now"),
@@ -2103,9 +2100,9 @@ async fn demand_gen_call_to_action_comes_from_googles_list() {
         let ops = tool_ops(&h, DG, dg_input(json!([ad]))).await;
         assert_eq!(cta_of(&ops), json!(canonical), "{typed}");
     }
-    // Fora da lista: erro no campo, com as opções em pt-BR e em inglês.
+    // Not in the list: error on the field, with the options in pt-BR and in English.
     let mut ad = multi_asset(&img);
-    ad["multi_asset"]["call_to_action"] = json!("Compre já");
+    ad["multi_asset"]["call_to_action"] = json!("Buy it today");
     let e = tool_err(&h, DG, dg_input(json!([ad]))).await;
     assert_eq!(e.code, codes::INVALID_INPUT, "{e:?}");
     assert_eq!(
@@ -2115,9 +2112,9 @@ async fn demand_gen_call_to_action_comes_from_googles_list() {
     for option in ["Comprar agora", "Saber mais", "Shop Now", "Learn More"] {
         assert!(e.message.contains(option), "{}", e.message);
     }
-    // O mesmo nos cards do carrossel.
+    // The same on the carousel cards.
     let mut cards = vec![card(&img.base.square, 0), card(&img.square2, 1)];
-    cards[1]["call_to_action"] = json!("Veja mais");
+    cards[1]["call_to_action"] = json!("See it all");
     assert_tool_invalid(
         &h,
         DG,
@@ -2182,7 +2179,7 @@ async fn demand_gen_limits() {
         ),
         (
             "/ad_groups/0/ads/0/multi_asset/final_url",
-            json!("exemplo"),
+            json!("example"),
             "ad_groups[0].ads[0].final_url",
         ),
         (
@@ -2230,20 +2227,20 @@ async fn demand_gen_limits() {
     dup["ad_groups"] = json!([group.clone(), group]);
     assert_tool_invalid(&h, DG, dup, "ad_groups[1].name").await;
 
-    // Texto inválido no segundo grupo aparece antes do logo inexistente do primeiro.
+    // An invalid text in the second group shows up before the first group's missing logo.
     let mut order = ok.clone();
     order["ad_groups"][0]["ads"][0]["multi_asset"]["logo"] =
-        json!({ "file_path": "/nao/existe.png" });
+        json!({ "file_path": "/does/not/exist.png" });
     let mut g1 = order["ad_groups"][0].clone();
-    g1["name"] = json!("Grupo 2");
+    g1["name"] = json!("Group 2");
     g1["ads"][0]["multi_asset"]["descriptions"] = json!([]);
     order["ad_groups"].as_array_mut().unwrap().push(g1);
     assert_tool_invalid(&h, DG, order, "ad_groups[1].ads[0].descriptions").await;
 
-    // Nenhum mutate saiu nos casos inválidos.
+    // No mutate went out for the invalid cases.
     assert!(mutate_bodies(&h).await.is_empty());
 
-    // maximize_conversions com CPA é aceito.
+    // maximize_conversions with a CPA is accepted.
     let mut conv = ok;
     conv["bidding"] = json!({ "maximize_conversions": { "target_cpa": 12.5 } });
     conv["ad_groups"][0]["ads"][0]["multi_asset"]["images"]["portrait"] =
@@ -2330,7 +2327,7 @@ async fn demand_gen_and_display_specs() {
         let spec = tools
             .iter()
             .find(|t| t.name == name)
-            .unwrap_or_else(|| panic!("{name} registrada"));
+            .unwrap_or_else(|| panic!("{name} registered"));
         assert!(spec.reversible);
         assert!(spec.exposed);
         assert_eq!(spec.group, adsconsole_core::config::ToolGroup::Create);
@@ -2339,8 +2336,8 @@ async fn demand_gen_and_display_specs() {
     let dg = tools.iter().find(|t| t.name == DG).unwrap();
     assert!(
         dg.description.contains(
-            "Caminho oficial para anúncios de vídeo, imagem e carrossel; a API não cria \
-             campanhas do canal VIDEO."
+            "This is the official path for video, image and carousel ads; the API does \
+             not create VIDEO channel campaigns."
         ),
         "{}",
         dg.description
@@ -2351,27 +2348,27 @@ async fn demand_gen_and_display_specs() {
 
 fn rda(img: &Images) -> Value {
     json!({
-        "headlines": ["Sapatos", "Frete grátis"],
-        "long_headline": "Sapatos de couro com frete grátis para todo o Brasil",
-        "descriptions": ["Compre hoje."],
-        "business_name": "Sapatos Ltda",
+        "headlines": ["Shoes", "Free shipping"],
+        "long_headline": "Leather shoes with free shipping across the country",
+        "descriptions": ["Buy today."],
+        "business_name": "Shoes Inc",
         "marketing_images": [{ "file_path": img.landscape }],
         "square_marketing_images": [{ "file_path": img.square }],
-        "final_url": "https://exemplo.com.br"
+        "final_url": "https://example.com"
     })
 }
 
 fn display_input(img: &Images) -> Value {
     json!({
         "account_id": "111",
-        "name": "Display Sapatos",
+        "name": "Display Shoes",
         "daily_budget": 40,
         "locations": ["2076"],
         "ad_groups": [{
-            "name": "Grupo 1",
+            "name": "Group 1",
             "targeting": {
                 "audiences": ["777"],
-                "placements": ["exemplo.com.br"],
+                "placements": ["example.com"],
                 "topics": ["13"]
             },
             "ads": [rda(img)]
@@ -2393,8 +2390,8 @@ async fn display_rda_ops() {
     assert_eq!(
         out["summary"],
         format!(
-            "Criar campanha Display 'Display Sapatos' (pausada), 1 ad groups, 1 anúncios, \
-             orçamento 40 BRL/dia; imagens de {}, {}",
+            "Creates Display campaign 'Display Shoes' (paused), 1 ad groups, 1 ads, \
+             budget 40 BRL/day; images from {}, {}",
             img.landscape, img.square
         )
     );
@@ -2433,7 +2430,7 @@ async fn display_rda_ops() {
     );
     assert_eq!(
         *create(ops, 5),
-        json!({ "adGroup": AD_GROUP_TEMP, "placement": { "url": "exemplo.com.br" } })
+        json!({ "adGroup": AD_GROUP_TEMP, "placement": { "url": "example.com" } })
     );
     assert_eq!(
         *create(ops, 6),
@@ -2447,19 +2444,19 @@ async fn display_rda_ops() {
     assert_eq!(
         ad["ad"],
         json!({
-            "finalUrls": ["https://exemplo.com.br"],
+            "finalUrls": ["https://example.com"],
             "responsiveDisplayAd": {
-                "headlines": [{ "text": "Sapatos" }, { "text": "Frete grátis" }],
-                "longHeadline": { "text": "Sapatos de couro com frete grátis para todo o Brasil" },
-                "descriptions": [{ "text": "Compre hoje." }],
-                "businessName": "Sapatos Ltda",
+                "headlines": [{ "text": "Shoes" }, { "text": "Free shipping" }],
+                "longHeadline": { "text": "Leather shoes with free shipping across the country" },
+                "descriptions": [{ "text": "Buy today." }],
+                "businessName": "Shoes Inc",
                 "marketingImages": [{ "asset": rn(7) }],
                 "squareMarketingImages": [{ "asset": rn(8) }]
             }
         })
     );
 
-    // Undo: campanha e depois orçamento.
+    // Undo: campaign and then budget.
     let change_id = out["change_id"].as_str().unwrap().to_string();
     let undo = engine
         .call_tool("undo_change", json!({ "change_id": change_id }), None)
@@ -2494,7 +2491,7 @@ async fn display_options_and_limits() {
         ad["logoImages"],
         json!([{ "asset": "customers/111/assets/31" }])
     );
-    // O logo quadrado é o mesmo arquivo da imagem 1:1: o mesmo asset.
+    // The square logo is the same file as the 1:1 image: the same asset.
     assert_eq!(ad["squareLogoImages"], ad["squareMarketingImages"]);
 
     let ok = display_input(&img);
@@ -2545,7 +2542,7 @@ async fn display_options_and_limits() {
         ),
         (
             "/ad_groups/0/targeting/placements",
-            json!(["não é url"]),
+            json!(["not a url"]),
             "ad_groups[0].targeting.placements[0]",
         ),
         (
@@ -2611,12 +2608,12 @@ async fn display_refusal_points_to_demand_gen() {
         assert_eq!(e.code, codes::DISPLAY_NOT_AVAILABLE, "{e:?} {body}");
         assert_eq!(
             e.message,
-            "O Google não permite mais criar campanhas de Display por aqui. Use \
+            "Google no longer allows creating Display campaigns through the API. Use \
              create_demand_gen_campaign."
         );
     }
 
-    // Outras ferramentas não mudam: o mesmo erro na Search continua API_ERROR.
+    // Other tools do not change: the same error on Search stays API_ERROR.
     let h = google_harness().await;
     Mock::given(method("POST"))
         .and(path(MUTATE_PATH))
@@ -2629,7 +2626,7 @@ async fn display_refusal_points_to_demand_gen() {
     let e = validate_err(&h, "111", minimal()).await;
     assert_eq!(e.code, codes::API_ERROR, "{e:?}");
 
-    // Outro erro do Google na Display segue a tradução normal.
+    // Any other Google error on Display follows the normal translation.
     let h = google_harness().await;
     let img = Images::new();
     let fixture: Value = serde_json::from_str(include_str!(
@@ -2645,7 +2642,7 @@ async fn display_refusal_points_to_demand_gen() {
     assert_eq!(e.code, codes::BUDGET_TOO_LOW, "{e:?}");
 }
 
-/// O `validateOnly` passa e o mutate real responde `status`/`body`.
+/// The `validateOnly` passes and the real mutate answers `status`/`body`.
 async fn display_execute_err(status: u16, body: Value) -> ToolError {
     let h = google_harness().await;
     let img = Images::new();
@@ -2685,8 +2682,8 @@ async fn display_refusal_on_real_mutate() {
     .await;
     assert_eq!(e.code, codes::DISPLAY_NOT_AVAILABLE, "{e:?}");
 
-    // Talvez aplicado (5xx no mutate): continua EXECUTION_FAILED, com a sugestão de
-    // conferir na conta, mesmo citando o canal.
+    // Maybe applied (5xx on the mutate): stays EXECUTION_FAILED, with the suggestion to
+    // check the account, even when it mentions the channel.
     let mut body = refusal(json!({ "internalError": "INTERNAL_ERROR" }), path);
     body["error"]["code"] = json!(500);
     body["error"]["status"] = json!("INTERNAL");
@@ -2725,8 +2722,8 @@ fn video_file(name: &str, len: usize) -> VideoFile {
     }
 }
 
-/// Start, PUTs (o finalize devolve o nome do upload), o estado do upload em
-/// `state` e o remove.
+/// Start, PUTs (finalize returns the upload name), the upload state in `state`, and
+/// the remove.
 async fn mock_youtube(h: &GoogleHarness, state: &str, chunk_status: u16) {
     Mock::given(method("POST"))
         .and(path(YT_START))
@@ -2789,7 +2786,7 @@ async fn requests_to(h: &GoogleHarness, p: &str) -> Vec<Value> {
 }
 
 fn video_input(file: &VideoFile) -> Value {
-    json!({ "account_id": "111", "file_path": file.path, "title": "Vídeo de teste" })
+    json!({ "account_id": "111", "file_path": file.path, "title": "Test video" })
 }
 
 #[tokio::test]
@@ -2821,12 +2818,12 @@ async fn upload_video_end_to_end_and_undo() {
         out["summary"].as_str().unwrap().contains("validate_only"),
         "{out}"
     );
-    // Start com o corpo snake_case e o arquivo inteiro nos PUTs.
+    // Start with the snake_case body and the whole file in the PUTs.
     let start = &requests_to(&h, YT_START).await[0];
     assert_eq!(
         start,
         &json!({ "customer_id": "111", "you_tube_video_upload": {
-            "video_title": "Vídeo de teste", "video_description": "",
+            "video_title": "Test video", "video_description": "",
             "video_privacy": "UNLISTED" } })
     );
     let puts: Vec<_> = h
@@ -2838,7 +2835,7 @@ async fn upload_video_end_to_end_and_undo() {
         .filter(|r| r.method.as_str() == "PUT")
         .collect();
     assert_eq!(puts.iter().map(|r| r.body.len()).sum::<usize>(), 3000);
-    // Só o mutate real do asset (não há validate_only para o upload).
+    // Only the real asset mutate (there is no validate_only for the upload).
     let bodies = mutate_bodies(&h).await;
     assert_eq!(bodies.len(), 1);
     assert_eq!(bodies[0]["validateOnly"], false);
@@ -2867,7 +2864,7 @@ async fn upload_video_end_to_end_and_undo() {
     assert_eq!(inverse.input, json!({ "resource_name": UPLOAD_RN }));
 }
 
-/// validate, snapshot e execute direto no adapter.
+/// validate, snapshot and execute directly on the adapter.
 async fn video_applied(h: &GoogleHarness, input: Value) -> adsconsole_mcp::adapter::Applied {
     let c = call(CONN, "111", VIDEO, input);
     h.adapter.validate(&c).await.unwrap();
@@ -2877,7 +2874,7 @@ async fn video_applied(h: &GoogleHarness, input: Value) -> adsconsole_mcp::adapt
 
 #[tokio::test]
 async fn upload_video_partial_failures_are_recorded_with_undo() {
-    // O YouTube recusou: sem asset, com a inversa para limpar o upload.
+    // YouTube refused: no asset, with the inverse to clean up the upload.
     let h = google_harness().await;
     h.adapter
         .set_poll(Duration::from_millis(1), Duration::from_secs(5));
@@ -2895,7 +2892,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
     assert_eq!(inv.tool, "remove_youtube_upload");
     assert_eq!(inv.input, json!({ "resource_name": UPLOAD_RN }));
     assert!(mutate_bodies(&h).await.is_empty());
-    // O estado atual repete o "depois" (o desfazer não vê conflito).
+    // The current state repeats the "after" (undo sees no conflict).
     let current = h
         .adapter
         .current_state(CONN, "111", &inv.target)
@@ -2903,7 +2900,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
         .unwrap();
     assert_eq!(current, a.after);
 
-    // Prazo estourado: o estado atual e a mensagem com o video_id.
+    // Deadline exceeded: the current state and the message with the video_id.
     let h = google_harness().await;
     h.adapter
         .set_poll(Duration::from_millis(1), Duration::from_millis(3));
@@ -2924,7 +2921,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
     assert!(a.inverse.is_some());
     assert!(mutate_bodies(&h).await.is_empty());
 
-    // O asset falhou: o upload fica registrado, com a inversa.
+    // The asset failed: the upload stays recorded, with the inverse.
     let h = google_harness().await;
     h.adapter
         .set_poll(Duration::from_millis(1), Duration::from_secs(5));
@@ -2946,7 +2943,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
     assert!(msg.contains("upload_asset kind=youtube"), "{msg}");
     assert!(a.inverse.is_some());
 
-    // Pedaço falhou antes de existir o nome do upload: erro, sem retry.
+    // A chunk failed before the upload name existed: error, no retry.
     let h = google_harness().await;
     mock_youtube(&h, "PROCESSED", 500).await;
     let c = call(CONN, "111", VIDEO, video_input(&file));
@@ -2967,9 +2964,9 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
 async fn upload_video_validates_file() {
     let h = google_harness().await;
     let ok = video_file("video.webm", 10);
-    let txt = video_file("notas.txt", 10);
-    let empty = video_file("vazio.mp4", 0);
-    let missing = format!("{}/nao-existe.mp4", ok._dir.path().display());
+    let txt = video_file("notes.txt", 10);
+    let empty = video_file("empty.mp4", 0);
+    let missing = format!("{}/missing.mp4", ok._dir.path().display());
     let base = video_input(&ok);
     let with = |k: &str, v: Value| {
         let mut x = base.clone();
@@ -2988,10 +2985,13 @@ async fn upload_video_validates_file() {
         (with("title", json!("x".repeat(101))), "title"),
         (with("title", json!("  ")), "title"),
         (with("description", json!("x".repeat(5001))), "description"),
-        (with("privacy", json!("SECRETO")), "privacy"),
+        (with("privacy", json!("SECRET")), "privacy"),
         (with("wait_minutes", json!(31)), "wait_minutes"),
         (with("wait_minutes", json!(0)), "wait_minutes"),
-        (with("channel_id", json!("canal com espaço")), "channel_id"),
+        (
+            with("channel_id", json!("channel with space")),
+            "channel_id",
+        ),
     ] {
         let e = h
             .adapter
@@ -3001,7 +3001,7 @@ async fn upload_video_validates_file() {
         assert_eq!(e.code, codes::INVALID_INPUT, "{input}");
         assert_eq!(e.field.as_deref(), Some(field), "{e:?} {input}");
     }
-    // Válido: só checagens locais, nenhuma chamada ao Google.
+    // Valid: local checks only, no call to Google.
     let v = h
         .adapter
         .validate(&call(CONN, "111", VIDEO, with("privacy", json!("public"))))
@@ -3071,7 +3071,7 @@ async fn upload_asset_text_and_image() {
     let img = Images::new();
     let engine = engine(&h, WriteMode::Direct);
 
-    // Texto: até 90 caracteres.
+    // Text: up to 90 characters.
     let e = asset_err(
         &h,
         json!({ "account_id": "111", "kind": "text", "text": "x".repeat(91) }),
@@ -3082,7 +3082,7 @@ async fn upload_asset_text_and_image() {
     let out = engine
         .call_tool(
             ASSET,
-            json!({ "account_id": "111", "kind": "text", "text": " Frete grátis ", "name": "Frete" }),
+            json!({ "account_id": "111", "kind": "text", "text": " Free shipping ", "name": "Shipping" }),
             None,
         )
         .await
@@ -3099,11 +3099,11 @@ async fn upload_asset_text_and_image() {
     assert_eq!(
         bodies[1]["mutateOperations"],
         json!([{ "assetOperation": { "create": {
-            "resourceName": "customers/111/assets/-1", "name": "Frete",
-            "textAsset": { "text": "Frete grátis" } } } }])
+            "resourceName": "customers/111/assets/-1", "name": "Shipping",
+            "textAsset": { "text": "Free shipping" } } } }])
     );
 
-    // Imagem 1200x628: asset IMAGE com o nome pelo conteúdo.
+    // 1200x628 image: IMAGE asset named by content.
     let out = engine
         .call_tool(
             ASSET,
@@ -3147,7 +3147,7 @@ async fn upload_asset_text_and_image() {
             "youtubeVideoAsset": { "youtubeVideoId": VIDEO_ID } } } }])
     );
 
-    // Link do YouTube: o id é tirado do link.
+    // YouTube link: the id is taken from the link.
     for link in [
         format!("https://youtu.be/{VIDEO_ID}"),
         format!("https://www.youtube.com/watch?v={VIDEO_ID}"),
@@ -3169,7 +3169,7 @@ async fn upload_asset_text_and_image() {
         );
     }
 
-    // Erros locais, com o campo.
+    // Local errors, with the field.
     let logo_wide = json!({ "file_path": img.landscape });
     for (input, field) in [
         (json!({ "kind": "logo", "image": logo_wide }), "image"),
@@ -3204,7 +3204,7 @@ async fn upload_asset_text_and_image() {
         assert_eq!(e.code, codes::INVALID_INPUT, "{input}");
         assert_eq!(e.field.as_deref(), Some(field), "{e:?} {input}");
     }
-    // Logo 1:1 passa.
+    // A 1:1 logo passes.
     h.adapter
         .validate(&call(
             CONN,
@@ -3221,7 +3221,7 @@ async fn upload_video_undo_after_timeout_needs_no_force() {
     let h = google_harness().await;
     h.adapter
         .set_poll(Duration::from_millis(1), Duration::from_millis(3));
-    // O estado começa UPLOADED e depois vira PROCESSED (montado antes: tem a vez).
+    // The state starts UPLOADED and then becomes PROCESSED (mounted first: it takes precedence).
     let current = Arc::new(Mutex::new("UPLOADED".to_string()));
     let c = current.clone();
     Mock::given(method("POST"))
@@ -3252,7 +3252,7 @@ async fn upload_video_undo_after_timeout_needs_no_force() {
     );
     let change_id = out["change_id"].as_str().unwrap().to_string();
     let orig = h.db.get_change(&change_id).unwrap().unwrap();
-    // Estado em andamento: nada observado, o estado vai no fixo.
+    // In-progress state: nothing watched, the state goes in the fixed part.
     assert_eq!(orig.inverse.as_ref().unwrap().target["watch"], json!([]));
 
     *current.lock().unwrap() = "PROCESSED".into();

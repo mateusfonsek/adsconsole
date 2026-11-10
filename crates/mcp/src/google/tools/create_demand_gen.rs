@@ -1,14 +1,14 @@
-//! `create_demand_gen_campaign`: uma campanha Demand Gen completa num único
-//! `googleAds:mutate` atômico, com ids temporários.
+//! `create_demand_gen_campaign`: a complete Demand Gen campaign in a single atomic
+//! `googleAds:mutate`, with temporary ids.
 //!
-//! Ordem das operações: orçamento (não compartilhado) → campanha (`DEMAND_GEN`,
-//! pausada) → por grupo: grupo → local e idioma do grupo → por anúncio: imagens,
-//! vídeos e cards novos → `adGroupAd` (multi-asset, vídeo responsivo ou carrossel).
+//! Operation order: budget (not shared) → campaign (`DEMAND_GEN`, paused) → per ad
+//! group: ad group → the ad group's location and language → per ad: new images,
+//! videos and cards → `adGroupAd` (multi-asset, video responsive or carousel).
 //!
-//! Toda a validação local roda antes de carregar qualquer imagem; os mesmos bytes
-//! viram um asset só ([`ImagePool`]) e o mesmo vídeo também. O orçamento mínimo não é
-//! conferido aqui: vem do `validateOnly` (`BUDGET_TOO_LOW`). A inversa remove a
-//! campanha e depois o orçamento; os assets ficam na conta.
+//! All local validation runs before any image is loaded; the same bytes become a
+//! single asset ([`ImagePool`]), and so does the same video. The minimum budget is not
+//! checked here: it comes from `validateOnly` (`BUDGET_TOO_LOW`). The inverse removes
+//! the campaign and then the budget; the assets stay in the account.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::Decimal;
@@ -46,7 +46,7 @@ pub(crate) fn tools() -> Vec<GTool> {
 const CREATE_DEMAND_GEN_CAMPAIGN: &str = "create_demand_gen_campaign";
 const MAX_AD_GROUPS: usize = 10;
 const MAX_ADS: usize = 5;
-/// (mínimo, máximo, caracteres) dos textos.
+/// (minimum, maximum, characters) of the texts.
 const HEADLINES: (usize, usize, usize) = (1, 5, 40);
 const LONG_HEADLINES: (usize, usize, usize) = (1, 5, 90);
 const DESCRIPTIONS: (usize, usize, usize) = (1, 5, 90);
@@ -60,15 +60,15 @@ const MAX_CARDS: usize = 10;
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ImagesIn {
-    /// Imagens 1.91:1 (mínimo 600x314), ao menos uma.
+    /// 1.91:1 images (minimum 600x314), at least one.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     landscape: Vec<Value>,
-    /// Imagens 1:1 (mínimo 300x300), ao menos uma.
+    /// 1:1 images (minimum 300x300), at least one.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     square: Vec<Value>,
-    /// Imagens 4:5 (mínimo 480x600).
+    /// 4:5 images (minimum 480x600).
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     portrait: Vec<Value>,
@@ -76,110 +76,110 @@ struct ImagesIn {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct MultiAssetIn {
-    /// 1 a 5 títulos de até 40 caracteres.
+    /// 1 to 5 headlines of up to 40 characters.
     #[serde(default)]
     headlines: Vec<String>,
-    /// 1 a 5 descrições de até 90 caracteres.
+    /// 1 to 5 descriptions of up to 90 characters.
     #[serde(default)]
     descriptions: Vec<String>,
-    /// Nome da empresa (até 25 caracteres).
+    /// Business name (up to 25 characters).
     business_name: String,
-    /// Logo 1:1 (mínimo 128x128).
+    /// 1:1 logo (minimum 128x128).
     #[schemars(with = "ImageRef")]
     logo: Value,
-    /// Imagens: cada uma `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` ou
-    /// `{"asset": "customers/…/assets/…"}` (png, jpeg ou gif, até 5 MB).
+    /// Images: each one `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` or
+    /// `{"asset": "customers/…/assets/…"}` (png, jpeg or gif, up to 5 MB).
     #[serde(default)]
     images: ImagesIn,
-    /// URL final (`https://…`).
+    /// Final URL (`https://…`).
     final_url: String,
-    /// Texto do botão, da lista fixa do Google (ex.: "Comprar agora", "Saber mais",
-    /// "Visitar site", "Inscrever-se", "Fale conosco", "Instalar", "Reservar agora",
-    /// "Fazer download", "Obter cotação", "Ver mais"; também vale o inglês, como "Shop
-    /// Now"). Outro texto é recusado.
+    /// Button text, from Google's fixed list (e.g. "Shop Now", "Learn More", "Visit
+    /// Site", "Sign Up", "Contact Us", "Install", "Book Now", "Download", "Get Quote",
+    /// "See More"; Google's official translation in any locale, such as pt-BR, is also
+    /// accepted). Any other text is refused.
     #[serde(default)]
     call_to_action: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct VideoResponsiveIn {
-    /// 1 a 5 títulos de até 40 caracteres.
+    /// 1 to 5 headlines of up to 40 characters.
     #[serde(default)]
     headlines: Vec<String>,
-    /// 1 a 5 títulos longos de até 90 caracteres.
+    /// 1 to 5 long headlines of up to 90 characters.
     #[serde(default)]
     long_headlines: Vec<String>,
-    /// 1 a 5 descrições de até 90 caracteres.
+    /// 1 to 5 descriptions of up to 90 characters.
     #[serde(default)]
     descriptions: Vec<String>,
-    /// Nome da empresa (até 25 caracteres).
+    /// Business name (up to 25 characters).
     business_name: String,
-    /// Logo 1:1 (mínimo 128x128).
+    /// 1:1 logo (minimum 128x128).
     #[schemars(with = "ImageRef")]
     logo: Value,
-    /// 1 a 5 vídeos: id do YouTube (11 caracteres) ou asset de vídeo existente
+    /// 1 to 5 videos: a YouTube id (11 characters) or an existing video asset
     /// (`customers/…/assets/…`).
     #[serde(default)]
     videos: Vec<String>,
-    /// URL final (`https://…`).
+    /// Final URL (`https://…`).
     final_url: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CardIn {
-    /// Título do card (até 40 caracteres).
+    /// Card headline (up to 40 characters).
     headline: String,
-    /// Imagem 1.91:1 ou 1:1, a mesma proporção em todos os cards.
+    /// 1.91:1 or 1:1 image, the same aspect ratio on every card.
     #[schemars(with = "ImageRef")]
     image: Value,
-    /// URL final do card (`https://…`).
+    /// Final URL of the card (`https://…`).
     final_url: String,
-    /// Texto do botão do card, da lista fixa do Google (as mesmas opções do anúncio).
+    /// Card button text, from Google's fixed list (the same options as the ad).
     #[serde(default)]
     call_to_action: Option<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CarouselIn {
-    /// Título (até 40 caracteres).
+    /// Headline (up to 40 characters).
     headline: String,
-    /// Descrição (até 90 caracteres).
+    /// Description (up to 90 characters).
     description: String,
-    /// Nome da empresa (até 25 caracteres).
+    /// Business name (up to 25 characters).
     business_name: String,
-    /// Logo 1:1 (mínimo 128x128).
+    /// 1:1 logo (minimum 128x128).
     #[schemars(with = "ImageRef")]
     logo: Value,
-    /// 2 a 10 cards.
+    /// 2 to 10 cards.
     #[serde(default)]
     cards: Vec<CardIn>,
-    /// URL final (`https://…`).
+    /// Final URL (`https://…`).
     final_url: String,
 }
 
-/// Anúncio Demand Gen: `{"multi_asset": {…}}`, `{"video_responsive": {…}}` ou
+/// Demand Gen ad: `{"multi_asset": {…}}`, `{"video_responsive": {…}}` or
 /// `{"carousel": {…}}`.
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 enum DemandGenAd {
-    /// Imagens, títulos e descrições combinados pelo Google.
+    /// Images, headlines and descriptions combined by Google.
     MultiAsset(MultiAssetIn),
-    /// Vídeos do YouTube com títulos e descrições.
+    /// YouTube videos with headlines and descriptions.
     VideoResponsive(VideoResponsiveIn),
-    /// Carrossel de 2 a 10 cards.
+    /// Carousel of 2 to 10 cards.
     Carousel(CarouselIn),
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AdGroupIn {
     name: String,
-    /// Ids de local (`geoTargetConstants`) do grupo, ex.: "2076" (Brasil).
+    /// Location ids (`geoTargetConstants`) of the ad group, e.g. "2076" (Brazil).
     #[serde(default)]
     locations: Vec<String>,
-    /// Ids de idioma (`languageConstants`) do grupo, ex.: "1014" (português).
+    /// Language ids (`languageConstants`) of the ad group, e.g. "1014" (Portuguese).
     #[serde(default)]
     languages: Vec<String>,
-    /// 1 a 5 anúncios.
+    /// 1 to 5 ads.
     #[serde(default)]
     ads: Vec<DemandGenAd>,
 }
@@ -190,16 +190,16 @@ struct CreateDemandGenInput {
     #[allow(dead_code)]
     account: AccountRef,
     name: String,
-    /// Orçamento diário, na moeda da conta (o mínimo da conta vem do Google).
+    /// Daily budget, in the account currency (the account minimum comes from Google).
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
-    /// Estratégia de lance; padrão `maximize_clicks`. Ou
+    /// Bidding strategy; defaults to `maximize_clicks`. Or
     /// `{"maximize_conversions": {"target_cpa": 40}}`.
     #[serde(default)]
     #[schemars(with = "Option<Bidding>")]
     bidding: Option<Value>,
-    /// 1 a 10 grupos de anúncios (local e idioma ficam no grupo).
+    /// 1 to 10 ad groups (location and language are set on the ad group).
     #[serde(default)]
     ad_groups: Vec<AdGroupIn>,
 }
@@ -211,14 +211,14 @@ impl WriteTool for CreateDemandGenCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreateDemandGenInput>(
             CREATE_DEMAND_GEN_CAMPAIGN,
-            "Cria uma campanha Demand Gen completa no Google Ads numa única operação \
-             atômica: orçamento, campanha (nasce pausada) e de 1 a 10 grupos de anúncios, \
-             cada um com local, idioma e de 1 a 5 anúncios (multi_asset, video_responsive \
-             ou carousel). Caminho oficial para anúncios de vídeo, imagem e carrossel; a \
-             API não cria campanhas do canal VIDEO. Imagens vêm de arquivo local (caminho \
-             absoluto), URL https ou asset existente (png, jpeg ou gif, até 5 MB). \
-             Desfazer remove a campanha e o orçamento; os assets criados continuam na \
-             conta (o Google não remove assets).",
+            "Creates a complete Google Ads Demand Gen campaign in a single atomic \
+             operation: budget, campaign (created paused) and 1 to 10 ad groups, each with \
+             locations, languages and 1 to 5 ads (multi_asset, video_responsive or \
+             carousel). This is the official path for video, image and carousel ads; the \
+             API does not create VIDEO channel campaigns. Images come from a local file \
+             (absolute path), an https URL or an existing asset (png, jpeg or gif, up to 5 \
+             MB). Undo removes the campaign and the budget; the created assets stay in \
+             the account (Google does not remove assets).",
             ToolGroup::Create,
             true,
         )
@@ -230,25 +230,25 @@ impl WriteTool for CreateDemandGenCampaign {
     }
 }
 
-/// Estratégia da Demand Gen: padrão `maximize_clicks`; ou `maximize_conversions`.
+/// Demand Gen strategy: defaults to `maximize_clicks`; or `maximize_conversions`.
 fn dg_bidding(v: Option<&Value>) -> Result<Bidding, ToolError> {
     match parse_bidding(v)? {
         b @ (Bidding::MaximizeClicks { .. } | Bidding::MaximizeConversions { .. }) => Ok(b),
         _ => Err(
-            invalid("A Demand Gen aceita só maximize_clicks ou maximize_conversions.")
+            invalid("Demand Gen accepts only maximize_clicks or maximize_conversions.")
                 .with_field("bidding"),
         ),
     }
 }
 
-/// Vídeo do anúncio: id do YouTube (vira asset novo) ou asset existente.
+/// Ad video: a YouTube id (becomes a new asset) or an existing asset.
 #[derive(PartialEq)]
 enum VideoIn {
     Id(String),
     Asset(String),
 }
 
-/// Partes comuns aos três formatos.
+/// Parts shared by the three formats.
 struct Common {
     business: String,
     logo: ImageIn,
@@ -267,7 +267,7 @@ enum AdPlan {
         c: Common,
         headlines: Vec<String>,
         descriptions: Vec<String>,
-        /// (chave da API, imagens): 1.91:1, 1:1 e 4:5.
+        /// (API key, images): 1.91:1, 1:1 and 4:5.
         images: Vec<(&'static str, Vec<ImageIn>)>,
         cta: Option<String>,
     },
@@ -287,7 +287,7 @@ enum AdPlan {
 }
 
 impl AdPlan {
-    /// Imagens do anúncio, na ordem em que são resolvidas.
+    /// Images of the ad, in the order they are resolved.
     fn images(&self) -> Vec<&ImageIn> {
         match self {
             AdPlan::Multi { c, images, .. } => std::iter::once(&c.logo)
@@ -310,14 +310,14 @@ struct GroupPlan {
 }
 
 async fn build(ctx: &Ctx, input: &CreateDemandGenInput) -> Result<WritePlan, ToolError> {
-    // 1. Validação local de tudo, antes de qualquer carga de imagem.
+    // 1. Validate everything locally, before loading any image.
     let name = name_text(&input.name, "name")?;
     let bidding = dg_bidding(input.bidding.as_ref())?;
     count(
         input.ad_groups.len(),
         1,
         MAX_AD_GROUPS,
-        "grupos de anúncios",
+        "ad groups",
         "ad_groups",
     )?;
     let mut groups: Vec<GroupPlan> = Vec::new();
@@ -327,13 +327,13 @@ async fn build(ctx: &Ctx, input: &CreateDemandGenInput) -> Result<WritePlan, Too
         let n = name_text(&group.name, &nf)?;
         if groups.iter().any(|x| x.name == n) {
             return Err(invalid(format!(
-                "{nf}: já existe um grupo chamado '{n}' nesta campanha."
+                "{nf}: an ad group named '{n}' already exists in this campaign."
             ))
             .with_field(nf));
         }
         criterion_ids(&group.locations, &format!("{p}.locations"))?;
         criterion_ids(&group.languages, &format!("{p}.languages"))?;
-        count(group.ads.len(), 1, MAX_ADS, "anúncios", &format!("{p}.ads"))?;
+        count(group.ads.len(), 1, MAX_ADS, "ads", &format!("{p}.ads"))?;
         let ads = group
             .ads
             .iter()
@@ -369,7 +369,7 @@ async fn build(ctx: &Ctx, input: &CreateDemandGenInput) -> Result<WritePlan, Too
     )?;
     ops.push(create_op(&campaign_rn, campaign)?);
 
-    // 2. Grupos e anúncios, com as imagens carregadas.
+    // 2. Ad groups and ads, with the images loaded.
     let mut b = Builder {
         ctx,
         temps,
@@ -391,8 +391,8 @@ async fn build(ctx: &Ctx, input: &CreateDemandGenInput) -> Result<WritePlan, Too
     );
     Ok(WritePlan {
         summary: format!(
-            "Criar campanha Demand Gen '{name}' (pausada), {} ad groups, {ads} anúncios, \
-             orçamento {} {}/dia; imagens de {}",
+            "Creates Demand Gen campaign '{name}' (paused), {} ad groups, {ads} ads, \
+             budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),
             ctx.currency,

@@ -1,4 +1,4 @@
-//! Validação local dos anúncios da Demand Gen (sem carregar imagens).
+//! Local validation of Demand Gen ads (no images are loaded).
 
 use adsconsole_google_ads::images::ImageKind;
 use serde_json::Value;
@@ -22,14 +22,14 @@ fn url_in(raw: &str, field: &str) -> Result<String, ToolError> {
     Ok(u.to_string())
 }
 
-/// `call_to_action` precisa ser um valor da lista fixa do Google (qualquer locale);
-/// vai a forma canônica da tabela.
+/// `call_to_action` must be a value from Google's fixed list (any locale); the
+/// table's canonical form is sent.
 fn cta_in(raw: &Option<String>, field: &str) -> Result<Option<String>, ToolError> {
     raw.as_deref()
         .map(|t| {
             cta::canonical(t).map(str::to_string).ok_or_else(|| {
                 invalid(format!(
-                    "{field}: '{}' não está na lista de textos de botão do Google. {}",
+                    "{field}: '{}' is not in Google's list of button texts. {}",
                     t.trim(),
                     cta::options()
                 ))
@@ -61,16 +61,16 @@ fn video_in(ctx: &Ctx, raw: &str, field: &str) -> Result<VideoIn, ToolError> {
     Ok(VideoIn::Id(youtube_id_or_link(v, field)?))
 }
 
-/// Validação local de um anúncio (sem carregar imagens). `p` é o prefixo do campo.
+/// Local validation of an ad (no images are loaded). `p` is the field prefix.
 pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan, ToolError> {
     let f = |name: &str| format!("{p}.{name}");
     Ok(match ad {
         DemandGenAd::MultiAsset(a) => {
-            let headlines = text_list(&a.headlines, HEADLINES, "títulos", &f("headlines"))?;
+            let headlines = text_list(&a.headlines, HEADLINES, "headlines", &f("headlines"))?;
             let descriptions = text_list(
                 &a.descriptions,
                 DESCRIPTIONS,
-                "descrições",
+                "descriptions",
                 &f("descriptions"),
             )?;
             let c = common(ctx, &a.business_name, &a.logo, &a.final_url, &f)?;
@@ -83,7 +83,7 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
                         &i.landscape,
                         ImageKind::Landscape,
                         (1, MAX_IMAGES),
-                        "imagens 1.91:1",
+                        "1.91:1 images",
                         &f("images.landscape"),
                     )?,
                 ),
@@ -94,7 +94,7 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
                         &i.square,
                         ImageKind::Square,
                         (1, MAX_IMAGES),
-                        "imagens 1:1",
+                        "1:1 images",
                         &f("images.square"),
                     )?,
                 ),
@@ -105,7 +105,7 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
                         &i.portrait,
                         ImageKind::Portrait,
                         (0, MAX_IMAGES),
-                        "imagens 4:5",
+                        "4:5 images",
                         &f("images.portrait"),
                     )?,
                 ),
@@ -113,7 +113,7 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
             let total: usize = images.iter().map(|(_, l)| l.len()).sum();
             if total > MAX_IMAGES {
                 return Err(invalid(format!(
-                    "{}: no máximo {MAX_IMAGES} imagens por anúncio (vieram {total}).",
+                    "{}: at most {MAX_IMAGES} images per ad (got {total}).",
                     f("images")
                 ))
                 .with_field(f("images")));
@@ -127,28 +127,28 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
             }
         }
         DemandGenAd::VideoResponsive(a) => {
-            let headlines = text_list(&a.headlines, HEADLINES, "títulos", &f("headlines"))?;
+            let headlines = text_list(&a.headlines, HEADLINES, "headlines", &f("headlines"))?;
             let long_headlines = text_list(
                 &a.long_headlines,
                 LONG_HEADLINES,
-                "títulos longos",
+                "long headlines",
                 &f("long_headlines"),
             )?;
             let descriptions = text_list(
                 &a.descriptions,
                 DESCRIPTIONS,
-                "descrições",
+                "descriptions",
                 &f("descriptions"),
             )?;
             let c = common(ctx, &a.business_name, &a.logo, &a.final_url, &f)?;
-            count(a.videos.len(), 1, MAX_VIDEOS, "vídeos", &f("videos"))?;
+            count(a.videos.len(), 1, MAX_VIDEOS, "videos", &f("videos"))?;
             let mut videos: Vec<VideoIn> = Vec::new();
             for (i, raw) in a.videos.iter().enumerate() {
                 let vf = f(&format!("videos[{i}]"));
                 let v = video_in(ctx, raw, &vf)?;
                 if videos.contains(&v) {
                     return Err(
-                        invalid(format!("{vf}: o vídeo aparece mais de uma vez.")).with_field(vf)
+                        invalid(format!("{vf}: the video appears more than once.")).with_field(vf)
                     );
                 }
                 videos.push(v);
@@ -171,7 +171,7 @@ pub(super) fn prepare_ad(ctx: &Ctx, ad: &DemandGenAd, p: &str) -> Result<AdPlan,
                 let cf = |name: &str| f(&format!("cards[{k}].{name}"));
                 cards.push(CardPlan {
                     headline: bounded_text(&card.headline, HEADLINE_CHARS, &cf("headline"))?,
-                    // O papel (1.91:1 ou 1:1) sai das dimensões, na carga.
+                    // The role (1.91:1 or 1:1) comes from the dimensions, at load time.
                     image: image_in(ctx, &card.image, ImageKind::Landscape, cf("image"))?,
                     url: url_in(&card.final_url, &cf("final_url"))?,
                     cta: cta_in(&card.call_to_action, &cf("call_to_action"))?,

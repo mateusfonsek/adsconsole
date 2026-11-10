@@ -1,16 +1,16 @@
-//! `create_pmax_campaign`: uma campanha Performance Max completa num único
-//! `googleAds:mutate` atômico, com ids temporários.
+//! `create_pmax_campaign`: a complete Performance Max campaign in a single atomic
+//! `googleAds:mutate`, with temporary ids.
 //!
-//! Ordem das operações: orçamento (não compartilhado) → campanha (pausada, com
-//! diretrizes de marca) → local e idioma → marca (nome da empresa, logo e logo 4:1,
-//! ligados por `campaignAsset`) → por grupo de recursos: assets de texto, imagem e
-//! vídeo → `assetGroup` → `assetGroupAsset` por tipo → `assetGroupSignal`.
+//! Operation order: budget (not shared) → campaign (paused, with brand guidelines) →
+//! location and language → brand (business name, logo and 4:1 logo, linked through
+//! `campaignAsset`) → per asset group: text, image and video assets → `assetGroup` →
+//! `assetGroupAsset` per type → `assetGroupSignal`.
 //!
-//! Toda a validação local (textos, URLs, vídeos, sinais, contagens, referências de
-//! imagem) roda antes de carregar qualquer imagem. As imagens são carregadas
-//! (arquivo ou URL) e conferidas a cada `plan`; os mesmos bytes viram um asset só
-//! ([`ImagePool`]) e o mesmo vídeo também. A inversa remove a campanha e depois o
-//! orçamento; os assets ficam na conta (o Google não remove assets).
+//! All local validation (texts, URLs, videos, signals, counts, image references) runs
+//! before any image is loaded. Images are loaded (file or URL) and checked on every
+//! `plan`; the same bytes become a single asset ([`ImagePool`]), and so does the same
+//! video. The inverse removes the campaign and then the budget; the assets stay in the
+//! account (Google does not remove assets).
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::Decimal;
@@ -42,22 +42,22 @@ pub(crate) fn tools() -> Vec<GTool> {
 const CREATE_PMAX_CAMPAIGN: &str = "create_pmax_campaign";
 const MAX_ASSET_GROUPS: usize = 5;
 const BUSINESS_NAME_CHARS: usize = 25;
-/// Ao menos um título com até 15 caracteres e uma descrição com até 60.
+/// At least one headline of up to 15 characters and one description of up to 60.
 const SHORT_HEADLINE: usize = 15;
 const SHORT_DESCRIPTION: usize = 60;
-/// Limites do Google por grupo de recursos.
+/// Google's limits per asset group.
 const MAX_IMAGES: usize = 20;
 const MAX_VIDEOS: usize = 5;
 const MAX_SEARCH_THEMES: usize = 25;
 const URL_EXPANSION: &str = "FINAL_URL_EXPANSION_TEXT_ASSET_AUTOMATION";
 #[derive(Debug, Deserialize, JsonSchema)]
 struct BrandIn {
-    /// Nome da empresa (até 25 caracteres).
+    /// Business name (up to 25 characters).
     business_name: String,
-    /// Logo quadrado 1:1 (mínimo 128x128).
+    /// Square 1:1 logo (minimum 128x128).
     #[schemars(with = "ImageRef")]
     logo: Value,
-    /// Logo horizontal 4:1 (mínimo 512x128).
+    /// Landscape 4:1 logo (minimum 512x128).
     #[serde(default)]
     #[schemars(with = "Option<ImageRef>")]
     landscape_logo: Option<Value>,
@@ -65,15 +65,15 @@ struct BrandIn {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct ImagesIn {
-    /// Imagens 1.91:1 (mínimo 600x314), ao menos uma.
+    /// 1.91:1 images (minimum 600x314), at least one.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     landscape: Vec<Value>,
-    /// Imagens 1:1 (mínimo 300x300), ao menos uma.
+    /// 1:1 images (minimum 300x300), at least one.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     square: Vec<Value>,
-    /// Imagens 4:5 (mínimo 480x600).
+    /// 4:5 images (minimum 480x600).
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     portrait: Vec<Value>,
@@ -81,10 +81,10 @@ struct ImagesIn {
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct SignalsIn {
-    /// Nomes de público (`customers/123/audiences/456`).
+    /// Audience names (`customers/123/audiences/456`).
     #[serde(default)]
     audiences: Vec<String>,
-    /// Até 25 temas de busca (até 80 caracteres cada).
+    /// Up to 25 search themes (up to 80 characters each).
     #[serde(default)]
     search_themes: Vec<String>,
 }
@@ -92,26 +92,26 @@ struct SignalsIn {
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AssetGroupIn {
     name: String,
-    /// URLs finais (ao menos uma).
+    /// Final URLs (at least one).
     #[serde(default)]
     final_urls: Vec<String>,
-    /// 3 a 15 títulos de até 30 caracteres; ao menos um com até 15.
+    /// 3 to 15 headlines of up to 30 characters; at least one of up to 15.
     #[serde(default)]
     headlines: Vec<String>,
-    /// 1 a 5 títulos longos de até 90 caracteres.
+    /// 1 to 5 long headlines of up to 90 characters.
     #[serde(default)]
     long_headlines: Vec<String>,
-    /// 2 a 5 descrições de até 90 caracteres; ao menos uma com até 60.
+    /// 2 to 5 descriptions of up to 90 characters; at least one of up to 60.
     #[serde(default)]
     descriptions: Vec<String>,
-    /// Imagens: cada uma `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` ou
-    /// `{"asset": "customers/…/assets/…"}` (png, jpeg ou gif, até 5 MB).
+    /// Images: each one `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` or
+    /// `{"asset": "customers/…/assets/…"}` (png, jpeg or gif, up to 5 MB).
     #[serde(default)]
     images: ImagesIn,
-    /// Até 5 ids de vídeo do YouTube (11 caracteres, não a URL).
+    /// Up to 5 YouTube video ids (11 characters, not the URL).
     #[serde(default)]
     youtube_video_ids: Vec<String>,
-    /// Sinais de público e temas de busca.
+    /// Audience signals and search themes.
     #[serde(default)]
     signals: Option<SignalsIn>,
 }
@@ -122,28 +122,28 @@ struct CreatePmaxInput {
     #[allow(dead_code)]
     account: AccountRef,
     name: String,
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
-    /// Estratégia de lance; padrão `maximize_conversions`.
-    /// `{"maximize_conversions": {"target_cpa": 40}}` ou
+    /// Bidding strategy; defaults to `maximize_conversions`.
+    /// `{"maximize_conversions": {"target_cpa": 40}}` or
     /// `{"maximize_conversion_value": {"target_roas": 3.5}}`.
     #[serde(default)]
     #[schemars(with = "Option<Bidding>")]
     bidding: Option<Value>,
-    /// Deixar o Google trocar a URL final e gerar textos a partir do site (padrão false).
+    /// Let Google replace the final URL and generate texts from the site (default false).
     #[serde(default)]
     final_url_expansion: bool,
-    /// Ids de local (`geoTargetConstants`), ex.: "2076" (Brasil).
+    /// Location ids (`geoTargetConstants`), e.g. "2076" (Brazil).
     #[serde(default)]
     locations: Vec<String>,
-    /// Ids de idioma (`languageConstants`), ex.: "1014" (português).
+    /// Language ids (`languageConstants`), e.g. "1014" (Portuguese).
     #[serde(default)]
     languages: Vec<String>,
-    /// Marca da campanha: nome da empresa e logos.
+    /// Campaign brand: business name and logos.
     brand: BrandIn,
-    /// 1 a 5 grupos de recursos.
+    /// 1 to 5 asset groups.
     #[serde(default)]
     asset_groups: Vec<AssetGroupIn>,
 }
@@ -155,14 +155,15 @@ impl WriteTool for CreatePmaxCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreatePmaxInput>(
             CREATE_PMAX_CAMPAIGN,
-            "Cria uma campanha Performance Max completa no Google Ads numa única operação \
-             atômica: orçamento, campanha (nasce pausada), local, idioma, marca (nome da \
-             empresa e logos) e de 1 a 5 grupos de recursos com títulos, descrições, \
-             imagens, vídeos e sinais. Imagens vêm de arquivo local (caminho absoluto), URL \
-             https ou asset existente (png, jpeg ou gif, até 5 MB). A Performance Max exige \
-             acompanhamento de conversões configurado na conta (lance maximize_conversions \
-             ou maximize_conversion_value). Desfazer remove a campanha e o orçamento; os \
-             assets criados continuam na conta (o Google não remove assets).",
+            "Creates a complete Google Ads Performance Max campaign in a single atomic \
+             operation: budget, campaign (created paused), locations, languages, brand \
+             (business name and logos) and 1 to 5 asset groups with headlines, \
+             descriptions, images, videos and signals. Images come from a local file \
+             (absolute path), an https URL or an existing asset (png, jpeg or gif, up to 5 \
+             MB). Performance Max requires conversion tracking set up in the account \
+             (bidding maximize_conversions or maximize_conversion_value). Undo removes the \
+             campaign and the budget; the created assets stay in the account (Google does \
+             not remove assets).",
             ToolGroup::Create,
             true,
         )
@@ -174,7 +175,7 @@ impl WriteTool for CreatePmaxCampaign {
     }
 }
 
-/// Estratégia da PMax: padrão `maximize_conversions`; só as de conversão valem.
+/// PMax strategy: defaults to `maximize_conversions`; only conversion strategies are allowed.
 fn pmax_bidding(v: Option<&Value>) -> Result<Bidding, ToolError> {
     if v.is_none_or(Value::is_null) {
         return Ok(Bidding::MaximizeConversions { target_cpa: None });
@@ -184,14 +185,14 @@ fn pmax_bidding(v: Option<&Value>) -> Result<Bidding, ToolError> {
             Ok(b)
         }
         _ => Err(invalid(
-            "A Performance Max aceita só maximize_conversions ou maximize_conversion_value.",
+            "Performance Max accepts only maximize_conversions or maximize_conversion_value.",
         )
         .with_field("bidding")),
     }
 }
 
-/// Textos de um tipo do grupo: quantidade e tamanho de [`FieldType`], sem repetição
-/// e, com `short`, ao menos um de até `short` caracteres.
+/// Texts of one asset group type: count and length from [`FieldType`], without
+/// repeats and, with `short`, at least one of up to `short` characters.
 fn group_texts(
     items: &[String],
     ft: FieldType,
@@ -211,7 +212,7 @@ fn group_texts(
         let f = format!("{field}[{i}]");
         let t = bounded_text(raw, max_len, &f)?;
         if out.contains(&t) {
-            return Err(invalid(format!("{f}: '{t}' aparece mais de uma vez.")).with_field(f));
+            return Err(invalid(format!("{f}: '{t}' appears more than once.")).with_field(f));
         }
         out.push(t);
     }
@@ -219,14 +220,14 @@ fn group_texts(
         && !out.iter().any(|t| t.chars().count() <= n)
     {
         return Err(invalid(format!(
-            "{field}: informe ao menos um item com até {n} caracteres."
+            "{field}: provide at least one item of up to {n} characters."
         ))
         .with_field(field));
     }
     Ok(out)
 }
 
-/// Um grupo de recursos validado, pronto para virar operações.
+/// A validated asset group, ready to become operations.
 struct GroupPlan {
     name: String,
     urls: Vec<String>,
@@ -237,7 +238,7 @@ struct GroupPlan {
     themes: Vec<String>,
 }
 
-/// Validação local de um grupo (sem carregar imagens).
+/// Local validation of an asset group (no images are loaded).
 fn prepare_group(
     ctx: &Ctx,
     group: &AssetGroupIn,
@@ -248,7 +249,7 @@ fn prepare_group(
 
     if group.final_urls.is_empty() {
         return Err(invalid(format!(
-            "{}: informe ao menos uma URL final.",
+            "{}: provide at least one final URL.",
             field("final_urls")
         ))
         .with_field(field("final_urls")));
@@ -295,20 +296,20 @@ fn prepare_group(
         imgs.landscape.len(),
         1,
         MAX_IMAGES,
-        "imagens 1.91:1",
+        "1.91:1 images",
         &field("images.landscape"),
     )?;
     count(
         imgs.square.len(),
         1,
         MAX_IMAGES,
-        "imagens 1:1",
+        "1:1 images",
         &field("images.square"),
     )?;
     let total = imgs.landscape.len() + imgs.square.len() + imgs.portrait.len();
     if total > MAX_IMAGES {
         return Err(invalid(format!(
-            "{}: no máximo {MAX_IMAGES} imagens por grupo (vieram {total}).",
+            "{}: at most {MAX_IMAGES} images per asset group (got {total}).",
             field("images")
         ))
         .with_field(field("images")));
@@ -338,7 +339,7 @@ fn prepare_group(
             let img = image_in(ctx, v, kind, field(&format!("images.{key}[{i}]")))?;
             if images.iter().any(|(t, x)| *t == ft && x.r == img.r) {
                 return Err(
-                    invalid(format!("{}: a imagem aparece mais de uma vez.", img.field))
+                    invalid(format!("{}: the image appears more than once.", img.field))
                         .with_field(img.field),
                 );
             }
@@ -350,7 +351,7 @@ fn prepare_group(
         group.youtube_video_ids.len(),
         0,
         MAX_VIDEOS,
-        "vídeos",
+        "videos",
         &field("youtube_video_ids"),
     )?;
     let mut videos: Vec<String> = Vec::new();
@@ -358,9 +359,7 @@ fn prepare_group(
         let f = field(&format!("youtube_video_ids[{i}]"));
         let id = youtube_id_or_link(v, &f)?;
         if videos.contains(&id) {
-            return Err(
-                invalid(format!("{f}: o vídeo {id} aparece mais de uma vez.")).with_field(f),
-            );
+            return Err(invalid(format!("{f}: video {id} appears more than once.")).with_field(f));
         }
         videos.push(id);
     }
@@ -376,7 +375,7 @@ fn prepare_group(
         let f = field(&format!("signals.audiences[{i}]"));
         let rn = collection_rn(ctx, a, "audiences", &f)?;
         if audiences.contains(&rn) {
-            return Err(invalid(format!("{f}: {rn} aparece mais de uma vez.")).with_field(f));
+            return Err(invalid(format!("{f}: {rn} appears more than once.")).with_field(f));
         }
         audiences.push(rn);
     }
@@ -387,7 +386,7 @@ fn prepare_group(
         raw_themes.len(),
         0,
         MAX_SEARCH_THEMES,
-        "temas de busca",
+        "search themes",
         &field("signals.search_themes"),
     )?;
     let themes = raw_themes
@@ -413,8 +412,8 @@ fn prepare_group(
     })
 }
 
-/// Operações de um grupo: assets novos → grupo → vínculos → sinais. `videos` guarda
-/// os vídeos já criados nesta chamada (id → asset), para reaproveitar entre grupos.
+/// Operations of an asset group: new assets → asset group → links → signals. `videos`
+/// holds the videos already created in this call (id → asset), to reuse across groups.
 async fn group_ops(
     ctx: &Ctx,
     temps: &mut TempIds,
@@ -436,10 +435,10 @@ async fn group_ops(
         let rn = pool
             .resolve(ctx, temps, ops, &img.r, img.kind, &img.field)
             .await?;
-        // Referências diferentes com os mesmos bytes no mesmo tipo.
+        // Different references with the same bytes in the same type.
         if links.iter().any(|(a, t)| *a == rn && t == ft) {
             return Err(invalid(format!(
-                "{}: a mesma imagem aparece mais de uma vez.",
+                "{}: the same image appears more than once.",
                 img.field
             ))
             .with_field(img.field.clone()));
@@ -490,14 +489,14 @@ async fn group_ops(
 }
 
 async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolError> {
-    // 1. Validação local de tudo, antes de qualquer carga de imagem.
+    // 1. Validate everything locally, before loading any image.
     let name = name_text(&input.name, "name")?;
     let bidding = pmax_bidding(input.bidding.as_ref())?;
     count(
         input.asset_groups.len(),
         1,
         MAX_ASSET_GROUPS,
-        "grupos de recursos",
+        "asset groups",
         "asset_groups",
     )?;
     let mut groups: Vec<GroupPlan> = Vec::new();
@@ -506,7 +505,7 @@ async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolErro
         let n = name_text(&group.name, &f)?;
         if groups.iter().any(|p| p.name == n) {
             return Err(invalid(format!(
-                "{f}: já existe um grupo chamado '{n}' nesta campanha."
+                "{f}: an asset group named '{n}' already exists in this campaign."
             ))
             .with_field(f));
         }
@@ -550,9 +549,9 @@ async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolErro
         &bidding,
         &ctx.currency,
     )?;
-    // Nome e logos da marca vão na campanha (campaignAsset), não nos grupos.
+    // The brand name and logos go on the campaign (campaignAsset), not on the asset groups.
     campaign["brandGuidelinesEnabled"] = json!(true);
-    // Confirmado na conta real (2026-10-18, T14.1): Campaign.asset_automation_settings substitui o url_expansion_opt_out.
+    // Verified on a real account (2026-10-18): Campaign.asset_automation_settings replaces url_expansion_opt_out.
     if !input.final_url_expansion {
         campaign["assetAutomationSettings"] = json!([{
             "assetAutomationType": URL_EXPANSION,
@@ -566,7 +565,7 @@ async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolErro
         &input.languages,
     )?);
 
-    // 2. Marca e grupos, com as imagens carregadas.
+    // 2. Brand and asset groups, with the images loaded.
     let biz_rn = temps.next("assets");
     ops.push(create_op(
         &biz_rn,
@@ -610,8 +609,8 @@ async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolErro
 
     Ok(WritePlan {
         summary: format!(
-            "Criar campanha Performance Max '{name}' (pausada), {} asset groups, \
-             orçamento {} {}/dia; imagens de {}",
+            "Creates Performance Max campaign '{name}' (paused), {} asset groups, \
+             budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),
             ctx.currency,

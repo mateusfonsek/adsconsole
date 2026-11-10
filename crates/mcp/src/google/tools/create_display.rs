@@ -1,13 +1,12 @@
-//! `create_display_campaign`: uma campanha de Display completa num único
-//! `googleAds:mutate` atômico, com ids temporários.
+//! `create_display_campaign`: a complete Display campaign in a single atomic
+//! `googleAds:mutate`, with temporary ids.
 //!
-//! Ordem das operações: orçamento (não compartilhado) → campanha (`DISPLAY`, pausada)
-//! → local e idioma → por grupo: grupo (`DISPLAY_STANDARD`) → segmentação (públicos,
-//! posicionamentos, tópicos) → por anúncio: imagens novas → anúncio responsivo de
-//! Display.
+//! Operation order: budget (not shared) → campaign (`DISPLAY`, paused) → location and
+//! language → per ad group: ad group (`DISPLAY_STANDARD`) → targeting (audiences,
+//! placements, topics) → per ad: new images → responsive display ad.
 //!
-//! O Google tem recusado a criação de campanhas de Display pela API; essa recusa vira
-//! `DISPLAY_NOT_AVAILABLE`, apontando para a Demand Gen ([`WriteTool::map_error`]).
+//! Google has been refusing Display campaign creation through the API; that refusal
+//! becomes `DISPLAY_NOT_AVAILABLE`, pointing to Demand Gen ([`WriteTool::map_error`]).
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::Decimal;
@@ -46,12 +45,12 @@ const HEADLINES: (usize, usize, usize) = (1, 5, 30);
 const DESCRIPTIONS: (usize, usize, usize) = (1, 5, 90);
 const LONG_HEADLINE_CHARS: usize = 90;
 const BUSINESS_NAME_CHARS: usize = 25;
-/// Limites do anúncio responsivo de Display por tipo de imagem.
+/// Responsive display ad limits per image type.
 const MAX_MARKETING_IMAGES: usize = 15;
 const MAX_LOGOS: usize = 5;
-const NOT_AVAILABLE: &str = "O Google não permite mais criar campanhas de Display por aqui. \
-     Use create_demand_gen_campaign.";
-/// Códigos do Google que indicam a recusa da Display.
+const NOT_AVAILABLE: &str = "Google no longer allows creating Display campaigns through \
+     the API. Use create_demand_gen_campaign.";
+/// Google codes that mean the Display campaign was refused.
 const REFUSAL_CODES: [&str; 2] = [
     "OPERATION_NOT_PERMITTED_FOR_CONTEXT",
     "CANNOT_CREATE_DISPLAY_CAMPAIGN",
@@ -59,61 +58,61 @@ const REFUSAL_CODES: [&str; 2] = [
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct TargetingIn {
-    /// Ids de listas de público (`userLists`) desta conta.
+    /// Audience list ids (`userLists`) of this account.
     #[serde(default)]
     audiences: Vec<String>,
-    /// Sites: URL `https://…` ou domínio (`exemplo.com.br`).
+    /// Sites: an `https://…` URL or a domain (`example.com`).
     #[serde(default)]
     placements: Vec<String>,
-    /// Ids de tópico (`topicConstants`).
+    /// Topic ids (`topicConstants`).
     #[serde(default)]
     topics: Vec<String>,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RdaIn {
-    /// 1 a 5 títulos de até 30 caracteres.
+    /// 1 to 5 headlines of up to 30 characters.
     #[serde(default)]
     headlines: Vec<String>,
-    /// Título longo (até 90 caracteres).
+    /// Long headline (up to 90 characters).
     long_headline: String,
-    /// 1 a 5 descrições de até 90 caracteres.
+    /// 1 to 5 descriptions of up to 90 characters.
     #[serde(default)]
     descriptions: Vec<String>,
-    /// Nome da empresa (até 25 caracteres).
+    /// Business name (up to 25 characters).
     business_name: String,
-    /// Imagens 1.91:1 (mínimo 600x314), de 1 a 15. Cada uma
-    /// `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` ou `{"asset": "customers/…/assets/…"}`.
+    /// 1.91:1 images (minimum 600x314), 1 to 15. Each one is
+    /// `{"file_path": "/abs/x.png"}`, `{"url": "https://…"}` or `{"asset": "customers/…/assets/…"}`.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     marketing_images: Vec<Value>,
-    /// Imagens 1:1 (mínimo 300x300), de 1 a 15.
+    /// 1:1 images (minimum 300x300), 1 to 15.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     square_marketing_images: Vec<Value>,
-    /// Logos 4:1 (mínimo 512x128), até 5.
+    /// 4:1 logos (minimum 512x128), up to 5.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     logo_images: Vec<Value>,
-    /// Logos 1:1 (mínimo 128x128), até 5.
+    /// 1:1 logos (minimum 128x128), up to 5.
     #[serde(default)]
     #[schemars(with = "Vec<ImageRef>")]
     square_logo_images: Vec<Value>,
-    /// URL final (`https://…`).
+    /// Final URL (`https://…`).
     final_url: String,
 }
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct AdGroupIn {
     name: String,
-    /// Lance de CPC máximo do grupo, na moeda da conta. Só com `manual_cpc`.
+    /// Max CPC bid of the ad group, in the account currency. Only with `manual_cpc`.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     cpc_bid: Option<Decimal>,
-    /// Segmentação do grupo.
+    /// Targeting of the ad group.
     #[serde(default)]
     targeting: Option<TargetingIn>,
-    /// 1 a 5 anúncios responsivos de Display.
+    /// 1 to 5 responsive display ads.
     #[serde(default)]
     ads: Vec<RdaIn>,
 }
@@ -124,22 +123,22 @@ struct CreateDisplayInput {
     #[allow(dead_code)]
     account: AccountRef,
     name: String,
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
-    /// Estratégia de lance; padrão `maximize_clicks`. Ou
-    /// `{"maximize_conversions": {"target_cpa": 40}}` ou `"manual_cpc"`.
+    /// Bidding strategy; defaults to `maximize_clicks`. Or
+    /// `{"maximize_conversions": {"target_cpa": 40}}` or `"manual_cpc"`.
     #[serde(default)]
     #[schemars(with = "Option<Bidding>")]
     bidding: Option<Value>,
-    /// Ids de local (`geoTargetConstants`), ex.: "2076" (Brasil).
+    /// Location ids (`geoTargetConstants`), e.g. "2076" (Brazil).
     #[serde(default)]
     locations: Vec<String>,
-    /// Ids de idioma (`languageConstants`), ex.: "1014" (português).
+    /// Language ids (`languageConstants`), e.g. "1014" (Portuguese).
     #[serde(default)]
     languages: Vec<String>,
-    /// 1 a 20 grupos de anúncios.
+    /// 1 to 20 ad groups.
     #[serde(default)]
     ad_groups: Vec<AdGroupIn>,
 }
@@ -151,13 +150,13 @@ impl WriteTool for CreateDisplayCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreateDisplayInput>(
             CREATE_DISPLAY_CAMPAIGN,
-            "Cria uma campanha de Display no Google Ads numa única operação atômica: \
-             orçamento, campanha (nasce pausada), local, idioma e grupos de anúncios com \
-             segmentação (públicos, posicionamentos, tópicos) e anúncios responsivos de \
-             Display. Imagens vêm de arquivo local (caminho absoluto), URL https ou asset \
-             existente. O Google pode recusar campanhas de Display novas pela API \
-             (DISPLAY_NOT_AVAILABLE); nesse caso use create_demand_gen_campaign. Desfazer \
-             remove a campanha e o orçamento; os assets criados continuam na conta.",
+            "Creates a Google Ads Display campaign in a single atomic operation: budget, \
+             campaign (created paused), locations, languages and ad groups with targeting \
+             (audiences, placements, topics) and responsive display ads. Images come from a \
+             local file (absolute path), an https URL or an existing asset. Google may \
+             refuse new Display campaigns through the API (DISPLAY_NOT_AVAILABLE); in that \
+             case use create_demand_gen_campaign. Undo removes the campaign and the budget; \
+             the created assets stay in the account.",
             ToolGroup::Create,
             true,
         )
@@ -169,20 +168,20 @@ impl WriteTool for CreateDisplayCampaign {
     }
 
     fn map_error(&self, e: ToolError) -> ToolError {
-        // "Talvez aplicado" (EXECUTION_FAILED) fica como veio, com a sugestão de
-        // conferir na conta.
+        // "Maybe applied" (EXECUTION_FAILED) is kept as it came, with the suggestion to
+        // check the account.
         if e.code == codes::EXECUTION_FAILED || !is_refusal(&e) {
             return e;
         }
         let mut out = ToolError::new(codes::DISPLAY_NOT_AVAILABLE, NOT_AVAILABLE)
-            .with_suggestion("Use create_demand_gen_campaign para anúncios de imagem.");
+            .with_suggestion("Use create_demand_gen_campaign for image ads.");
         out.details = e.details;
         out
     }
 }
 
-/// Erro do Google que recusa a Display: no campo `advertising_channel_type` ou com um
-/// dos [`REFUSAL_CODES`].
+/// Google error that refuses the Display campaign: on the `advertising_channel_type`
+/// field or with one of the [`REFUSAL_CODES`].
 fn is_refusal(e: &ToolError) -> bool {
     let Some(errors) = e
         .details
@@ -210,7 +209,7 @@ fn display_bidding(v: Option<&Value>) -> Result<Bidding, ToolError> {
         | Bidding::MaximizeConversions { .. }
         | Bidding::ManualCpc {}) => Ok(b),
         _ => Err(
-            invalid("A Display aceita maximize_clicks, maximize_conversions ou manual_cpc.")
+            invalid("Display accepts maximize_clicks, maximize_conversions or manual_cpc.")
                 .with_field("bidding"),
         ),
     }
@@ -221,7 +220,7 @@ struct AdPlan {
     long_headline: String,
     descriptions: Vec<String>,
     business: String,
-    /// (chave da API, imagens).
+    /// (API key, images).
     images: Vec<(&'static str, Vec<ImageIn>)>,
     url: String,
 }
@@ -243,7 +242,7 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
                 &ad.marketing_images,
                 ImageKind::Landscape,
                 (1, MAX_MARKETING_IMAGES),
-                "imagens 1.91:1",
+                "1.91:1 images",
                 &f("marketing_images"),
             )?,
         ),
@@ -254,7 +253,7 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
                 &ad.square_marketing_images,
                 ImageKind::Square,
                 (1, MAX_MARKETING_IMAGES),
-                "imagens 1:1",
+                "1:1 images",
                 &f("square_marketing_images"),
             )?,
         ),
@@ -265,7 +264,7 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
                 &ad.logo_images,
                 ImageKind::LandscapeLogo,
                 (0, MAX_LOGOS),
-                "logos 4:1",
+                "4:1 logos",
                 &f("logo_images"),
             )?,
         ),
@@ -276,7 +275,7 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
                 &ad.square_logo_images,
                 ImageKind::Logo,
                 (0, MAX_LOGOS),
-                "logos 1:1",
+                "1:1 logos",
                 &f("square_logo_images"),
             )?,
         ),
@@ -284,12 +283,12 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
     let url = ad.final_url.trim();
     final_url(url, &f("final_url"))?;
     Ok(AdPlan {
-        headlines: text_list(&ad.headlines, HEADLINES, "títulos", &f("headlines"))?,
+        headlines: text_list(&ad.headlines, HEADLINES, "headlines", &f("headlines"))?,
         long_headline: bounded_text(&ad.long_headline, LONG_HEADLINE_CHARS, &f("long_headline"))?,
         descriptions: text_list(
             &ad.descriptions,
             DESCRIPTIONS,
-            "descrições",
+            "descriptions",
             &f("descriptions"),
         )?,
         business: bounded_text(&ad.business_name, BUSINESS_NAME_CHARS, &f("business_name"))?,
@@ -298,14 +297,14 @@ fn prepare_ad(ctx: &Ctx, ad: &RdaIn, p: &str) -> Result<AdPlan, ToolError> {
     })
 }
 
-/// Corpos dos critérios de segmentação do grupo (sem o pai). Erros em
-/// `{p}.targeting.<tipo>[i]`.
+/// Bodies of the ad group's targeting criteria (without the parent). Errors on
+/// `{p}.targeting.<kind>[i]`.
 fn targeting_criteria(ctx: &Ctx, t: &TargetingIn, p: &str) -> Result<Vec<Value>, ToolError> {
     let mut out = Vec::new();
     let kinds: [(&str, &str, &[String]); 3] = [
-        ("audiences", "públicos", &t.audiences),
-        ("placements", "posicionamentos", &t.placements),
-        ("topics", "tópicos", &t.topics),
+        ("audiences", "audiences", &t.audiences),
+        ("placements", "placements", &t.placements),
+        ("topics", "topics", &t.topics),
     ];
     for (key, label, items) in kinds {
         let lf = format!("{p}.targeting.{key}");
@@ -320,7 +319,7 @@ fn targeting_criteria(ctx: &Ctx, t: &TargetingIn, p: &str) -> Result<Vec<Value>,
             }
             .map_err(|e| e.with_field(f.clone()))?;
             if out.contains(&body) {
-                return Err(invalid(format!("{f}: '{raw}' aparece mais de uma vez.")).with_field(f));
+                return Err(invalid(format!("{f}: '{raw}' appears more than once.")).with_field(f));
             }
             out.push(body);
         }
@@ -329,14 +328,14 @@ fn targeting_criteria(ctx: &Ctx, t: &TargetingIn, p: &str) -> Result<Vec<Value>,
 }
 
 async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolError> {
-    // 1. Validação local de tudo, antes de qualquer carga de imagem.
+    // 1. Validate everything locally, before loading any image.
     let name = name_text(&input.name, "name")?;
     let bidding = display_bidding(input.bidding.as_ref())?;
     count(
         input.ad_groups.len(),
         1,
         MAX_AD_GROUPS,
-        "grupos de anúncios",
+        "ad groups",
         "ad_groups",
     )?;
     let mut groups: Vec<GroupPlan> = Vec::new();
@@ -346,7 +345,7 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
         let n = name_text(&group.name, &nf)?;
         if groups.iter().any(|x| x.name == n) {
             return Err(invalid(format!(
-                "{nf}: já existe um grupo chamado '{n}' nesta campanha."
+                "{nf}: an ad group named '{n}' already exists in this campaign."
             ))
             .with_field(nf));
         }
@@ -354,7 +353,7 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
             Some(_) if !bidding.is_manual() => {
                 let f = format!("{p}.cpc_bid");
                 return Err(invalid(format!(
-                    "{f}: o lance por grupo só vale com a estratégia manual_cpc."
+                    "{f}: an ad group bid is only allowed with the manual_cpc strategy."
                 ))
                 .with_field(f));
             }
@@ -369,7 +368,7 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
             Some(t) => targeting_criteria(ctx, t, &p)?,
             None => Vec::new(),
         };
-        count(group.ads.len(), 1, MAX_ADS, "anúncios", &format!("{p}.ads"))?;
+        count(group.ads.len(), 1, MAX_ADS, "ads", &format!("{p}.ads"))?;
         let ads = group
             .ads
             .iter()
@@ -409,7 +408,7 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
         &input.languages,
     )?);
 
-    // 2. Grupos e anúncios, com as imagens carregadas.
+    // 2. Ad groups and ads, with the images loaded.
     let mut pool = ImagePool::default();
     for g in &groups {
         let ag_rn = temps.next("adGroups");
@@ -456,8 +455,8 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
     );
     Ok(WritePlan {
         summary: format!(
-            "Criar campanha Display '{name}' (pausada), {} ad groups, {ads} anúncios, \
-             orçamento {} {}/dia; imagens de {}",
+            "Creates Display campaign '{name}' (paused), {} ad groups, {ads} ads, \
+             budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),
             ctx.currency,
@@ -508,14 +507,14 @@ mod tests {
             CreateDisplayCampaign.map_error(other).code,
             codes::API_ERROR
         );
-        // Talvez aplicado: fica como veio, mesmo citando o canal.
+        // Maybe applied: kept as it came, even when it mentions the channel.
         let mut maybe = api_error(json!([{ "code": "OPERATION_NOT_PERMITTED_FOR_CONTEXT",
                                            "field_path": "operations[1].create.advertising_channel_type" }]));
         maybe.code = codes::EXECUTION_FAILED.into();
-        maybe.suggestion = Some("confira na conta".into());
+        maybe.suggestion = Some("check the account".into());
         let kept = CreateDisplayCampaign.map_error(maybe);
         assert_eq!(kept.code, codes::EXECUTION_FAILED);
-        assert_eq!(kept.suggestion.as_deref(), Some("confira na conta"));
+        assert_eq!(kept.suggestion.as_deref(), Some("check the account"));
         let local = ToolError::new(codes::INVALID_INPUT, "x");
         assert_eq!(
             CreateDisplayCampaign.map_error(local).code,
