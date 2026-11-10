@@ -1,4 +1,4 @@
-//! Erro único que a UI recebe: código estável, mensagem pronta e campo opcional.
+//! The single error the UI receives: a stable code, a ready-to-show message and an optional field.
 
 use adsconsole_core::CoreError;
 use adsconsole_core::secrets::SecretStoreError;
@@ -33,7 +33,7 @@ impl AppError {
     }
 
     pub fn internal(e: impl std::fmt::Display) -> Self {
-        AppError::new("INTERNAL", format!("Erro interno: {e}"))
+        AppError::new("INTERNAL", format!("Internal error: {e}"))
     }
 }
 

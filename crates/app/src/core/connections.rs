@@ -1,6 +1,6 @@
-//! Conexões com Google Ads e Meta Ads: listar, adicionar pelos assistentes, reconectar,
-//! remover e tornar padrão. As chamadas reais ficam atrás de `PlatformConnections`
-//! para os testes e o modo demo não abrirem navegador nem chamarem as APIs.
+//! Google Ads and Meta Ads connections: list, add through the wizards, reconnect,
+//! remove and set as default. The real calls sit behind `PlatformConnections` so tests
+//! and demo mode neither open a browser nor call the APIs.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -29,10 +29,10 @@ use tokio_util::sync::CancellationToken;
 use super::error::AppError;
 use super::runtime::Runtime;
 
-/// Abre uma URL no navegador do sistema.
+/// Opens a URL in the system browser.
 pub type OpenFn = Arc<dyn Fn(&str) -> std::io::Result<()> + Send + Sync>;
 
-/// Maior JSON de client aceito (o do Google tem menos de 1 KB).
+/// Largest accepted client JSON (Google's is under 1 KB).
 const MAX_CLIENT_JSON: u64 = 64 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
@@ -52,7 +52,7 @@ pub struct ConnectionView {
     pub status: ConnStatusView,
     pub expires_at: Option<DateTime<Utc>>,
     pub accounts: u32,
-    /// Google: nível de acesso; Meta: tipo de token.
+    /// Google: access level; Meta: token type.
     pub detail: Option<String>,
 }
 
@@ -84,7 +84,7 @@ pub struct GoogleAddRequest {
     pub access_level: AccessLevelView,
 }
 
-/// `GoogleAddRequest` com o JSON já lido e validado.
+/// `GoogleAddRequest` with the JSON already read and validated.
 pub struct ResolvedGoogleAdd {
     pub name: String,
     pub client_json: Vec<u8>,
@@ -137,7 +137,7 @@ pub trait PlatformConnections: Send + Sync {
     fn remove(&self, meta: &ConnectionMeta) -> Result<(), AppError>;
 }
 
-/// As chamadas de verdade, sobre os adaptadores do `mcp`.
+/// The real calls, on top of the `mcp` adapters.
 pub struct RealConnections {
     pub google: Arc<GoogleAdapter>,
     pub meta: Arc<MetaAdapter>,
@@ -256,7 +256,7 @@ impl ConnectionsService {
         Ok(())
     }
 
-    /// Links do Console do projeto do JSON (para o assistente, antes de conectar).
+    /// Console links for the project in the JSON (for the wizard, before connecting).
     pub fn google_console_links(
         &self,
         client_json_path: &str,
@@ -313,15 +313,15 @@ impl ConnectionsService {
         self.ops.remove(&meta)
     }
 
-    /// Atualiza as contas de todas as conexões da plataforma e devolve quantas a
-    /// conexão `id` enxerga.
+    /// Refreshes the accounts of every connection on the platform and returns how many
+    /// connection `id` can see.
     pub async fn test(&self, id: &str) -> Result<u32, AppError> {
         let meta = self.get(id)?;
         self.rt.engine(meta.platform).refresh_accounts().await?;
         Ok(self.rt.db().list_accounts(meta.platform, Some(id))?.len() as u32)
     }
 
-    /// Cancela o login no navegador em andamento, se houver.
+    /// Cancels the browser login in progress, if any.
     pub fn cancel_login(&self) {
         if let Some(t) = self.login.lock().unwrap_or_else(|e| e.into_inner()).take() {
             t.cancel();
@@ -345,16 +345,16 @@ impl ConnectionsService {
         tokio::select! {
             r = fut => r,
             _ = token.cancelled() => {
-                // O login pode já ter gravado a conexão (cancelado enquanto listava as
-                // contas): o que apareceu durante a espera é desfeito.
+                // The login may have already saved the connection (cancelled while listing the
+                // accounts): whatever appeared during the wait is rolled back.
                 for id in self.connection_ids().difference(&before) {
                     if let Ok(meta) = self.get(id)
                         && let Err(e) = self.ops.remove(&meta)
                     {
-                        tracing::warn!(error = %e, "falha ao desfazer a conexão cancelada");
+                        tracing::warn!(error = %e, "failed to roll back the cancelled connection");
                     }
                 }
-                Err(AppError::new("LOGIN_CANCELLED", "Login cancelado."))
+                Err(AppError::new("LOGIN_CANCELLED", "Login cancelled."))
             }
         }
     }
@@ -378,10 +378,7 @@ impl ConnectionsService {
 
     fn get(&self, id: &str) -> Result<ConnectionMeta, AppError> {
         self.rt.db().get_connection(id)?.ok_or_else(|| {
-            AppError::new(
-                "UNKNOWN_CONNECTION",
-                format!("Conexão {id} não encontrada."),
-            )
+            AppError::new("UNKNOWN_CONNECTION", format!("Connection {id} not found."))
         })
     }
 }
@@ -393,9 +390,7 @@ fn read_client_json(path: &str) -> Result<(Vec<u8>, ClientCreds), AppError> {
     let path = Path::new(path);
     let len = std::fs::metadata(path).map_err(|e| field(&e))?.len();
     if len > MAX_CLIENT_JSON {
-        return Err(field(
-            &"Arquivo grande demais para ser o JSON de um client OAuth.",
-        ));
+        return Err(field(&"File too large to be an OAuth client JSON."));
     }
     let bytes = std::fs::read(path).map_err(|e| field(&e))?;
     let creds = ClientCreds::from_json(&bytes).map_err(|e| field(&e))?;

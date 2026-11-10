@@ -1,5 +1,5 @@
-//! Ícone na barra de menu (macOS) ou bandeja (Windows/Linux), com o número de
-//! aprovações pendentes e o status de cada MCP.
+//! Menu bar icon (macOS) or tray icon (Windows/Linux), with the number of pending
+//! approvals and the status of each MCP.
 
 use adsconsole_core::Platform;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
@@ -30,7 +30,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
     builder.build(app)
 }
 
-/// Refaz o menu e o contador (chamado a cada evento).
+/// Rebuilds the menu and the counter (called on every event).
 pub fn refresh(app: &AppHandle) {
     let Some(tray) = app.tray_by_id(TRAY) else {
         return;
@@ -155,7 +155,7 @@ fn on_menu(app: &AppHandle, id: &str) {
             if let Ok(s) = app.state::<AppState>().services() {
                 let enabled = s.rt.config().server(p).enabled;
                 if let Err(e) = s.rt.set_server_enabled(p, !enabled) {
-                    tracing::warn!(error = %e, "falha ao pausar/retomar pela barra de menu");
+                    tracing::warn!(error = %e, "failed to pause/resume from the menu bar");
                 }
                 super::emit(app, crate::core::events::AppEvent::ServerStatusChanged);
             }

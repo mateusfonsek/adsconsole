@@ -1,5 +1,5 @@
-//! Trechos prontos para ligar cada cliente de IA ao MCP local. O app nunca escreve na
-//! configuração de outros programas: só monta o texto para o usuário colar.
+//! Ready-made snippets to connect each AI client to the local MCP. The app never writes
+//! to other programs' configuration: it only builds the text for the user to paste.
 
 use adsconsole_core::Platform;
 use serde::{Deserialize, Serialize};
@@ -17,11 +17,11 @@ pub enum AiClient {
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct Snippet {
     pub text: String,
-    /// Chave de tradução com onde colar o trecho.
+    /// Translation key saying where to paste the snippet.
     pub where_to_paste: String,
 }
 
-/// Máscara que substitui o token na prévia da tela.
+/// Mask that replaces the token in the on-screen preview.
 pub const MASK: &str = "••••";
 
 pub fn server_name(p: Platform) -> &'static str {
@@ -48,8 +48,8 @@ pub fn snippet(client: AiClient, platform: Platform, port: u16, token: &str) -> 
             ),
             "terminal",
         ),
-        // O arquivo do Claude Desktop só aceita servidores locais: a ponte `mcp-remote`
-        // liga o MCP HTTP. O header vai por variável para não quebrar no espaço.
+        // The Claude Desktop file only accepts local servers: the `mcp-remote` bridge
+        // connects the HTTP MCP. The header goes through a variable so the space does not break it.
         AiClient::ClaudeDesktop => (
             servers(
                 name,
@@ -94,7 +94,7 @@ pub fn snippet(client: AiClient, platform: Platform, port: u16, token: &str) -> 
     }
 }
 
-/// O mesmo trecho com o token trocado por `MASK`, para mostrar na tela.
+/// The same snippet with the token replaced by `MASK`, to show on screen.
 pub fn masked(s: &Snippet, token: &str) -> String {
     if token.is_empty() {
         return s.text.clone();
@@ -102,7 +102,7 @@ pub fn masked(s: &Snippet, token: &str) -> String {
     s.text.replace(token, MASK)
 }
 
-// Structs em vez de `json!`: a ordem das chaves segue a dos campos.
+// Structs instead of `json!`: the key order follows the field order.
 #[derive(Serialize)]
 struct Bridge<'a> {
     command: &'a str,
@@ -128,7 +128,7 @@ struct Headers<'a> {
     authorization: &'a str,
 }
 
-/// `{"mcpServers": {name: entry}}` com 2 espaços de indentação.
+/// `{"mcpServers": {name: entry}}` with 2-space indentation.
 fn servers(name: &str, entry: impl Serialize) -> String {
     #[derive(Serialize)]
     struct Root<'a, E> {

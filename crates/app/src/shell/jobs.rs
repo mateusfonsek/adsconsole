@@ -1,4 +1,4 @@
-//! Agenda as rotinas de fundo do núcleo (`core::jobs`) e avisa a UI e o sistema.
+//! Schedules the core's background jobs (`core::jobs`) and notifies the UI and the system.
 
 use std::sync::Arc;
 use std::time::Duration;

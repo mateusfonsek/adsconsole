@@ -1,5 +1,5 @@
-//! Estado vivo do app: configuração, banco, segredos, um `Engine` por plataforma e o
-//! servidor MCP. A UI e o servidor usam os mesmos engines.
+//! Live app state: configuration, database, secrets, one `Engine` per platform and the
+//! MCP server. The UI and the server use the same engines.
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, RwLock};
@@ -29,8 +29,8 @@ pub struct Adapters {
     pub meta: Arc<dyn PlatformAdapter>,
 }
 
-/// O que o boot precisa de fora. Os segredos e os adaptadores são injetados para os
-/// testes (e o modo demo) não tocarem no keychain nem nas APIs reais.
+/// What boot needs from outside. Secrets and adapters are injected so tests (and demo
+/// mode) never touch the keychain or the real APIs.
 pub struct BootOptions {
     pub data_dir: PathBuf,
     pub env: EnvOverrides,
@@ -41,11 +41,11 @@ pub struct BootOptions {
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum BootIssue {
-    /// O keychain escolhido antes não respondeu: o app não sobe sem decisão do usuário.
+    /// The keychain chosen earlier did not respond: the app does not start without a user decision.
     KeychainUnavailable,
-    /// O `config.json` era inválido e voltou ao padrão (aviso, o app sobe).
+    /// `config.json` was invalid and was reset to the defaults (a warning; the app starts).
     ConfigReset { message: String },
-    /// Erro inesperado ao abrir a pasta de dados ou o banco.
+    /// Unexpected error opening the data folder or the database.
     Fatal { message: String },
 }
 
@@ -120,7 +120,7 @@ impl Runtime {
         Ok(rt)
     }
 
-    /// Grava `secret_backend: file` no config da pasta, para o próximo boot usar o arquivo.
+    /// Writes `secret_backend: file` to the folder's config so the next boot uses the file.
     pub fn use_file_backend(data_dir: &Path) -> Result<(), AppError> {
         let path = data_dir.join("config.json");
         let mut config = Config::load(&path)?.config;
@@ -155,7 +155,7 @@ impl Runtime {
             .clone()
     }
 
-    /// Altera a configuração compartilhada (vale na hora para o servidor) e grava.
+    /// Changes the shared configuration (takes effect immediately for the server) and saves it.
     pub fn update_config(&self, f: impl FnOnce(&mut Config)) -> Result<Config, AppError> {
         let mut guard = self.config.write().unwrap_or_else(|e| e.into_inner());
         let mut next = guard.clone();
@@ -192,12 +192,12 @@ impl Runtime {
         Ok(())
     }
 
-    /// Para o servidor e sobe na porta nova. Se a porta nova falhar, a porta gravada
-    /// continua a antiga e o servidor tenta voltar nela.
+    /// Stops the server and starts it on the new port. If the new port fails, the saved port
+    /// stays the old one and the server tries to come back on it.
     pub async fn set_port(&self, port: u16) -> Result<ServerState, AppError> {
         if port == 0 {
             return Err(
-                AppError::new("INVALID_PORT", "Use uma porta de 1 a 65535.").with_field("port")
+                AppError::new("INVALID_PORT", "Use a port from 1 to 65535.").with_field("port")
             );
         }
         let state = self.start_server(port).await;

@@ -1,4 +1,4 @@
-//! Os serviços do app montados sobre um `Runtime`, e o boot com os adaptadores reais.
+//! The app services built on a `Runtime`, and the boot with the real adapters.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -37,18 +37,18 @@ impl Services {
 
 #[derive(Debug, Clone, Serialize, specta::Type)]
 pub struct BootStateView {
-    /// Problema que impede o app de funcionar (hoje só o keychain).
+    /// A problem that stops the app from working (today only the keychain).
     pub issue: Option<BootIssue>,
-    /// Avisos que não impedem (config restaurada).
+    /// Warnings that do not stop it (config reset).
     pub notices: Vec<BootIssue>,
 }
 
-/// Pasta de dados: `ADSCONSOLE_DATA_DIR` ou a padrão do sistema.
+/// Data folder: `ADSCONSOLE_DATA_DIR` or the system default.
 pub fn data_dir(env: &EnvOverrides) -> Result<PathBuf, AppError> {
     adsconsole_core::paths::data_dir(env).map_err(AppError::from)
 }
 
-/// Boot com keychain, Google e Meta de verdade.
+/// Boot with the real keychain, Google and Meta.
 pub async fn boot_real(data_dir: PathBuf, env: EnvOverrides) -> Result<Services, BootIssue> {
     let dir = data_dir.clone();
     let real: Arc<Mutex<Option<RealConnections>>> = Arc::new(Mutex::new(None));
@@ -76,7 +76,7 @@ pub async fn boot_real(data_dir: PathBuf, env: EnvOverrides) -> Result<Services,
         .unwrap_or_else(|e| e.into_inner())
         .take()
         .ok_or_else(|| BootIssue::Fatal {
-            message: "adaptadores não foram criados".into(),
+            message: "adapters were not created".into(),
         })?;
     Ok(Services::new(rt, Arc::new(ops)))
 }

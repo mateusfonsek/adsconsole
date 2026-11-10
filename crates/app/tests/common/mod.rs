@@ -1,5 +1,5 @@
-//! Montagem de um `Runtime` de teste: pasta temporária, segredos em memória e
-//! adaptadores falsos. Nunca toca no keychain real.
+//! Builds a test `Runtime`: temporary folder, in-memory secrets and fake adapters.
+//! Never touches the real keychain.
 #![allow(dead_code)]
 
 use std::path::Path;
@@ -17,7 +17,7 @@ pub struct Fakes {
     pub meta: Arc<FakePlatform>,
 }
 
-/// Porta livre agora (o listener é solto antes de devolver).
+/// A port that is free right now (the listener is dropped before returning).
 pub fn free_port() -> u16 {
     std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -26,7 +26,7 @@ pub fn free_port() -> u16 {
         .port()
 }
 
-/// Grava um `config.json` com a porta dada (e o resto padrão).
+/// Writes a `config.json` after letting the caller adjust the defaults.
 pub fn write_config(dir: &Path, f: impl FnOnce(&mut Config)) {
     let mut c = Config::default();
     f(&mut c);
@@ -51,8 +51,8 @@ pub fn options(dir: &Path, keychain_ok: bool) -> (BootOptions, Fakes) {
             _ => Ok((store.clone(), SecretBackend::Keychain)),
         }),
         make_adapters: Box::new(move |db, _| {
-            // As duas fakes usam os ids conn_a/conn_b; no banco compartilhado, só o
-            // Google é semeado.
+            // Both fakes use the ids conn_a/conn_b; in the shared database only Google
+            // is seeded.
             g.seed_connections(&db).unwrap();
             Adapters {
                 google: g.clone(),
@@ -63,7 +63,7 @@ pub fn options(dir: &Path, keychain_ok: bool) -> (BootOptions, Fakes) {
     (opts, fakes)
 }
 
-/// Boot com o keychain respondendo e a porta dada.
+/// Boot with the keychain responding and the given port.
 pub async fn boot_on(dir: &Path, port: u16) -> (Runtime, Fakes) {
     write_config(dir, |c| c.port = port);
     let (opts, fakes) = options(dir, true);

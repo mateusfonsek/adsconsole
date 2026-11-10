@@ -1,4 +1,4 @@
-//! Sair do app: com aprovações pendentes, a UI pede confirmação antes.
+//! Quitting the app: with pending approvals, the UI asks for confirmation first.
 
 use tauri::{AppHandle, Manager};
 
@@ -6,7 +6,7 @@ use super::state::AppState;
 use super::{emit, window};
 use crate::core::events::{AppEvent, QuitOutcome, prepare_quit};
 
-/// Pedido de saída vindo da barra de menu.
+/// Quit request coming from the menu bar.
 pub fn request(app: &AppHandle) {
     let state = app.state::<AppState>();
     let Ok(services) = state.services() else {

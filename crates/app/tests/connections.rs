@@ -15,10 +15,10 @@ use common::{boot_on, free_port};
 use serde_json::json;
 use tokio::sync::Notify;
 
-/// Conexões de mentira: o login da Meta espera até alguém soltar o `Notify`.
+/// Fake connections: the Meta login waits until someone releases the `Notify`.
 struct FakeConnections {
     release: Arc<Notify>,
-    /// Banco onde o "login" grava a conexão antes de travar (simula listar contas).
+    /// Database where the "login" saves the connection before blocking (simulates listing accounts).
     db: Option<Arc<adsconsole_core::db::Db>>,
     removed: Arc<std::sync::Mutex<Vec<String>>>,
 }
@@ -30,7 +30,7 @@ impl PlatformConnections for FakeConnections {
         _: ResolvedGoogleAdd,
         _: OpenFn,
     ) -> Result<ConnectionMeta, AppError> {
-        Err(AppError::new("INTERNAL", "não usado"))
+        Err(AppError::new("INTERNAL", "not used"))
     }
     async fn add_meta_login(
         &self,
@@ -47,13 +47,13 @@ impl PlatformConnections for FakeConnections {
             .unwrap();
         }
         self.release.notified().await;
-        Err(AppError::new("INTERNAL", "não deveria terminar"))
+        Err(AppError::new("INTERNAL", "should not finish"))
     }
     async fn add_meta_token(&self, _: MetaTokenRequest) -> Result<ConnectionMeta, AppError> {
-        Err(AppError::new("INTERNAL", "não usado"))
+        Err(AppError::new("INTERNAL", "not used"))
     }
     async fn reconnect(&self, _: &ConnectionMeta, _: OpenFn) -> Result<ConnectionMeta, AppError> {
-        Err(AppError::new("INTERNAL", "não usado"))
+        Err(AppError::new("INTERNAL", "not used"))
     }
     fn remove(&self, m: &ConnectionMeta) -> Result<(), AppError> {
         self.removed.lock().unwrap().push(m.connection_id.clone());
@@ -140,7 +140,7 @@ async fn list_marks_expiring_and_reconnect() {
     assert_eq!(find("m_exp"), ConnStatusView::ExpiringSoon { days: 3 });
     assert_eq!(find("m_far"), ConnStatusView::Ok);
     assert_eq!(find("m_bad"), ConnStatusView::NeedsReconnect);
-    // Google antes da Meta.
+    // Google comes before Meta.
     assert_eq!(list.first().unwrap().platform, Platform::GoogleAds);
 }
 

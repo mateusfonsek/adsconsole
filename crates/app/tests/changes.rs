@@ -45,13 +45,13 @@ async fn setup(mode: WriteMode) -> Setup {
     }
 }
 
-/// Pede uma criação de campanha pela IA; no modo aprovação volta pendente.
+/// Requests a campaign creation as the AI; in approval mode it comes back pending.
 async fn request_create(s: &Setup, name: &str) -> serde_json::Value {
     s.rt.engine(Platform::GoogleAds)
         .call_tool(
             "create_campaign",
             json!({"account_id": "111", "name": name, "daily_budget": 30}),
-            Some("ia".into()),
+            Some("ai".into()),
         )
         .await
         .unwrap_or_else(|e| serde_json::to_value(e).unwrap())
@@ -119,7 +119,7 @@ async fn reject_all_pending_counts() {
 async fn history_exposes_orphans_and_undo() {
     let s = setup(WriteMode::Direct).await;
     s.fake.execute_in_steps(vec!["c1", "s1"], Some(1));
-    request_create(&s, "falha").await;
+    request_create(&s, "failing").await;
     let ok = request_create(&s, "ok").await;
     assert_eq!(ok["status"], "applied", "{ok}");
 
@@ -181,13 +181,13 @@ async fn undo_conflict_reports_state() {
         .as_str()
         .or_else(|| created["after"]["campaign_id"].as_str())
         .map(str::to_string)
-        .unwrap_or_else(|| panic!("sem campaign_id: {created}"));
+        .unwrap_or_else(|| panic!("no campaign_id: {created}"));
     let renamed =
         s.rt.engine(Platform::GoogleAds)
             .call_tool(
                 "update_campaign",
                 json!({"account_id": "111", "campaign_id": cid, "name": "y"}),
-                Some("ia".into()),
+                Some("ai".into()),
             )
             .await
             .unwrap();
@@ -222,14 +222,14 @@ async fn undo_from_app_does_not_wait_for_approval() {
         .await
         .unwrap();
     let svc = ChangesService::new(rt.clone());
-    // Cria e aprova uma campanha (a aprovação acontece em paralelo à chamada da IA).
+    // Creates and approves a campaign (the approval happens in parallel with the AI's call).
     let engine = rt.engine(Platform::GoogleAds).clone();
     let call = tokio::spawn(async move {
         engine
             .call_tool(
                 "create_campaign",
                 json!({"account_id": "111", "name": "x", "daily_budget": 30}),
-                Some("ia".into()),
+                Some("ai".into()),
             )
             .await
     });
@@ -244,7 +244,7 @@ async fn undo_from_app_does_not_wait_for_approval() {
 
     let undone = tokio::time::timeout(std::time::Duration::from_secs(5), svc.undo(&id))
         .await
-        .expect("o desfazer pelo app não pode esperar a aprovação")
+        .expect("an undo from the app must not wait for approval")
         .unwrap();
     assert_eq!(undone.status, "applied", "{undone:?}");
     assert!(svc.pending().unwrap().is_empty());

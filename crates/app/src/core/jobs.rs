@@ -1,6 +1,5 @@
-//! Rotinas de fundo: versão nova no GitHub, primeira chamada de um cliente de IA e
-//! conexões que passaram a precisar de reconexão. Aqui ficam só as regras; quem agenda
-//! é o `shell`.
+//! Background jobs: new version on GitHub, first call from an AI client and connections
+//! that started needing a reconnect. Only the rules live here; the `shell` schedules them.
 
 use adsconsole_mcp::engine::Engine;
 use serde::Deserialize;
@@ -24,15 +23,15 @@ fn parse(v: &str) -> Option<(u64, u64, u64)> {
     it.next().is_none().then_some(out)
 }
 
-/// A versão da tag, se for estável e maior que a atual. Pré-releases (`-rc.1`) e tags
-/// fora do formato `vX.Y.Z` são ignoradas.
+/// The tag's version, if it is stable and newer than the current one. Pre-releases
+/// (`-rc.1`) and tags not in the `vX.Y.Z` format are ignored.
 pub fn newer_release(current: &str, latest_tag: &str) -> Option<String> {
     let latest = parse(latest_tag)?;
     let cur = parse(current)?;
     (latest > cur).then(|| format!("{}.{}.{}", latest.0, latest.1, latest.2))
 }
 
-/// Consulta a última release publicada. Qualquer falha (rede, 404, JSON) vira `None`.
+/// Queries the latest published release. Any failure (network, 404, JSON) becomes `None`.
 pub async fn check_update(
     http: &reqwest::Client,
     api_base: &str,
@@ -60,8 +59,8 @@ pub async fn check_update(
     })
 }
 
-/// Marca `client_seen` na primeira chamada autorizada ao MCP. Devolve `true` só na vez
-/// em que marcou.
+/// Sets `client_seen` on the first authorized call to the MCP. Returns `true` only the
+/// time it set it.
 pub async fn first_call_tick(rt: &Runtime) -> Result<bool, AppError> {
     if rt.config().client_seen || rt.last_request_at().await.is_none() {
         return Ok(false);
@@ -70,7 +69,7 @@ pub async fn first_call_tick(rt: &Runtime) -> Result<bool, AppError> {
     Ok(true)
 }
 
-/// Nomes das conexões que estavam boas em `before` e precisam reconectar em `after`.
+/// Names of the connections that were fine in `before` and need to reconnect in `after`.
 pub fn newly_needing_reconnect(before: &[ConnectionView], after: &[ConnectionView]) -> Vec<String> {
     after
         .iter()
@@ -85,11 +84,11 @@ pub fn newly_needing_reconnect(before: &[ConnectionView], after: &[ConnectionVie
         .collect()
 }
 
-/// Atualiza o cache de contas (o que também marca conexões com acesso perdido).
+/// Refreshes the account cache (which also flags connections that lost access).
 pub async fn refresh_all(engines: [&Engine; 2]) {
     for e in engines {
         if let Err(err) = e.refresh_accounts().await {
-            tracing::debug!(error = %err.message, "falha ao atualizar contas em segundo plano");
+            tracing::debug!(error = %err.message, "failed to refresh accounts in the background");
         }
     }
 }

@@ -1,6 +1,6 @@
-//! Configurações das ferramentas (modo de escrita, grupos, ferramentas, espera da
-//! aprovação) e do app (idioma, tema, abrir com o sistema). Tudo vale na hora: o
-//! `SharedConfig` é o mesmo do servidor MCP.
+//! Tool settings (write mode, groups, tools, approval wait) and app settings (language,
+//! theme, open at login). Everything takes effect immediately: the `SharedConfig` is the
+//! same one the MCP server uses.
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use serde::Serialize;
 use super::error::AppError;
 use super::runtime::Runtime;
 
-/// Repositório do projeto (`dono/nome`), definido no build.
+/// The project repository (`owner/name`), set at build time.
 pub const REPO: &str = env!("ADSCONSOLE_REPO");
 pub const LANGUAGES: [&str; 2] = ["pt", "en"];
 const WAIT_RANGE: std::ops::RangeInclusive<u64> = 30..=900;
@@ -52,7 +52,7 @@ pub struct AppSettingsView {
     pub data_dir: String,
     pub version: String,
     pub repo_url: String,
-    /// Modo demo de desenvolvimento (`--demo`).
+    /// Development demo mode (`--demo`).
     pub demo: bool,
 }
 
@@ -110,7 +110,7 @@ impl SettingsService {
         Ok(())
     }
 
-    /// Liga ou desliga o grupo inteiro: as escolhas por ferramenta do grupo são apagadas.
+    /// Turns the whole group on or off: the group's per-tool choices are cleared.
     pub fn set_group(&self, p: Platform, group: ToolGroup, enabled: bool) -> Result<(), AppError> {
         let in_group: Vec<String> = self
             .rt
@@ -140,8 +140,7 @@ impl SettingsService {
             .is_none_or(|s| !s.exposed)
         {
             return Err(
-                AppError::new("INVALID_INPUT", format!("Ferramenta desconhecida: {name}"))
-                    .with_field("name"),
+                AppError::new("INVALID_INPUT", format!("Unknown tool: {name}")).with_field("name"),
             );
         }
         self.rt.update_config(|c| {
@@ -159,7 +158,7 @@ impl SettingsService {
             return Err(AppError::new(
                 "INVALID_INPUT",
                 format!(
-                    "Use de {} a {} segundos.",
+                    "Use {} to {} seconds.",
                     WAIT_RANGE.start(),
                     WAIT_RANGE.end()
                 ),
@@ -189,7 +188,7 @@ impl SettingsService {
     pub fn set_language(&self, lang: &str) -> Result<(), AppError> {
         if !LANGUAGES.contains(&lang) {
             return Err(
-                AppError::new("INVALID_INPUT", format!("Idioma não suportado: {lang}"))
+                AppError::new("INVALID_INPUT", format!("Unsupported language: {lang}"))
                     .with_field("language"),
             );
         }
@@ -203,14 +202,14 @@ impl SettingsService {
         Ok(())
     }
 
-    /// Só grava a escolha; quem liga o início com o sistema é o `shell`.
+    /// Only saves the choice; the `shell` is what turns on start at login.
     pub fn set_autostart(&self, on: bool) -> Result<(), AppError> {
         self.rt.update_config(|c| c.autostart = on)?;
         Ok(())
     }
 }
 
-/// `pt` para qualquer variante de português do sistema; `en` para o resto.
+/// `pt` for any Portuguese variant of the system locale; `en` for everything else.
 pub fn system_language() -> String {
     match sys_locale::get_locale() {
         Some(l) if l.to_lowercase().starts_with("pt") => "pt".into(),

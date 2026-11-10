@@ -17,7 +17,7 @@ fn newer_release_compares_semver() {
     assert_eq!(newer_release("0.2.0", "v0.2.0"), None);
     assert_eq!(newer_release("0.10.0", "v0.9.9"), None);
     assert_eq!(newer_release("0.1.0", "v0.2.0-rc.1"), None);
-    assert_eq!(newer_release("0.1.0", "lixo"), None);
+    assert_eq!(newer_release("0.1.0", "garbage"), None);
 }
 
 #[tokio::test]
@@ -65,7 +65,7 @@ async fn first_call_sets_client_seen() {
         .unwrap();
     assert!(first_call_tick(&rt).await.unwrap());
     assert!(rt.config().client_seen);
-    // Só avisa uma vez.
+    // It only reports once.
     assert!(!first_call_tick(&rt).await.unwrap());
 }
 
@@ -73,7 +73,7 @@ fn conn(id: &str, status: ConnStatusView) -> ConnectionView {
     ConnectionView {
         id: id.into(),
         platform: Platform::MetaAds,
-        name: format!("Conexão {id}"),
+        name: format!("Connection {id}"),
         is_default: false,
         status,
         expires_at: None,
@@ -94,7 +94,7 @@ fn reconnect_only_reported_on_change() {
     ];
     assert_eq!(
         newly_needing_reconnect(&before, &after),
-        vec!["Conexão a".to_string()]
+        vec!["Connection a".to_string()]
     );
     assert!(newly_needing_reconnect(&after, &after).is_empty());
 }

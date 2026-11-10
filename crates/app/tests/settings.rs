@@ -44,7 +44,7 @@ async fn set_tool_hides_it_from_mcp() {
             .is_enabled("create_campaign", &settings)
     );
     let err = svc
-        .set_tool(Platform::GoogleAds, "nao_existe", false)
+        .set_tool(Platform::GoogleAds, "does_not_exist", false)
         .unwrap_err();
     assert_eq!(err.code, "INVALID_INPUT");
 }

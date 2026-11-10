@@ -1,4 +1,4 @@
-//! Eventos que a UI recebe em tempo real e regras puras da barra de menu e da saída.
+//! Events the UI receives in real time, plus pure rules for the menu bar and for quitting.
 
 use adsconsole_core::Platform;
 use adsconsole_mcp::engine::{Engine, EngineEvent};
@@ -16,7 +16,7 @@ pub enum AppEvent {
         platform: Platform,
         summary: String,
     },
-    /// Qualquer outra mudança de estado de uma mudança (aplicada, falhou, recusada, expirou).
+    /// Any other state change of a change (applied, failed, rejected, expired).
     ChangeUpdated {
         change_id: String,
     },
@@ -27,13 +27,13 @@ pub enum AppEvent {
         url: String,
     },
     FirstCallReceived,
-    /// O usuário pediu para sair com aprovações pendentes; a UI pede confirmação.
+    /// The user asked to quit with pending approvals; the UI asks for confirmation.
     QuitRequested {
         pending: u32,
     },
 }
 
-/// Junta os eventos dos engines num canal só, já no formato da UI.
+/// Merges the engines' events into a single channel, already in the UI format.
 pub fn bridge(engines: [&Engine; 2]) -> mpsc::Receiver<AppEvent> {
     let (tx, rx) = mpsc::channel(256);
     for engine in engines {
@@ -74,8 +74,8 @@ fn map(ev: EngineEvent) -> AppEvent {
     }
 }
 
-/// Texto ao lado do ícone da barra de menu: o número de aprovações pendentes, com `!`
-/// na frente quando alguma conexão precisa reconectar.
+/// Text next to the menu bar icon: the number of pending approvals, prefixed with `!`
+/// when any connection needs to reconnect.
 pub fn tray_title(pending: u32, needs_reconnect: bool) -> Option<String> {
     let count = match pending {
         0 => None,
@@ -89,8 +89,8 @@ pub fn tray_title(pending: u32, needs_reconnect: bool) -> Option<String> {
     }
 }
 
-/// Saída pedida pelo sistema (Cmd+Q, Dock, logout: `code` é `None`) com aprovações
-/// pendentes é segurada para a UI pedir confirmação. `app.exit(code)` sempre passa.
+/// A quit requested by the system (Cmd+Q, Dock, logout: `code` is `None`) with pending
+/// approvals is held back so the UI can ask for confirmation. `app.exit(code)` always goes through.
 pub fn block_exit(code: Option<i32>, pending: u32) -> bool {
     code.is_none() && pending > 0
 }
@@ -102,8 +102,9 @@ pub enum QuitOutcome {
     NeedsConfirmation { pending: u32 },
 }
 
-/// Sem pendências, pode sair. Com pendências, só sai com `reject_pending`, que recusa
-/// todas antes (a IA recebe "recusado" em vez de ficar sem resposta).
+/// With nothing pending, it can quit. With pending approvals, it only quits with
+/// `reject_pending`, which rejects them all first (the AI gets "rejected" instead of
+/// being left without an answer).
 pub async fn prepare_quit(
     changes: &ChangesService,
     reject_pending: bool,

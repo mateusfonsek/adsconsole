@@ -62,7 +62,7 @@ async fn bridge_maps_engine_events() {
             assert_eq!(platform, Platform::GoogleAds);
             assert!(!summary.is_empty());
         }
-        other => panic!("esperava ApprovalRequested, veio {other:?}"),
+        other => panic!("expected ApprovalRequested, got {other:?}"),
     }
     rt.engine(Platform::GoogleAds).approve(&id).await.unwrap();
     assert_eq!(
@@ -86,7 +86,7 @@ fn tray_title_marks_reconnect() {
 
 #[test]
 fn exit_blocked_only_for_user_quit_with_pending() {
-    // `None`: saída pedida pelo sistema/usuário (Cmd+Q, Dock); `Some`: app.exit(code).
+    // `None`: quit requested by the system/user (Cmd+Q, Dock); `Some`: app.exit(code).
     assert!(block_exit(None, 2));
     assert!(!block_exit(None, 0));
     assert!(!block_exit(Some(0), 2));

@@ -42,7 +42,7 @@ async fn demo_boot_has_connections_and_pending() {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     assert_eq!(pending, 1);
-    // Nada sai do computador: adicionar conexão no demo é recusado.
+    // Nothing leaves the computer: adding a connection in the demo is refused.
     let err = s
         .connections
         .add_meta_token(adsconsole_app::core::connections::MetaTokenRequest {

@@ -1,5 +1,5 @@
-//! Modo demo de desenvolvimento (`--demo`): adaptadores falsos, segredos em memória e
-//! uma pasta de dados temporária. Nada sai do computador.
+//! Development demo mode (`--demo`): fake adapters, in-memory secrets and a temporary
+//! data folder. Nothing leaves the computer.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use super::services::Services;
 
 pub struct DemoOptions {
     pub port: u16,
-    /// Quando a aprovação de exemplo aparece depois do boot.
+    /// When the sample approval appears after boot.
     pub pending_after: Duration,
 }
 
@@ -36,7 +36,7 @@ impl Default for DemoOptions {
     }
 }
 
-/// Pasta temporária para o demo (fica em disco até o sistema limpar a pasta temp).
+/// Temporary folder for the demo (stays on disk until the system cleans the temp folder).
 pub fn temp_dir() -> std::io::Result<PathBuf> {
     Ok(tempfile::Builder::new()
         .prefix("adsconsole-demo-")
@@ -44,13 +44,13 @@ pub fn temp_dir() -> std::io::Result<PathBuf> {
         .keep())
 }
 
-/// No demo as conexões são de exemplo: adicionar ou reconectar é recusado.
+/// In the demo the connections are samples: adding or reconnecting is refused.
 struct DemoConnections;
 
 fn refused() -> AppError {
     AppError::new(
         "DEMO_MODE",
-        "Indisponível no modo demo. Abra o AdsConsole sem --demo para conectar contas de verdade.",
+        "Unavailable in demo mode. Open AdsConsole without --demo to connect real accounts.",
     )
 }
 
@@ -103,9 +103,9 @@ pub async fn boot(data_dir: PathBuf, opts: DemoOptions) -> Result<Services, Boot
         env: EnvOverrides::default(),
         open_secrets: Box::new(move |_| Ok((store.clone(), SecretBackend::File))),
         make_adapters: Box::new(move |db, _| {
-            // As duas fakes usam os mesmos ids de conexão; no banco só cabe uma delas.
+            // Both fakes use the same connection ids; only one of them fits in the database.
             if let Err(e) = g.seed_connections(&db) {
-                tracing::warn!(error = %e, "falha ao semear o demo");
+                tracing::warn!(error = %e, "failed to seed the demo");
             }
             Adapters {
                 google: g.clone(),
@@ -115,7 +115,7 @@ pub async fn boot(data_dir: PathBuf, opts: DemoOptions) -> Result<Services, Boot
     };
     let rt = Arc::new(Runtime::boot(boot).await?);
     if let Err(e) = rt.engine(Platform::GoogleAds).refresh_accounts().await {
-        tracing::warn!(error = %e.message, "falha ao montar as contas do demo");
+        tracing::warn!(error = %e.message, "failed to load the demo accounts");
     }
     let engine = rt.engine(Platform::GoogleAds).clone();
     tokio::spawn(async move {

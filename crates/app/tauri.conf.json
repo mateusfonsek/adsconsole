@@ -28,7 +28,7 @@
     "active": true,
     "targets": "all",
     "category": "Business",
-    "shortDescription": "MCPs locais de Google Ads e Meta Ads",
+    "shortDescription": "Local MCPs for Google Ads and Meta Ads",
     "copyright": "AGPL-3.0-only",
     "icon": [
       "icons/32x32.png",

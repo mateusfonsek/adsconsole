@@ -1,5 +1,5 @@
 fn main() {
-    // Repositório usado nos links da UI e na verificação de versão nova.
+    // Repository used in the UI links and in the new-version check.
     let repo =
         std::env::var("ADSCONSOLE_REPO").unwrap_or_else(|_| "mateusfonsek/adsconsole".into());
     println!("cargo:rustc-env=ADSCONSOLE_REPO={repo}");

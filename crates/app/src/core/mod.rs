@@ -1,4 +1,4 @@
-//! Núcleo do app, sem dependência do Tauri: testável com `cargo test`.
+//! App core, with no Tauri dependency: testable with `cargo test`.
 
 pub mod changes;
 pub mod clients;

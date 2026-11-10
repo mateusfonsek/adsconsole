@@ -1,4 +1,4 @@
-//! Janela principal: fechar só esconde; no macOS o ícone do Dock acompanha a janela.
+//! Main window: closing only hides it; on macOS the Dock icon follows the window.
 
 use tauri::{AppHandle, Manager, WebviewWindow, WindowEvent};
 
@@ -22,7 +22,7 @@ pub fn hide(app: &AppHandle) {
     let _ = app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 }
 
-/// Fechar a janela não encerra o app: os MCPs continuam rodando.
+/// Closing the window does not quit the app: the MCPs keep running.
 pub fn keep_alive_on_close(window: &WebviewWindow) {
     let app = window.app_handle().clone();
     window.on_window_event(move |event| {

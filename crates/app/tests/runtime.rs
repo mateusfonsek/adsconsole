@@ -9,7 +9,7 @@ use common::{boot_on, free_port, options, write_config};
 fn running_port(s: &ServerState) -> u16 {
     match s {
         ServerState::Running { port } => *port,
-        other => panic!("esperava Running, veio {other:?}"),
+        other => panic!("expected Running, got {other:?}"),
     }
 }
 
@@ -37,9 +37,9 @@ async fn boot_with_busy_port_reports_error() {
             assert_eq!(p, port);
             assert_eq!(error.code, "PORT_IN_USE");
         }
-        other => panic!("esperava Error, veio {other:?}"),
+        other => panic!("expected Error, got {other:?}"),
     }
-    // Os engines funcionam mesmo sem servidor.
+    // The engines work even without a server.
     assert_eq!(
         rt.engine(Platform::GoogleAds).platform(),
         Platform::GoogleAds
@@ -134,7 +134,7 @@ async fn use_file_backend_then_boot_works() {
 #[tokio::test]
 async fn corrupt_config_is_reported() {
     let dir = tempfile::tempdir().unwrap();
-    std::fs::write(dir.path().join("config.json"), "{lixo").unwrap();
+    std::fs::write(dir.path().join("config.json"), "{garbage").unwrap();
     let (opts, _) = options(dir.path(), true);
     let rt = Runtime::boot(opts).await.unwrap();
     assert!(

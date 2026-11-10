@@ -1,4 +1,4 @@
-//! Notificações do sistema, no idioma do app.
+//! System notifications, in the app's language.
 
 use tauri::AppHandle;
 use tauri_plugin_notification::NotificationExt;
@@ -46,6 +46,6 @@ pub fn show(app: &AppHandle, lang: &str, notice: Notice) {
         ),
     };
     if let Err(e) = app.notification().builder().title(title).body(body).show() {
-        tracing::warn!(error = %e, "falha ao mostrar a notificação");
+        tracing::warn!(error = %e, "failed to show the notification");
     }
 }

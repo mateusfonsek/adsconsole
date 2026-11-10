@@ -1,4 +1,4 @@
-//! Estado gerenciado pelo Tauri: os serviços (depois do boot) e o resultado do boot.
+//! State managed by Tauri: the services (after boot) and the boot result.
 
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
@@ -35,7 +35,7 @@ impl AppState {
             .read()
             .unwrap_or_else(|e| e.into_inner())
             .clone()
-            .ok_or_else(|| AppError::new("NOT_READY", "O AdsConsole ainda não terminou de abrir."))
+            .ok_or_else(|| AppError::new("NOT_READY", "AdsConsole has not finished starting yet."))
     }
 
     pub fn set_services(&self, s: Option<Arc<Services>>) {

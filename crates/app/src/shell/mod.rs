@@ -1,4 +1,4 @@
-//! Liga o núcleo ao Tauri: plugins, janela, barra de menu, eventos e comandos.
+//! Wires the core to Tauri: plugins, window, menu bar, events and commands.
 
 pub mod commands;
 mod jobs;
@@ -18,13 +18,13 @@ use crate::core::events::{AppEvent, bridge};
 use crate::core::services::{BootStateView, Services, boot_real, data_dir};
 use state::AppState;
 
-/// Envelope tipado dos eventos do app para a UI.
+/// Typed envelope for the app events sent to the UI.
 #[derive(Debug, Clone, serde::Serialize, specta::Type, tauri_specta::Event)]
 pub struct AppEventMsg(pub AppEvent);
 
 pub fn emit(app: &AppHandle, ev: AppEvent) {
     if let Err(e) = AppEventMsg(ev).emit(app) {
-        tracing::warn!(error = %e, "falha ao enviar evento à UI");
+        tracing::warn!(error = %e, "failed to send event to the UI");
     }
     tray::refresh(app);
 }
@@ -38,7 +38,7 @@ pub fn run(builder: Builder<tauri::Wry>, demo: bool) {
         }
     };
     let result = tauri::Builder::default()
-        // A instância única vem antes de tudo: uma segunda cópia só traz a primeira à frente.
+        // Single instance comes first: a second copy only brings the first to the front.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             window::show(app)
         }))
@@ -83,13 +83,13 @@ pub fn run(builder: Builder<tauri::Wry>, demo: bool) {
             }
         }),
         Err(e) => {
-            eprintln!("o AdsConsole parou com erro: {e}");
+            eprintln!("AdsConsole stopped with an error: {e}");
             std::process::exit(1);
         }
     }
 }
 
-/// Faz o boot (de novo, depois de uma decisão sobre o keychain) e liga os eventos.
+/// Boots (again, after a keychain decision) and wires up the events.
 pub fn start(app: &AppHandle) {
     let state = app.state::<AppState>();
     let booted = tauri::async_runtime::block_on(async {
@@ -133,7 +133,7 @@ fn spawn_event_loop(app: AppHandle, services: Arc<Services>) {
                 summary, change_id, ..
             } = &ev
             {
-                // O desfazer pedido no próprio app é aprovado na hora: não notifica.
+                // An undo requested in the app itself is approved right away: no notification.
                 let from_app = services
                     .rt
                     .db()

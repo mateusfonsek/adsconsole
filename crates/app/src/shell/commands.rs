@@ -1,4 +1,4 @@
-//! Comandos chamados pela UI. Cada um só embrulha um método do núcleo (`crate::core`).
+//! Commands called by the UI. Each one only wraps a method of the core (`crate::core`).
 
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ fn browser() -> OpenFn {
     Arc::new(|url| open::that(url))
 }
 
-/// Versão do app (do `Cargo.toml`).
+/// App version (from `Cargo.toml`).
 #[tauri::command]
 #[specta::specta]
 pub fn app_version() -> String {
@@ -76,7 +76,7 @@ pub fn onboarding_state(state: State<'_, AppState>) -> R<OnboardingState> {
     })
 }
 
-// ---- Conexões ----
+// ---- Connections ----
 
 #[tauri::command]
 #[specta::specta]
@@ -246,7 +246,7 @@ pub fn copy_client_snippet(
         .map_err(|e| AppError::new("CLIPBOARD", e.to_string()))
 }
 
-// ---- Ferramentas ----
+// ---- Tools ----
 
 #[tauri::command]
 #[specta::specta]
@@ -304,7 +304,7 @@ pub fn set_approval_wait(state: State<'_, AppState>, platform: Platform, secs: u
         .set_approval_wait(platform, secs as u64)
 }
 
-// ---- Aprovações e histórico ----
+// ---- Approvals and history ----
 
 #[tauri::command]
 #[specta::specta]
@@ -393,7 +393,7 @@ pub struct UpdateView {
     pub url: String,
 }
 
-/// Verifica agora se há versão nova (o app também verifica uma vez por dia).
+/// Checks now for a new version (the app also checks once a day).
 #[tauri::command]
 #[specta::specta]
 pub async fn check_update() -> Option<UpdateView> {

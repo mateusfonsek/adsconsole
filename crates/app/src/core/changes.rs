@@ -1,4 +1,4 @@
-//! Fila de aprovações e histórico de mudanças, sobre os mesmos `Engine` do servidor.
+//! Approval queue and change history, on top of the same `Engine`s as the server.
 
 use std::sync::Arc;
 
@@ -30,7 +30,7 @@ pub struct ChangeView {
     pub after: Option<Value>,
     #[specta(type = Option<specta_typescript::Unknown>)]
     pub error: Option<Value>,
-    /// Objetos criados por uma mudança que falhou no meio (para apagar à mão).
+    /// Objects created by a change that failed midway (to delete by hand).
     pub orphaned_ids: Vec<String>,
     pub undone_by: Option<String>,
 }
@@ -40,9 +40,9 @@ pub struct PendingView {
     pub change: ChangeView,
     pub warning: Option<String>,
     pub expires_at: DateTime<Utc>,
-    /// Até quando a IA ainda espera a resposta na mesma chamada.
+    /// Until when the AI still waits for the answer in the same call.
     pub ai_waiting_until: DateTime<Utc>,
-    /// `read_only`: o modo atual da plataforma não deixa aprovar.
+    /// `read_only`: the platform's current mode does not allow approving.
     pub blocked_reason: Option<String>,
 }
 
@@ -56,15 +56,15 @@ pub struct HistoryFilter {
     pub offset: u32,
 }
 
-/// Resultado de desfazer: `applied` (desfeito) ou `pending` (aguarda aprovação).
+/// Result of an undo: `applied` (undone) or `pending` (awaiting approval).
 #[derive(Debug, Clone, PartialEq, Serialize, specta::Type)]
 pub struct UndoResult {
     pub status: String,
-    /// A mudança nova que desfaz a original.
+    /// The new change that undoes the original.
     pub change_id: Option<String>,
 }
 
-/// `requested_by` das mudanças pedidas pelo próprio usuário no app.
+/// `requested_by` of changes the user requested in the app itself.
 pub const APP: &str = "app";
 
 pub struct ChangesService {
@@ -129,7 +129,7 @@ impl ChangesService {
         if self.rt.config().server(c.platform).write_mode == WriteMode::ReadOnly {
             return Err(AppError::new(
                 "READ_ONLY_MODE",
-                "O modo atual desta plataforma é só leitura. Recuse o pedido ou mude o modo em Ferramentas.",
+                "The write mode of this platform is read-only. Reject the request or change the mode in AdsConsole → Tools.",
             ));
         }
         let done = self.rt.engine(c.platform).approve(id).await?;
@@ -142,7 +142,7 @@ impl ChangesService {
         self.view(done)
     }
 
-    /// Recusa todas as pendências (ao sair do app). Devolve quantas recusou.
+    /// Rejects all pending approvals (on quit). Returns how many it rejected.
     pub async fn reject_all_pending(&self) -> Result<u32, AppError> {
         let mut n = 0;
         for p in self.rt.db().list_pending(None)? {
@@ -159,8 +159,8 @@ impl ChangesService {
         Ok(n)
     }
 
-    /// Desfazer pedido pelo próprio usuário no app já é a decisão dele: no modo aprovação
-    /// o pedido do desfazer é aprovado na hora, sem esperar nem notificar.
+    /// An undo the user requests in the app is already their decision: in approval mode
+    /// the undo request is approved right away, with no waiting or notification.
     pub async fn undo(&self, id: &str) -> Result<UndoResult, AppError> {
         let c = self.load(id)?;
         let engine = self.rt.engine(c.platform).clone();
@@ -190,9 +190,10 @@ impl ChangesService {
     }
 
     fn load(&self, id: &str) -> Result<ChangeRecord, AppError> {
-        self.rt.db().get_change(id)?.ok_or_else(|| {
-            AppError::new("CHANGE_NOT_FOUND", format!("Mudança {id} não encontrada."))
-        })
+        self.rt
+            .db()
+            .get_change(id)?
+            .ok_or_else(|| AppError::new("CHANGE_NOT_FOUND", format!("Change {id} not found.")))
     }
 
     fn view(&self, c: ChangeRecord) -> Result<ChangeView, AppError> {
@@ -225,8 +226,8 @@ impl ChangesService {
     }
 }
 
-/// Ids que a mudança chegou a criar: os do erro (`details.orphaned_ids`) ou, sem eles,
-/// os do progresso gravado.
+/// Ids the change managed to create: those in the error (`details.orphaned_ids`) or,
+/// without them, those in the recorded progress.
 fn orphans(c: &ChangeRecord) -> Vec<String> {
     let ids = |v: Option<&Value>, key: Option<&str>| -> Vec<String> {
         v.and_then(Value::as_array)
