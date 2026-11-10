@@ -64,7 +64,7 @@ fn account_reset(headers: &HeaderMap) -> Option<Duration> {
 }
 
 impl Usage {
-    /// Reads `X-Business-Use-Case-Usage`, `X-Ad-Account-Usage` e `X-FB-Ads-Insights-Throttle`.
+    /// Reads `X-Business-Use-Case-Usage`, `X-Ad-Account-Usage` and `X-FB-Ads-Insights-Throttle`.
     pub fn from_headers(headers: &HeaderMap) -> Option<Usage> {
         let mut u = Usage::default();
         let mut seen = false;
