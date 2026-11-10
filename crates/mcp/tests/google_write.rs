@@ -1,5 +1,5 @@
-//! Escrita genérica do Google Ads: `restore_fields`, `remove_resources` e o escape
-//! `mutate`, contra o wiremock.
+//! Generic Google Ads writes: `restore_fields`, `remove_resources` and the `mutate`
+//! escape, against wiremock.
 
 mod common;
 
@@ -49,7 +49,7 @@ async fn mock_mutate_ok(server: &MockServer, responses: Value) {
         .await;
 }
 
-/// Leitura do nome da campanha: `first` na primeira consulta, `then` nas seguintes.
+/// Campaign name read: `first` on the first query, `then` on the following ones.
 async fn mock_campaign_name(server: &MockServer, first: &str, then: &str) {
     let row = |name: &str| json!([{ "campaign": { "resourceName": RN, "name": name } }]);
     Mock::given(method("POST"))
@@ -79,14 +79,14 @@ fn restore_call() -> adsconsole_mcp::Call {
         CONN,
         "111",
         "restore_fields",
-        json!({ "updates": { RN: { "campaign.name": "novo" } } }),
+        json!({ "updates": { RN: { "campaign.name": "new" } } }),
     )
 }
 
 #[tokio::test]
 async fn restore_fields_roundtrip() {
     let h = google_harness().await;
-    mock_campaign_name(&h.server, "antigo", "novo").await;
+    mock_campaign_name(&h.server, "old", "new").await;
     mock_mutate_ok(
         &h.server,
         json!([{ "campaignResult": { "resourceName": RN } }]),
@@ -97,7 +97,7 @@ async fn restore_fields_roundtrip() {
     let validated = h.adapter.validate(&c).await.unwrap();
     assert!(!validated.summary.is_empty());
     let before = h.adapter.snapshot(&c).await.unwrap();
-    assert_eq!(before, json!({ RN: { "campaign.name": "antigo" } }));
+    assert_eq!(before, json!({ RN: { "campaign.name": "old" } }));
     let applied = h.adapter.execute(&c, &before).await.unwrap();
 
     let bodies = mutate_bodies(&h.server).await;
@@ -108,12 +108,12 @@ async fn restore_fields_roundtrip() {
     let op = &bodies[1]["mutateOperations"][0]["campaignOperation"];
     assert_eq!(op["updateMask"], "name");
     assert_eq!(op["update"]["resourceName"], RN);
-    assert_eq!(op["update"]["name"], "novo");
+    assert_eq!(op["update"]["name"], "new");
 
-    assert_eq!(applied.after, json!({ RN: { "campaign.name": "novo" } }));
+    assert_eq!(applied.after, json!({ RN: { "campaign.name": "new" } }));
     let inverse = applied.inverse.unwrap();
     assert_eq!(inverse.tool, "restore_fields");
-    assert_eq!(inverse.input["updates"][RN]["campaign.name"], "antigo");
+    assert_eq!(inverse.input["updates"][RN]["campaign.name"], "old");
     assert!(inverse.input.get("account_id").is_none());
     assert!(inverse.input.get("connection").is_none());
 }
@@ -121,7 +121,7 @@ async fn restore_fields_roundtrip() {
 #[tokio::test]
 async fn current_state_matches_after_shape() {
     let h = google_harness().await;
-    mock_campaign_name(&h.server, "antigo", "novo").await;
+    mock_campaign_name(&h.server, "old", "new").await;
     mock_mutate_ok(
         &h.server,
         json!([{ "campaignResult": { "resourceName": RN } }]),
@@ -144,14 +144,14 @@ async fn current_state_sees_external_change() {
         &h.server,
         "111",
         "FROM campaign WHERE",
-        json!([{ "campaign": { "resourceName": RN, "name": "outro" } }]),
+        json!([{ "campaign": { "resourceName": RN, "name": "other" } }]),
     )
     .await;
     let target = json!({ "watch": [
         { "resource_name": RN, "resource": "campaign", "fields": ["campaign.name"] }
     ]});
     let current = h.adapter.current_state(CONN, "111", &target).await.unwrap();
-    let after = json!({ RN: { "campaign.name": "novo" } });
+    let after = json!({ RN: { "campaign.name": "new" } });
     assert_eq!(diff(&after, &current).len(), 1);
 }
 

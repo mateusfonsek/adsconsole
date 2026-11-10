@@ -1,8 +1,8 @@
-//! Edição de campanha, grupo de anúncios e anúncio: `update_campaign`,
-//! `update_ad_group` e `update_ad`. Todas reversíveis pela inversa `restore_fields`.
+//! Campaign, ad group and ad edits: `update_campaign`, `update_ad_group` and
+//! `update_ad`. All reversible through the `restore_fields` inverse.
 //!
-//! O plano lê o recurso (para validar e montar o resumo "antes → depois") e usa
-//! [`Edits`] para virar operações de update, `field_changes` e `watch`.
+//! The plan reads the resource (to validate and build the "before → after" summary)
+//! and uses [`Edits`] to turn it into update operations, `field_changes` and `watch`.
 
 use adsconsole_core::Status;
 use adsconsole_core::config::ToolGroup;
@@ -38,15 +38,14 @@ const UPDATE_AD_GROUP: &str = "update_ad_group";
 const UPDATE_AD: &str = "update_ad";
 
 pub(crate) const SHARED_BUDGET_WARNING: &str =
-    "Este orçamento é compartilhado por outras campanhas e todas serão afetadas.";
-pub(crate) const PINS_WARNING: &str =
-    "As fixações (pins) atuais dos títulos/descrições serão removidas.";
-const BIDDING_SWITCH: &str = "Trocar o tipo de estratégia de lance ainda não é suportado; \
-                              ajuste o alvo da estratégia atual.";
+    "This budget is shared with other campaigns, and all of them will be affected.";
+pub(crate) const PINS_WARNING: &str = "The current headline/description pins will be removed.";
+const BIDDING_SWITCH: &str = "Changing the bidding strategy type is not supported yet; \
+                              adjust the target of the current strategy.";
 
 // ---------------------------------------------------------------- helpers
 
-/// Status aceito nas edições (`ENABLED` é alias de `ACTIVE`).
+/// Status accepted in edits (`ENABLED` is an alias of `ACTIVE`).
 #[derive(Debug, Clone, Copy, Deserialize, JsonSchema)]
 pub(crate) enum EditStatus {
     #[serde(rename = "ACTIVE", alias = "ENABLED")]
@@ -65,22 +64,22 @@ impl EditStatus {
     }
 }
 
-/// Como o valor aparece no resumo.
+/// How the value appears in the summary.
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Show {
-    /// `'texto'`
+    /// `'text'`
     Quoted,
-    /// Como veio (números).
+    /// As is (numbers).
     Plain,
-    /// Só a data de um datetime `AAAA-MM-DD HH:mm:ss`.
+    /// Only the date of a `YYYY-MM-DD HH:mm:ss` datetime.
     Date,
     /// `ENABLED` → `ACTIVE`.
     Status,
-    /// Número seguido da moeda da conta.
+    /// Number followed by the account currency.
     Money,
-    /// Tamanho da lista.
+    /// List length.
     Count,
-    /// Itens entre aspas, separados por vírgula.
+    /// Quoted items, comma-separated.
     List,
 }
 
@@ -106,7 +105,7 @@ fn show(v: &Value, how: Show) -> String {
     }
 }
 
-/// Micros → unidades no formato de [`fields::normalize`] (inteiro quando exato).
+/// Micros → units in the [`fields::normalize`] format (integer when exact).
 pub(crate) fn units(micros: i64) -> Value {
     let d = money::from_micros(micros).normalize();
     if d.scale() == 0 {
@@ -117,20 +116,20 @@ pub(crate) fn units(micros: i64) -> Value {
         .map_or(Value::Null, Value::Number)
 }
 
-/// Valor em dinheiro da entrada (> 0, sem casas além das da moeda) em micros.
+/// Input money amount (> 0, no more decimals than the currency allows) in micros.
 pub(crate) fn positive_micros(
     amount: Decimal,
     currency: &str,
     field: &str,
 ) -> Result<i64, ToolError> {
     if amount <= Decimal::ZERO {
-        return Err(invalid(format!("{field} deve ser maior que zero.")).with_field(field));
+        return Err(invalid(format!("{field} must be greater than zero.")).with_field(field));
     }
     money::to_micros_checked(amount, currency)
         .map_err(|e| invalid(format!("{field}: {e}")).with_field(field))
 }
 
-/// Primeira linha da consulta (as consultas daqui já têm `LIMIT 1`).
+/// First row of the query (the queries here already have `LIMIT 1`).
 pub(crate) async fn read_one(
     ctx: &Ctx,
     tool: &str,
@@ -147,18 +146,17 @@ pub(crate) async fn read_one(
 fn not_found(what: &str, ctx: &Ctx) -> ToolError {
     ToolError::new(
         codes::NOT_FOUND,
-        format!("{what} não encontrado(a) na conta {}.", ctx.customer_id),
+        format!("{what} not found in account {}.", ctx.customer_id),
     )
 }
 
 pub(crate) fn date(s: &str, field: &str) -> Result<NaiveDate, ToolError> {
-    NaiveDate::parse_from_str(s, "%Y-%m-%d").map_err(|_| {
-        invalid(format!("{field} deve estar no formato AAAA-MM-DD.")).with_field(field)
-    })
+    NaiveDate::parse_from_str(s, "%Y-%m-%d")
+        .map_err(|_| invalid(format!("{field} must be in YYYY-MM-DD format.")).with_field(field))
 }
 
-/// Edições de recursos que já existem, agrupadas por nome de recurso (na ordem em
-/// que aparecem), com o resumo "campo antes → depois".
+/// Edits of existing resources, grouped by resource name (in the order they
+/// appear), with the "field before → after" summary.
 pub(crate) struct Edits {
     head: String,
     currency: String,
@@ -167,7 +165,7 @@ pub(crate) struct Edits {
 }
 
 impl Edits {
-    /// `head` abre o resumo, ex.: `Campanha 123`.
+    /// `head` starts the summary, e.g. `Campaign 123`.
     pub(crate) fn new(head: impl Into<String>, currency: &str) -> Self {
         Self {
             head: head.into(),
@@ -177,8 +175,8 @@ impl Edits {
         }
     }
 
-    /// Muda `gaql` em `rn` para `new` (já normalizado). O "antes" do resumo sai de
-    /// `row`, uma linha do search com o recurso do campo na raiz.
+    /// Sets `gaql` on `rn` to `new` (already normalized). The summary's "before"
+    /// comes from `row`, a search row with the field's resource at the root.
     pub(crate) fn set(
         &mut self,
         rn: &str,
@@ -189,7 +187,7 @@ impl Edits {
         how: Show,
     ) -> Result<(), ToolError> {
         let field = fields::find(gaql).ok_or_else(|| {
-            ToolError::new(codes::INTERNAL, format!("Campo fora da tabela: {gaql}"))
+            ToolError::new(codes::INTERNAL, format!("Field not in the table: {gaql}"))
         })?;
         let before = fields::normalize(field, row);
         let mut part = format!("{label} {} → {}", show(&before, how), show(&new, how));
@@ -205,7 +203,7 @@ impl Edits {
         Ok(())
     }
 
-    /// Como [`Edits::set`], para dinheiro da entrada na moeda da conta.
+    /// Like [`Edits::set`], for an input money amount in the account currency.
     pub(crate) fn money(
         &mut self,
         rn: &str,
@@ -219,10 +217,10 @@ impl Edits {
         self.set(rn, gaql, row, units(micros), label, Show::Money)
     }
 
-    /// Plano com inversa `restore_fields`. Sem nenhuma edição, `INVALID_INPUT`.
+    /// Plan with the `restore_fields` inverse. With no edits, `INVALID_INPUT`.
     pub(crate) fn into_plan(self, warning: Option<String>) -> Result<WritePlan, ToolError> {
         if self.groups.is_empty() {
-            return Err(invalid("Informe ao menos um campo para alterar."));
+            return Err(invalid("Provide at least one field to change."));
         }
         let mut operations = Vec::new();
         let mut field_changes = Vec::new();
@@ -256,29 +254,29 @@ impl Edits {
 
 // --------------------------------------------------------- update_campaign
 
-/// Alvo da estratégia de lance atual da campanha.
+/// Target of the campaign's current bidding strategy.
 #[derive(Debug, Deserialize, JsonSchema)]
-// Os nomes das variantes são as chaves da entrada (`maximize_clicks`, …).
+// The variant names are the input keys (`maximize_clicks`, …).
 #[allow(clippy::enum_variant_names)]
 #[serde(rename_all = "snake_case")]
 enum BiddingIn {
-    /// Maximizar cliques (`TARGET_SPEND`).
+    /// Maximize clicks (`TARGET_SPEND`).
     MaximizeClicks {
-        /// Limite de CPC, na moeda da conta.
+        /// CPC cap, in the account currency.
         #[serde(default, with = "rust_decimal::serde::float_option")]
         #[schemars(with = "Option<f64>")]
         cpc_cap: Option<Decimal>,
     },
-    /// Maximizar conversões.
+    /// Maximize conversions.
     MaximizeConversions {
-        /// CPA desejado, na moeda da conta.
+        /// Target CPA, in the account currency.
         #[serde(default, with = "rust_decimal::serde::float_option")]
         #[schemars(with = "Option<f64>")]
         target_cpa: Option<Decimal>,
     },
-    /// Maximizar valor de conversão.
+    /// Maximize conversion value.
     MaximizeConversionValue {
-        /// ROAS desejado (ex.: 3.5 = 350%).
+        /// Target ROAS (e.g. 3.5 = 350%).
         #[serde(default)]
         target_roas: Option<f64>,
     },
@@ -302,20 +300,20 @@ struct UpdateCampaignInput {
     campaign_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// `ACTIVE` ou `PAUSED`.
+    /// `ACTIVE` or `PAUSED`.
     #[serde(default)]
     status: Option<EditStatus>,
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     daily_budget: Option<Decimal>,
-    /// Só ajusta o alvo da estratégia atual; não troca o tipo.
+    /// Only adjusts the target of the current strategy; does not change the strategy type.
     #[serde(default)]
     bidding: Option<BiddingIn>,
-    /// AAAA-MM-DD.
+    /// YYYY-MM-DD.
     #[serde(default)]
     start_date: Option<String>,
-    /// AAAA-MM-DD.
+    /// YYYY-MM-DD.
     #[serde(default)]
     end_date: Option<String>,
 }
@@ -327,8 +325,8 @@ impl WriteTool for UpdateCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateCampaignInput>(
             UPDATE_CAMPAIGN,
-            "Edita uma campanha do Google Ads: nome, status, orçamento diário, alvo da \
-             estratégia de lance atual e datas de início e término.",
+            "Edits a Google Ads campaign: name, status, daily budget, target of the current \
+             bidding strategy, and start and end dates.",
             ToolGroup::Edit,
             true,
         )
@@ -345,12 +343,12 @@ impl WriteTool for UpdateCampaign {
             && input.start_date.is_none()
             && input.end_date.is_none()
         {
-            return Err(invalid("Informe ao menos um campo para alterar."));
+            return Err(invalid("Provide at least one field to change."));
         }
         if let (Some(s), Some(e)) = (&input.start_date, &input.end_date)
             && date(s, "start_date")? > date(e, "end_date")?
         {
-            return Err(invalid("start_date deve ser anterior a end_date.").with_field("end_date"));
+            return Err(invalid("start_date must not be after end_date.").with_field("end_date"));
         }
         let query = format!(
             "SELECT campaign.resource_name, campaign.name, campaign.status, \
@@ -364,21 +362,21 @@ impl WriteTool for UpdateCampaign {
         );
         let row = read_one(ctx, UPDATE_CAMPAIGN, &query)
             .await?
-            .ok_or_else(|| not_found(&format!("Campanha {id}"), ctx))?;
+            .ok_or_else(|| not_found(&format!("Campaign {id}"), ctx))?;
         let rn = resources::rn(&ctx.customer_id, "campaigns", &id);
-        let mut edits = Edits::new(format!("Campanha {id}"), &ctx.currency);
+        let mut edits = Edits::new(format!("Campaign {id}"), &ctx.currency);
         let mut warning = None;
 
         if let Some(name) = &input.name {
             if name.trim().is_empty() {
-                return Err(invalid("O nome não pode ficar vazio.").with_field("name"));
+                return Err(invalid("The name cannot be empty.").with_field("name"));
             }
             edits.set(
                 &rn,
                 "campaign.name",
                 &row,
                 json!(name),
-                "nome",
+                "name",
                 Show::Quoted,
             )?;
         }
@@ -395,7 +393,7 @@ impl WriteTool for UpdateCampaign {
         }
         if let Some(amount) = input.daily_budget {
             let budget = text(&row, "campaign.campaignBudget").ok_or_else(|| {
-                invalid("A campanha não tem orçamento próprio.").with_field("daily_budget")
+                invalid("The campaign has no budget of its own.").with_field("daily_budget")
             })?;
             own_resource(ctx, &budget)?;
             if super::reports::flag(&row, "campaignBudget.explicitlyShared") {
@@ -407,7 +405,7 @@ impl WriteTool for UpdateCampaign {
                 &row,
                 amount,
                 "daily_budget",
-                "orçamento",
+                "budget",
             )?;
         }
         if let Some(bidding) = &input.bidding {
@@ -417,12 +415,12 @@ impl WriteTool for UpdateCampaign {
             }
             if text(&row, "campaign.biddingStrategy").is_some() {
                 return Err(invalid(
-                    "A campanha usa uma estratégia de lance de portfólio; ajuste o alvo na própria estratégia.",
+                    "The campaign uses a portfolio bidding strategy; adjust the target on the strategy itself.",
                 )
                 .with_field("bidding"));
             }
             let no_target =
-                || invalid("Informe o alvo da estratégia de lance.").with_field("bidding");
+                || invalid("Provide the bidding strategy target.").with_field("bidding");
             match bidding {
                 BiddingIn::MaximizeClicks { cpc_cap } => edits.money(
                     &rn,
@@ -430,7 +428,7 @@ impl WriteTool for UpdateCampaign {
                     &row,
                     cpc_cap.ok_or_else(no_target)?,
                     "bidding",
-                    "limite de CPC",
+                    "CPC cap",
                 )?,
                 BiddingIn::MaximizeConversions { target_cpa } => edits.money(
                     &rn,
@@ -438,28 +436,28 @@ impl WriteTool for UpdateCampaign {
                     &row,
                     target_cpa.ok_or_else(no_target)?,
                     "bidding",
-                    "CPA desejado",
+                    "target CPA",
                 )?,
                 BiddingIn::MaximizeConversionValue { target_roas } => {
                     let roas = target_roas.ok_or_else(no_target)?;
                     let value = Number::from_f64(roas)
                         .filter(|_| roas > 0.0)
                         .ok_or_else(|| {
-                            invalid("target_roas deve ser maior que zero.").with_field("bidding")
+                            invalid("target_roas must be greater than zero.").with_field("bidding")
                         })?;
                     edits.set(
                         &rn,
                         "campaign.maximize_conversion_value.target_roas",
                         &row,
                         Value::Number(value),
-                        "ROAS desejado",
+                        "target ROAS",
                         Show::Plain,
                     )?;
                 }
             }
         }
-        // Datas: v26 só tem start_date_time/end_date_time (ver fields.rs).
-        // Só uma das datas: compara com a outra, atual, da campanha.
+        // Dates: v26 only has start_date_time/end_date_time (see fields.rs).
+        // With only one of the dates, compare it with the campaign's current other date.
         let current_date =
             |path: &str| text(&row, path).and_then(|d| date(fields::date_part(&d), path).ok());
         match (&input.start_date, &input.end_date) {
@@ -468,7 +466,7 @@ impl WriteTool for UpdateCampaign {
                     && date(s, "start_date")? > end
                 {
                     return Err(invalid(format!(
-                        "start_date não pode ser depois do término atual da campanha ({end})."
+                        "start_date cannot be after the campaign's current end date ({end})."
                     ))
                     .with_field("start_date"));
                 }
@@ -478,7 +476,7 @@ impl WriteTool for UpdateCampaign {
                     && date(e, "end_date")? < start
                 {
                     return Err(invalid(format!(
-                        "end_date não pode ser antes do início atual da campanha ({start})."
+                        "end_date cannot be before the campaign's current start date ({start})."
                     ))
                     .with_field("end_date"));
                 }
@@ -492,7 +490,7 @@ impl WriteTool for UpdateCampaign {
                 "campaign.start_date_time",
                 &row,
                 json!(fields::start_of_day(s)),
-                "início",
+                "start",
                 Show::Date,
             )?;
         }
@@ -503,7 +501,7 @@ impl WriteTool for UpdateCampaign {
                 "campaign.end_date_time",
                 &row,
                 json!(fields::end_of_day(e)),
-                "término",
+                "end",
                 Show::Date,
             )?;
         }
@@ -521,10 +519,10 @@ struct UpdateAdGroupInput {
     ad_group_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// `ACTIVE` ou `PAUSED`.
+    /// `ACTIVE` or `PAUSED`.
     #[serde(default)]
     status: Option<EditStatus>,
-    /// Lance de CPC máximo do grupo, na moeda da conta.
+    /// The ad group's max CPC bid, in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     cpc_bid: Option<Decimal>,
@@ -537,7 +535,7 @@ impl WriteTool for UpdateAdGroup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateAdGroupInput>(
             UPDATE_AD_GROUP,
-            "Edita um grupo de anúncios do Google Ads: nome, status e lance de CPC.",
+            "Edits a Google Ads ad group: name, status and CPC bid.",
             ToolGroup::Edit,
             true,
         )
@@ -548,7 +546,7 @@ impl WriteTool for UpdateAdGroup {
         let input: UpdateAdGroupInput = parse_input(input)?;
         let id = valid_id(&input.ad_group_id, "ad_group_id")?;
         if input.name.is_none() && input.status.is_none() && input.cpc_bid.is_none() {
-            return Err(invalid("Informe ao menos um campo para alterar."));
+            return Err(invalid("Provide at least one field to change."));
         }
         let query = format!(
             "SELECT ad_group.resource_name, ad_group.name, ad_group.status, \
@@ -557,19 +555,19 @@ impl WriteTool for UpdateAdGroup {
         );
         let row = read_one(ctx, UPDATE_AD_GROUP, &query)
             .await?
-            .ok_or_else(|| not_found(&format!("Grupo de anúncios {id}"), ctx))?;
+            .ok_or_else(|| not_found(&format!("Ad group {id}"), ctx))?;
         let rn = resources::rn(&ctx.customer_id, "adGroups", &id);
-        let mut edits = Edits::new(format!("Grupo de anúncios {id}"), &ctx.currency);
+        let mut edits = Edits::new(format!("Ad group {id}"), &ctx.currency);
         if let Some(name) = &input.name {
             if name.trim().is_empty() {
-                return Err(invalid("O nome não pode ficar vazio.").with_field("name"));
+                return Err(invalid("The name cannot be empty.").with_field("name"));
             }
             edits.set(
                 &rn,
                 "ad_group.name",
                 &row,
                 json!(name),
-                "nome",
+                "name",
                 Show::Quoted,
             )?;
         }
@@ -591,7 +589,7 @@ impl WriteTool for UpdateAdGroup {
                 &row,
                 bid,
                 "cpc_bid",
-                "lance de CPC",
+                "CPC bid",
             )?;
         }
         edits.into_plan(None)
@@ -610,36 +608,36 @@ struct UpdateAdInput {
     account: AccountRef,
     ad_group_id: String,
     ad_id: String,
-    /// `ACTIVE` ou `PAUSED`.
+    /// `ACTIVE` or `PAUSED`.
     #[serde(default)]
     status: Option<EditStatus>,
-    /// URLs finais (substituem as atuais).
+    /// Final URLs (replace the current ones).
     #[serde(default)]
     final_urls: Option<Vec<String>>,
-    /// Só anúncio responsivo de pesquisa: 3 a 15 títulos de até 30 caracteres
-    /// (substituem os atuais, sem fixação).
+    /// Responsive search ads only: 3 to 15 headlines of up to 30 characters
+    /// (replace the current ones, with no pins).
     #[serde(default)]
     headlines: Option<Vec<String>>,
-    /// Só anúncio responsivo de pesquisa: 2 a 4 descrições de até 90 caracteres.
+    /// Responsive search ads only: 2 to 4 descriptions of up to 90 characters.
     #[serde(default)]
     descriptions: Option<Vec<String>>,
 }
 
-/// Textos do RSA como `AdTextAsset`s, dentro dos limites de quantidade e tamanho.
+/// RSA texts as `AdTextAsset`s, within the count and length limits.
 pub(crate) fn ad_texts(
     items: &[String],
     (min, max, len): (usize, usize, usize),
     field: &str,
 ) -> Result<Value, ToolError> {
     if items.len() < min || items.len() > max {
-        return Err(invalid(format!("{field}: informe de {min} a {max} itens.")).with_field(field));
+        return Err(invalid(format!("{field}: provide {min} to {max} items.")).with_field(field));
     }
     if let Some(t) = items
         .iter()
         .find(|t| t.trim().is_empty() || t.chars().count() > len)
     {
         return Err(invalid(format!(
-            "{field}: cada item deve ter de 1 a {len} caracteres ('{t}')."
+            "{field}: each item must have 1 to {len} characters ('{t}')."
         ))
         .with_field(field));
     }
@@ -650,7 +648,7 @@ pub(crate) fn ad_texts(
 
 pub(crate) fn final_urls(urls: &[String]) -> Result<Value, ToolError> {
     if urls.is_empty() {
-        return Err(invalid("Informe ao menos uma URL final.").with_field("final_urls"));
+        return Err(invalid("Provide at least one final URL.").with_field("final_urls"));
     }
     for u in urls {
         final_url(u, "final_urls")?;
@@ -658,12 +656,12 @@ pub(crate) fn final_urls(urls: &[String]) -> Result<Value, ToolError> {
     Ok(json!(urls))
 }
 
-/// URL final `http(s)://…`; `field` é o campo apontado no erro.
+/// Final URL `http(s)://…`; `field` is the field named in the error.
 pub(crate) fn final_url(url: &str, field: &str) -> Result<(), ToolError> {
     if url.starts_with("https://") || url.starts_with("http://") {
         return Ok(());
     }
-    Err(invalid(format!("URL final inválida: {url}")).with_field(field))
+    Err(invalid(format!("Invalid final URL: {url}")).with_field(field))
 }
 
 struct UpdateAd;
@@ -673,8 +671,8 @@ impl WriteTool for UpdateAd {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateAdInput>(
             UPDATE_AD,
-            "Edita um anúncio do Google Ads: status, URLs finais e, em anúncio responsivo \
-             de pesquisa, títulos e descrições.",
+            "Edits a Google Ads ad: status, final URLs and, on a responsive search ad, \
+             headlines and descriptions.",
             ToolGroup::Edit,
             true,
         )
@@ -685,7 +683,7 @@ impl WriteTool for UpdateAd {
         let input: UpdateAdInput = parse_input(input)?;
         let group = valid_id(&input.ad_group_id, "ad_group_id")?;
         let ad = valid_id(&input.ad_id, "ad_id")?;
-        // Checagens locais antes da leitura.
+        // Local checks before the read.
         let headlines = input
             .headlines
             .as_deref()
@@ -699,7 +697,7 @@ impl WriteTool for UpdateAd {
         let urls = input.final_urls.as_deref().map(final_urls).transpose()?;
         if input.status.is_none() && headlines.is_none() && descriptions.is_none() && urls.is_none()
         {
-            return Err(invalid("Informe ao menos um campo para alterar."));
+            return Err(invalid("Provide at least one field to change."));
         }
 
         let query = format!(
@@ -711,12 +709,12 @@ impl WriteTool for UpdateAd {
         );
         let row = read_one(ctx, UPDATE_AD, &query)
             .await?
-            .ok_or_else(|| not_found(&format!("Anúncio {ad} do grupo {group}"), ctx))?;
+            .ok_or_else(|| not_found(&format!("Ad {ad} in ad group {group}"), ctx))?;
         if (headlines.is_some() || descriptions.is_some())
             && text(&row, "adGroupAd.ad.type").as_deref() != Some("RESPONSIVE_SEARCH_AD")
         {
             return Err(invalid(
-                "Títulos e descrições só podem ser editados em anúncio responsivo de pesquisa.",
+                "Headlines and descriptions can only be edited on a responsive search ad.",
             )
             .with_field(if headlines.is_some() {
                 "headlines"
@@ -725,7 +723,8 @@ impl WriteTool for UpdateAd {
             }));
         }
         let ad_group_ad = resources::rn(&ctx.customer_id, "adGroupAds", &format!("{group}~{ad}"));
-        // Confirmado na conta real (2026-10-18, T9.1): textos e URLs vão no recurso `ad` (`AdOperation`), não no ad_group_ad.
+        // Verified on a real account: texts and URLs go on the `ad` resource (`AdOperation`),
+        // not on ad_group_ad.
         let ad_rn = resources::rn(&ctx.customer_id, "ads", &ad);
         let ad_row = json!({ "ad": row["adGroupAd"]["ad"] });
         let pinned = |path: &str| {
@@ -738,7 +737,7 @@ impl WriteTool for UpdateAd {
             || (descriptions.is_some() && pinned("adGroupAd.ad.responsiveSearchAd.descriptions")))
         .then(|| PINS_WARNING.to_string());
 
-        let mut edits = Edits::new(format!("Anúncio {ad}"), &ctx.currency);
+        let mut edits = Edits::new(format!("Ad {ad}"), &ctx.currency);
         if let Some(status) = input.status {
             let s = status.to_google()?;
             edits.set(
@@ -756,7 +755,7 @@ impl WriteTool for UpdateAd {
                 "ad.final_urls",
                 &ad_row,
                 u,
-                "URLs finais",
+                "final URLs",
                 Show::List,
             )?;
         }
@@ -766,7 +765,7 @@ impl WriteTool for UpdateAd {
                 "ad.responsive_search_ad.headlines",
                 &ad_row,
                 h,
-                "títulos",
+                "headlines",
                 Show::Count,
             )?;
         }
@@ -776,7 +775,7 @@ impl WriteTool for UpdateAd {
                 "ad.responsive_search_ad.descriptions",
                 &ad_row,
                 d,
-                "descrições",
+                "descriptions",
                 Show::Count,
             )?;
         }

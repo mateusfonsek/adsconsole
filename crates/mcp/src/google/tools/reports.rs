@@ -1,9 +1,9 @@
-//! Leituras estruturadas do Google Ads: campanhas, detalhes, termos de busca,
-//! recomendações, ações de conversão e histórico de mudanças.
+//! Structured Google Ads reads: campaigns, details, search terms, recommendations,
+//! conversion actions and change history.
 //!
-//! Convenções: dinheiro em unidades da moeda da conta (`adsconsole_core::money`), status
-//! normalizados (`ACTIVE`/`PAUSED`/`REMOVED`; valor desconhecido fica como veio), ids
-//! como texto e toda consulta com `LIMIT`.
+//! Conventions: money in account currency units (`adsconsole_core::money`), normalized
+//! statuses (`ACTIVE`/`PAUSED`/`REMOVED`; an unknown value is kept as is), ids as text,
+//! and every query has a `LIMIT`.
 
 use std::collections::BTreeMap;
 
@@ -68,11 +68,11 @@ pub(crate) fn bounded(
     if (min..=max).contains(&v) {
         Ok(v)
     } else {
-        Err(invalid(format!("{field} deve ficar entre {min} e {max}.")).with_field(field))
+        Err(invalid(format!("{field} must be between {min} and {max}.")).with_field(field))
     }
 }
 
-/// Caminho com pontos (`"metrics.costMicros"`) dentro da linha da API.
+/// Dotted path (`"metrics.costMicros"`) inside the API row.
 pub(crate) fn at<'a>(row: &'a Value, path: &str) -> Option<&'a Value> {
     path.split('.')
         .try_fold(row, |v, k| v.get(k))
@@ -92,7 +92,7 @@ fn text_or_empty(row: &Value, path: &str) -> String {
     text(row, path).unwrap_or_default()
 }
 
-/// int64 da API (vem como texto) ou número.
+/// API int64 (sent as text) or number.
 pub(crate) fn int(row: &Value, path: &str) -> i64 {
     match at(row, path) {
         Some(Value::String(s)) => s.parse().unwrap_or(0),
@@ -115,7 +115,7 @@ pub(crate) fn flag(row: &Value, path: &str) -> bool {
     at(row, path).and_then(Value::as_bool).unwrap_or(false)
 }
 
-/// Micros (texto, inteiro ou double, como `averageCpc`) para unidades da moeda.
+/// Micros (text, integer or double, like `averageCpc`) to currency units.
 pub(crate) fn money_at(row: &Value, path: &str) -> Option<Decimal> {
     match at(row, path)? {
         Value::String(s) => s.parse::<i64>().ok().map(money::from_micros),
@@ -133,7 +133,7 @@ fn money_or_zero(row: &Value, path: &str) -> Decimal {
     money_at(row, path).unwrap_or_default()
 }
 
-/// `ENABLED` → `ACTIVE`, etc. Valor que o núcleo não conhece fica como veio.
+/// `ENABLED` → `ACTIVE`, etc. A value the core doesn't know is kept as is.
 pub(crate) fn normalize_status(raw: &str) -> String {
     match Status::from_google(raw) {
         Ok(Status::Active) => "ACTIVE".into(),
@@ -149,7 +149,7 @@ fn status_at(row: &Value, path: &str) -> String {
         .unwrap_or_default()
 }
 
-/// Último segmento numérico de um nome de recurso (`customers/1/campaigns/5` → `5`).
+/// Last numeric segment of a resource name (`customers/1/campaigns/5` → `5`).
 fn last_id(rn: Option<String>) -> Option<String> {
     rn.and_then(|r| r.rsplit('/').next().map(str::to_string))
 }
@@ -190,7 +190,7 @@ enum PresetIn {
     LastMonth,
 }
 
-/// Período: um preset ou um intervalo `YYYY-MM-DD`. Padrão: `LAST_30_DAYS`.
+/// Date range: a preset or a `YYYY-MM-DD` interval. Default: `LAST_30_DAYS`.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(untagged)]
 enum DateRangeIn {
@@ -221,7 +221,7 @@ impl DateRangeIn {
 
 fn parse_date(s: &str, field: &str) -> Result<NaiveDate, ToolError> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")
-        .map_err(|_| invalid(format!("Data inválida ({s:?}); use AAAA-MM-DD.")).with_field(field))
+        .map_err(|_| invalid(format!("Invalid date ({s:?}); use YYYY-MM-DD.")).with_field(field))
 }
 
 fn date_clause(range: &Option<DateRangeIn>) -> Result<String, ToolError> {
@@ -260,7 +260,7 @@ struct GetCampaignsInput {
     account: AccountRef,
     #[serde(default)]
     date_range: Option<DateRangeIn>,
-    /// Padrão: todas menos as removidas.
+    /// Default: all except removed ones.
     #[serde(default)]
     status: Option<Vec<StatusIn>>,
 }
@@ -269,11 +269,11 @@ struct GetCampaignsInput {
 struct CampaignRow {
     campaign_id: String,
     name: String,
-    /// `ACTIVE`, `PAUSED` ou `REMOVED`.
+    /// `ACTIVE`, `PAUSED` or `REMOVED`.
     status: String,
-    /// Tipo de canal (`SEARCH`, `PERFORMANCE_MAX`, ...).
+    /// Channel type (`SEARCH`, `PERFORMANCE_MAX`, ...).
     channel: String,
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     budget: Option<Decimal>,
@@ -294,7 +294,7 @@ struct CampaignRow {
 #[derive(Debug, Serialize, JsonSchema)]
 struct GetCampaignsOutput {
     campaigns: Vec<CampaignRow>,
-    /// Há mais campanhas que o limite de tamanho; use `gaql_search` com cursor para o resto.
+    /// There are more campaigns than the size limit; use `gaql_search` with a cursor for the rest.
     truncated: bool,
 }
 
@@ -307,8 +307,8 @@ impl ReadTool for GetCampaigns {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetCampaignsInput>(
             CAMPAIGNS_TOOL,
-            "Lista as campanhas da conta com orçamento e métricas do período (padrão: \
-             últimos 30 dias, sem as removidas). Dinheiro na moeda da conta.",
+            "Lists the account's campaigns with budget and metrics for the date range \
+             (default: last 30 days, removed campaigns excluded). Money in the account currency.",
             ToolGroup::Read,
         )
         .output::<GetCampaignsOutput>()
@@ -318,7 +318,7 @@ impl ReadTool for GetCampaigns {
         let input: GetCampaignsInput = parse_input(input)?;
         let status_clause = match input.status.as_deref() {
             None => "campaign.status != 'REMOVED'".to_string(),
-            Some([]) => return Err(invalid("status não pode ser vazio.").with_field("status")),
+            Some([]) => return Err(invalid("status cannot be empty.").with_field("status")),
             Some(list) => {
                 let items: Vec<String> = list.iter().map(|s| gaql::quote(s.gaql())).collect();
                 format!("campaign.status IN ({})", items.join(", "))
@@ -389,7 +389,7 @@ struct CampaignInfo {
 #[derive(Debug, Serialize, JsonSchema)]
 struct AdText {
     text: String,
-    /// Posição fixada (`HEADLINE_1`, ...), se houver.
+    /// Pinned position (`HEADLINE_1`, ...), if any.
     pinned: Option<String>,
 }
 
@@ -409,7 +409,7 @@ struct KeywordOut {
     text: String,
     match_type: String,
     status: String,
-    /// Palavra negativa do grupo de anúncios.
+    /// Ad group negative keyword.
     negative: bool,
     #[serde(with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
@@ -443,7 +443,7 @@ struct AssetOut {
     asset_type: String,
     field_type: String,
     status: String,
-    /// Texto, nos assets de texto.
+    /// Text, for text assets.
     text: Option<String>,
 }
 
@@ -452,9 +452,9 @@ struct AssetGroupOut {
     asset_group_id: String,
     name: String,
     status: String,
-    /// Assets agrupados por `field_type` (`HEADLINE`, `LONG_HEADLINE`, `MARKETING_IMAGE`, ...).
+    /// Assets grouped by `field_type` (`HEADLINE`, `LONG_HEADLINE`, `MARKETING_IMAGE`, ...).
     assets: BTreeMap<String, Vec<AssetOut>>,
-    /// Sinais de público (`audience`, `searchTheme`), como a API devolve.
+    /// Audience signals (`audience`, `searchTheme`), as the API returns them.
     signals: Vec<Value>,
 }
 
@@ -495,21 +495,21 @@ struct TargetingOut {
 #[derive(Debug, Serialize, JsonSchema)]
 struct GetCampaignDetailsOutput {
     campaign: CampaignInfo,
-    /// Vazio em Performance Max (que usa `asset_groups`).
+    /// Empty for Performance Max (which uses `asset_groups`).
     ad_groups: Vec<AdGroupOut>,
-    /// Palavras negativas da campanha.
+    /// Campaign negative keywords.
     negatives: Vec<NegativeOut>,
-    /// Só Performance Max.
+    /// Performance Max only.
     asset_groups: Vec<AssetGroupOut>,
-    /// Assets ligados à campanha (sitelinks, callouts, ...).
+    /// Assets linked to the campaign (sitelinks, callouts, ...).
     assets: Vec<AssetOut>,
     targeting: TargetingOut,
-    /// A campanha tem mais itens que o limite de consulta ou de tamanho da resposta;
-    /// use `gaql_search` com cursor para o resto.
+    /// The campaign has more items than the query or response size limit; use
+    /// `gaql_search` with a cursor for the rest.
     truncated: bool,
 }
 
-/// LIMITs de cada consulta do `get_campaign_details`.
+/// LIMITs of each `get_campaign_details` query.
 const LIMIT_AD_GROUPS: usize = 200;
 const LIMIT_KEYWORDS: usize = 2000;
 const LIMIT_ADS: usize = 1000;
@@ -527,8 +527,8 @@ impl ReadTool for GetCampaignDetails {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetCampaignDetailsInput>(
             CAMPAIGN_DETAILS_TOOL,
-            "Detalhes de uma campanha: dados, grupos de anúncios com palavras-chave e anúncios, \
-             negativas, grupos de recursos (Performance Max), assets e segmentação.",
+            "Gets the details of one campaign: settings, ad groups with keywords and ads, \
+             negative keywords, asset groups (Performance Max), assets and targeting.",
             ToolGroup::Read,
         )
         .output::<GetCampaignDetailsOutput>()
@@ -555,7 +555,7 @@ impl ReadTool for GetCampaignDetails {
         let Some(row) = rows.first() else {
             return Err(ToolError::new(
                 codes::NOT_FOUND,
-                format!("Campanha {id} não encontrada na conta {}.", ctx.customer_id),
+                format!("Campaign {id} not found in account {}.", ctx.customer_id),
             )
             .with_field("campaign_id"));
         };
@@ -628,16 +628,16 @@ impl ReadTool for GetCampaignDetails {
     }
 }
 
-/// Tira o último item de `v` e devolve os bytes que ele ocupava no JSON (com a vírgula).
+/// Pops the last item of `v` and returns the bytes it took in the JSON (comma included).
 fn pop_bytes<T: Serialize>(v: &mut Vec<T>) -> Option<usize> {
     let item = v.pop()?;
     Some(serde_json::to_vec(&item).map(|b| b.len()).unwrap_or(0) + 1)
 }
 
-/// Corta os itens maiores até a resposta caber em [`ITEMS_BUDGET`]: anúncios, depois
-/// palavras-chave, assets e sinais de grupos de recursos e, por fim, critérios e assets
-/// da campanha; como garantia final, descarta grupos inteiros. A saída serializada
-/// nunca passa de [`ITEMS_BUDGET`] (salvo o resto fixo da campanha). Devolve `true` se cortou algo.
+/// Cuts the larger items until the response fits in [`ITEMS_BUDGET`]: ads, then
+/// keywords, asset group assets and signals, and finally campaign criteria and assets;
+/// as a last resort, drops whole groups. The serialized output never exceeds
+/// [`ITEMS_BUDGET`] (except for the campaign's fixed part). Returns `true` if it cut anything.
 fn trim_details(out: &mut GetCampaignDetailsOutput) -> bool {
     let mut size = serde_json::to_vec(out).map(|b| b.len()).unwrap_or(0);
     if size <= ITEMS_BUDGET {
@@ -686,8 +686,8 @@ fn trim_details(out: &mut GetCampaignDetailsOutput) -> bool {
     for g in &mut out.asset_groups {
         g.assets.retain(|_, v| !v.is_empty());
     }
-    // As contas acima são estimativas: mede de verdade e, se ainda passar, descarta
-    // grupos inteiros do fim (grupos de recursos, depois grupos de anúncios).
+    // The sizes above are estimates: measure for real and, if still over, drop whole
+    // groups from the end (asset groups, then ad groups).
     let measure =
         |o: &GetCampaignDetailsOutput| serde_json::to_vec(o).map(|b| b.len()).unwrap_or(0);
     while measure(out) > ITEMS_BUDGET {
@@ -733,7 +733,7 @@ fn fill_criteria(out: &mut GetCampaignDetailsOutput, rows: &[Value]) {
     }
 }
 
-/// `resource` é a chave do recurso de vínculo na linha (`campaignAsset`, `assetGroupAsset`).
+/// `resource` is the row key of the link resource (`campaignAsset`, `assetGroupAsset`).
 fn asset_out(r: &Value, resource: &str) -> AssetOut {
     AssetOut {
         asset_id: text_or_empty(r, "asset.id"),
@@ -745,7 +745,7 @@ fn asset_out(r: &Value, resource: &str) -> AssetOut {
     }
 }
 
-/// O booleano diz se alguma consulta bateu no próprio LIMIT.
+/// The boolean says whether any query hit its own LIMIT.
 async fn ad_groups(ctx: &Ctx, tool: &str, id: &str) -> Result<(Vec<AdGroupOut>, bool), ToolError> {
     let groups_q = format!(
         "SELECT campaign.id, ad_group.id, ad_group.name, ad_group.status, ad_group.type, \
@@ -915,7 +915,7 @@ struct GetSearchTermsInput {
     campaign_id: Option<String>,
     #[serde(default)]
     date_range: Option<DateRangeIn>,
-    /// Padrão 100, máximo 1000.
+    /// Default 100, maximum 1000.
     #[serde(default)]
     limit: Option<u32>,
 }
@@ -923,7 +923,7 @@ struct GetSearchTermsInput {
 #[derive(Debug, Serialize, JsonSchema)]
 struct SearchTermOut {
     search_term: String,
-    /// Situação do termo (`ADDED`, `EXCLUDED`, `NONE`, ...), como o Google informa.
+    /// Term status (`ADDED`, `EXCLUDED`, `NONE`, ...), as Google reports it.
     status: String,
     campaign_id: String,
     ad_group_id: String,
@@ -948,7 +948,7 @@ impl ReadTool for GetSearchTerms {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetSearchTermsInput>(
             SEARCH_TERMS_TOOL,
-            "Termos de busca que acionaram os anúncios, ordenados por impressões.",
+            "Lists the search terms that triggered the ads, sorted by impressions.",
             ToolGroup::Read,
         )
         .output::<GetSearchTermsOutput>()
@@ -994,7 +994,7 @@ struct GetRecommendationsInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Tipos de recomendação (ex.: `KEYWORD`, `TARGET_CPA_OPT_IN`); sem filtro, todos.
+    /// Recommendation types (e.g. `KEYWORD`, `TARGET_CPA_OPT_IN`). Without a filter, all.
     #[serde(default)]
     types: Option<Vec<String>>,
 }
@@ -1005,7 +1005,7 @@ struct RecommendationOut {
     #[serde(rename = "type")]
     kind: String,
     campaign_id: Option<String>,
-    /// Impacto estimado (`baseMetrics`/`potentialMetrics`), como a API devolve.
+    /// Estimated impact (`baseMetrics`/`potentialMetrics`), as the API returns it.
     impact: Value,
 }
 
@@ -1024,7 +1024,7 @@ impl ReadTool for GetRecommendations {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetRecommendationsInput>(
             RECOMMENDATIONS_TOOL,
-            "Recomendações de otimização do Google para a conta.",
+            "Lists Google's optimization recommendations for the account.",
             ToolGroup::Read,
         )
         .output::<GetRecommendationsOutput>()
@@ -1100,7 +1100,7 @@ impl ReadTool for GetConversionActions {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetConversionActionsInput>(
             CONVERSION_ACTIONS_TOOL,
-            "Ações de conversão da conta.",
+            "Lists the account's conversion actions.",
             ToolGroup::Read,
         )
         .output::<GetConversionActionsOutput>()
@@ -1148,10 +1148,10 @@ struct GetChangeHistoryInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Quantos dias para trás (padrão 7, de 1 a 30).
+    /// How many days back (default 7, 1 to 30).
     #[serde(default)]
     days: Option<u32>,
-    /// Padrão 100, máximo 1000.
+    /// Default 100, maximum 1000.
     #[serde(default)]
     limit: Option<u32>,
 }
@@ -1164,7 +1164,7 @@ struct ChangeEventOut {
     resource_type: String,
     resource_name: String,
     operation: String,
-    /// Campos alterados, separados por vírgula.
+    /// Changed fields, comma-separated.
     changed_fields: Option<String>,
     campaign_id: Option<String>,
     ad_group_id: Option<String>,
@@ -1183,7 +1183,7 @@ impl ReadTool for GetChangeHistory {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetChangeHistoryInput>(
             CHANGE_HISTORY_TOOL,
-            "Mudanças recentes feitas na conta (change_event), das mais novas às mais antigas.",
+            "Lists recent changes made to the account (change_event), newest first.",
             ToolGroup::Read,
         )
         .output::<GetChangeHistoryOutput>()
@@ -1193,8 +1193,8 @@ impl ReadTool for GetChangeHistory {
         let input: GetChangeHistoryInput = parse_input(input)?;
         let days = bounded(input.days, 7, 1, 30, "days")?;
         let limit = bounded(input.limit, 100, 1, 1000, "limit")?;
-        // A API exige intervalo finito em change_date_time e só guarda 30 dias: o limite
-        // inferior fica um dia dentro da janela (o fuso da conta pode adiantar o relógio).
+        // The API requires a bounded change_date_time range and keeps only 30 days: the
+        // lower bound sits one day inside the window (the account timezone may run ahead).
         let now = Utc::now();
         let window = Duration::days(i64::from(days)).min(Duration::days(29));
         let fmt = "%Y-%m-%d %H:%M:%S";

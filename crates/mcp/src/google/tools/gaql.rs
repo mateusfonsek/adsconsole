@@ -1,4 +1,4 @@
-//! `gaql_search`: consulta GAQL livre (só `SELECT`) com paginação por cursor opaco.
+//! `gaql_search`: free-form GAQL query (`SELECT` only) with opaque cursor pagination.
 
 use adsconsole_core::config::ToolGroup;
 use async_trait::async_trait;
@@ -26,25 +26,25 @@ struct GaqlSearchInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Consulta GAQL; precisa começar com SELECT.
+    /// GAQL query; must start with SELECT.
     query: String,
-    /// `next_cursor` da resposta anterior, com a mesma consulta, para continuar de onde parou.
+    /// `next_cursor` from the previous response, with the same query, to continue where it stopped.
     #[serde(default)]
     cursor: Option<String>,
 }
 
 #[derive(Debug, Serialize, JsonSchema)]
 struct GaqlSearchOutput {
-    /// Linhas como a API devolve (camelCase; int64 como texto; valores em micros).
+    /// Rows as the API returns them (camelCase; int64 as text; amounts in micros).
     rows: Vec<Value>,
-    /// Há mais linhas além das devolvidas; continue com `next_cursor`.
+    /// There are more rows than the ones returned; continue with `next_cursor`.
     truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     next_cursor: Option<String>,
 }
 
-/// Posição de leitura: a página `page_token` (ausente = primeira) e as `skip` linhas
-/// dela que já foram entregues.
+/// Read position: the `page_token` page (absent = first) and the `skip` rows of it
+/// already delivered.
 #[derive(Debug, Serialize, Deserialize)]
 struct Cursor {
     page_token: Option<String>,
@@ -53,7 +53,7 @@ struct Cursor {
 
 impl Cursor {
     fn encode(&self) -> String {
-        // Serializar dois campos simples não falha.
+        // Serializing two plain fields cannot fail.
         URL_SAFE_NO_PAD.encode(serde_json::to_vec(self).unwrap_or_default())
     }
 
@@ -63,10 +63,10 @@ impl Cursor {
             .ok()
             .and_then(|b| serde_json::from_slice(&b).ok())
             .ok_or_else(|| {
-                ToolError::new(codes::INVALID_INPUT, "Cursor inválido.")
+                ToolError::new(codes::INVALID_INPUT, "Invalid cursor.")
                     .with_field("cursor")
                     .with_suggestion(
-                        "Use o next_cursor devolvido pela chamada anterior, sem alterar.",
+                        "Use the next_cursor returned by the previous call, unchanged.",
                     )
             })
     }
@@ -85,8 +85,8 @@ impl ReadTool for GaqlSearch {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GaqlSearchInput>(
             NAME,
-            "Executa uma consulta GAQL (só SELECT) na conta. Respostas grandes vêm cortadas, \
-             com truncated: true e next_cursor; chame de novo com o cursor para continuar.",
+            "Runs a GAQL query (SELECT only) on the account. Large responses are cut, with \
+             truncated: true and next_cursor; call again with the cursor to continue.",
             ToolGroup::Read,
         )
         .output::<GaqlSearchOutput>()
@@ -97,7 +97,7 @@ impl ReadTool for GaqlSearch {
         if !is_select(&input.query) {
             return Err(ToolError::new(
                 codes::INVALID_INPUT,
-                "A consulta GAQL precisa começar com SELECT.",
+                "The GAQL query must start with SELECT.",
             )
             .with_field("query"));
         }
@@ -123,7 +123,7 @@ impl ReadTool for GaqlSearch {
                 .map_err(|e| translate(e, Some(ctx), NAME))?;
             let remaining: Vec<Value> = page.results.into_iter().skip(skip).collect();
             if remaining.is_empty() {
-                // Página esgotada (ou vazia): segue para a próxima, se houver.
+                // Page used up (or empty): move to the next one, if any.
                 match page.next_page_token {
                     Some(next) => {
                         token = Some(next);

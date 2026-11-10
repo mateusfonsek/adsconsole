@@ -1,7 +1,7 @@
-//! `keyword_ideas` e `keyword_metrics` (KeywordPlanIdeaService via REST).
+//! `keyword_ideas` and `keyword_metrics` (KeywordPlanIdeaService over REST).
 //!
-//! Exigem o nível Basic da Google Ads API: qualquer erro de autorização vira
-//! `ACCESS_LEVEL_INSUFFICIENT` com a orientação para pedir o Basic.
+//! They require the Google Ads API Basic access level: any authorization error
+//! becomes `ACCESS_LEVEL_INSUFFICIENT` with guidance on applying for Basic.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::{self, Decimal};
@@ -41,7 +41,7 @@ fn keywords_ok(keywords: &[String]) -> Result<(), ToolError> {
     for k in keywords {
         if k.trim().is_empty() || k.chars().count() > MAX_KEYWORD_CHARS {
             return Err(invalid(format!(
-                "Cada keyword deve ter de 1 a {MAX_KEYWORD_CHARS} caracteres."
+                "Each keyword must have 1 to {MAX_KEYWORD_CHARS} characters."
             ))
             .with_field("keywords"));
         }
@@ -49,7 +49,7 @@ fn keywords_ok(keywords: &[String]) -> Result<(), ToolError> {
     Ok(())
 }
 
-/// `language` e `geoTargetConstants` do corpo, com os ids validados.
+/// The body's `language` and `geoTargetConstants`, with validated ids.
 fn targeting(
     language_id: &Option<String>,
     geo_ids: &Option<Vec<String>>,
@@ -73,15 +73,16 @@ fn targeting(
     ))
 }
 
-/// Erros de autorização (e os já traduzidos para acesso) viram o aviso do nível Basic.
+/// Authorization errors (and those already translated to access errors) become the Basic
+/// access level notice.
 fn basic_level_error(e: ToolError) -> ToolError {
     ToolError::new(
         codes::ACCESS_LEVEL_INSUFFICIENT,
-        "keyword_ideas e keyword_metrics exigem o nível Basic da Google Ads API.",
+        "keyword_ideas and keyword_metrics require the Google Ads API Basic access level.",
     )
     .with_suggestion(
-        "Faça a brand verification do projeto do Google Cloud e peça o nível Basic da API; \
-         depois informe o nível na conexão.",
+        "Complete brand verification for the Google Cloud project and apply for Basic API \
+         access; then set the access level on the connection.",
     )
     .with_details(e.details.unwrap_or(Value::Null))
 }
@@ -129,19 +130,19 @@ struct KeywordIdeasInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Palavras-semente; informe `keywords`, `url` ou os dois.
+    /// Seed keywords. Provide `keywords`, `url` or both.
     #[serde(default)]
     keywords: Option<Vec<String>>,
-    /// Página (http/https) usada como semente.
+    /// Page (http/https) used as a seed.
     #[serde(default)]
     url: Option<String>,
-    /// Id da língua; padrão "1014" (português).
+    /// Language id. Default "1014" (Portuguese).
     #[serde(default)]
     language_id: Option<String>,
-    /// Ids dos locais; padrão ["2076"] (Brasil).
+    /// Location ids. Default ["2076"] (Brazil).
     #[serde(default)]
     geo_ids: Option<Vec<String>>,
-    /// Padrão 50, máximo 500.
+    /// Default 50, maximum 500.
     #[serde(default)]
     limit: Option<u32>,
 }
@@ -172,8 +173,8 @@ impl ReadTool for KeywordIdeas {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<KeywordIdeasInput>(
             IDEAS_TOOL,
-            "Ideias de keywords a partir de palavras ou de uma página (Keyword Planner). \
-             Exige o nível Basic da Google Ads API.",
+            "Gets keyword ideas from seed keywords or a page (Keyword Planner). Requires the \
+             Google Ads API Basic access level.",
             ToolGroup::Read,
         )
         .output::<KeywordIdeasOutput>()
@@ -197,8 +198,9 @@ impl ReadTool for KeywordIdeas {
         });
         match (keywords.is_empty(), url) {
             (true, None) => {
-                return Err(invalid("Informe keywords, url ou os dois como semente.")
-                    .with_field("keywords"));
+                return Err(
+                    invalid("Provide keywords, url or both as the seed.").with_field("keywords")
+                );
             }
             (false, None) => body["keywordSeed"] = json!({ "keywords": keywords }),
             (true, Some(u)) => body["urlSeed"] = json!({ "url": u }),
@@ -228,7 +230,7 @@ fn valid_url(u: &str) -> Result<String, ToolError> {
         Ok(p) if matches!(p.scheme(), "http" | "https") && p.host_str().is_some() => {
             Ok(u.to_string())
         }
-        _ => Err(invalid("url deve ser um endereço http ou https.").with_field("url")),
+        _ => Err(invalid("url must be an http or https address.").with_field("url")),
     }
 }
 
@@ -236,15 +238,15 @@ fn valid_url(u: &str) -> Result<String, ToolError> {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct ForecastIn {
-    /// Orçamento diário, na moeda da conta.
+    /// Daily budget, in the account currency.
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
-    /// CPC máximo, na moeda da conta; sem ele, usa o maior lance alto de topo de página do histórico.
+    /// Max CPC, in the account currency. Without it, uses the highest historical top-of-page bid (high range).
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     max_cpc: Option<Decimal>,
-    /// Dias de previsão, a partir de amanhã (1 a 90; padrão 30).
+    /// Forecast days, starting tomorrow (1 to 90; default 30).
     #[serde(default)]
     days: Option<u32>,
 }
@@ -254,13 +256,13 @@ struct KeywordMetricsInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// De 1 a 1000 keywords, até 80 caracteres cada.
+    /// 1 to 1000 keywords, up to 80 characters each.
     keywords: Vec<String>,
     #[serde(default)]
     language_id: Option<String>,
     #[serde(default)]
     geo_ids: Option<Vec<String>>,
-    /// Com `forecast`, devolve também a previsão de uma campanha de pesquisa (correspondência ampla).
+    /// With `forecast`, also returns the forecast for a Search campaign (broad match).
     #[serde(default)]
     forecast: Option<ForecastIn>,
 }
@@ -308,7 +310,7 @@ struct KeywordMetrics;
 
 fn micros(amount: Decimal, currency: &str, field: &str) -> Result<i64, ToolError> {
     if amount <= Decimal::ZERO {
-        return Err(invalid(format!("{field} deve ser maior que zero.")).with_field(field));
+        return Err(invalid(format!("{field} must be greater than zero.")).with_field(field));
     }
     money::to_micros_checked(amount, currency)
         .map_err(|e| invalid(format!("{field}: {e}")).with_field(field))
@@ -323,9 +325,9 @@ impl ReadTool for KeywordMetrics {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<KeywordMetricsInput>(
             METRICS_TOOL,
-            "Métricas históricas de keywords e, opcionalmente, previsão de desempenho \
-             (Keyword Planner); sem forecast.max_cpc, a previsão usa o maior lance alto de \
-             topo de página do histórico. Exige o nível Basic da Google Ads API.",
+            "Gets historical keyword metrics and, optionally, a performance forecast (Keyword \
+             Planner). Without forecast.max_cpc, the forecast uses the highest historical \
+             top-of-page bid (high range). Requires the Google Ads API Basic access level.",
             ToolGroup::Read,
         )
         .output::<KeywordMetricsOutput>()
@@ -335,7 +337,7 @@ impl ReadTool for KeywordMetrics {
         let input: KeywordMetricsInput = parse_input(input)?;
         if input.keywords.is_empty() || input.keywords.len() > MAX_METRICS_KEYWORDS {
             return Err(
-                invalid(format!("Informe de 1 a {MAX_METRICS_KEYWORDS} keywords."))
+                invalid(format!("Provide 1 to {MAX_METRICS_KEYWORDS} keywords."))
                     .with_field("keywords"),
             );
         }
@@ -389,7 +391,7 @@ impl ReadTool for KeywordMetrics {
                     .unwrap_or_default(),
             })
             .collect();
-        // O CPC padrão da previsão sai do histórico completo, antes do corte.
+        // The forecast's default CPC comes from the full history, before truncation.
         let top_bid = historical
             .iter()
             .filter_map(|h| h.high_top_of_page_bid)
@@ -404,7 +406,7 @@ impl ReadTool for KeywordMetrics {
                         .and_then(|b| money::to_micros(b).ok())
                         .filter(|m| *m > 0)
                         .ok_or_else(|| {
-                            invalid("Informe max_cpc para a previsão.")
+                            invalid("Provide max_cpc for the forecast.")
                                 .with_field("forecast.max_cpc")
                         })?,
                 };

@@ -1,12 +1,12 @@
-//! Segmentação: `manage_targeting` (local, idioma, dispositivo, horário, público,
-//! posicionamento e tópico) em critérios de campanha ou de grupo de anúncios.
+//! Targeting: `manage_targeting` (location, language, device, ad schedule, audience,
+//! placement and topic) as campaign or ad group criteria.
 //!
-//! `add` é reversível (`RemoveCreated`), `set_bid_modifier` é um `FieldChange` em
-//! `*_criterion.bid_modifier` (`RestoreFields`) e `remove` é irreversível. Remover e
-//! ajustar lance leem o critério antes e exigem que o id seja do tipo pedido.
+//! `add` is reversible (`RemoveCreated`), `set_bid_modifier` is a `FieldChange` on
+//! `*_criterion.bid_modifier` (`RestoreFields`) and `remove` is irreversible. Remove
+//! and bid changes read the criterion first and require the id to be of the requested type.
 //!
-//! Os construtores por tipo (`location_criterion`, …) são `pub(crate)` para a
-//! segmentação dos grupos da Rede de Display (Task 15).
+//! The per-type builders (`location_criterion`, …) are `pub(crate)` for the targeting
+//! of Display Network ad groups.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_google_ads::resources::{self, TempIds};
@@ -36,26 +36,22 @@ const SUMMARY_ITEMS: usize = 5;
 const BID_MIN: f64 = 0.1;
 const BID_MAX: f64 = 10.0;
 
-// ----------------------------------------------------------- construtores
+// --------------------------------------------------------------- builders
 
-/// Lance entre 0,1 e 10,0 (`allow_zero`: 0 também vale, a exclusão do dispositivo).
+/// Bid modifier between 0.1 and 10.0 (`allow_zero`: 0 is also valid, the device exclusion).
 pub(crate) fn bid_modifier_value(v: f64, allow_zero: bool, field: &str) -> Result<f64, ToolError> {
     if v.is_finite() && ((BID_MIN..=BID_MAX).contains(&v) || (allow_zero && v == 0.0)) {
         return Ok(v);
     }
-    let zero = if allow_zero {
-        " (ou 0 para excluir)"
-    } else {
-        ""
-    };
+    let zero = if allow_zero { " (or 0 to exclude)" } else { "" };
     Err(invalid(format!(
-        "{field} deve ficar entre {BID_MIN} e {BID_MAX}{zero}."
+        "{field} must be between {BID_MIN} and {BID_MAX}{zero}."
     ))
     .with_field(field))
 }
 
-/// `{location: {geoTargetConstant}}` (+ `negative`). `field` é o prefixo do item
-/// (ex.: `criteria[0]`) usado nos erros.
+/// `{location: {geoTargetConstant}}` (+ `negative`). `field` is the item prefix
+/// (e.g. `criteria[0]`) used in errors.
 pub(crate) fn location_criterion(
     geo_id: Option<&str>,
     negative: bool,
@@ -78,7 +74,7 @@ pub(crate) fn language_criterion(
     Ok(json!({ "language": { "languageConstant": format!("languageConstants/{id}") } }))
 }
 
-/// Dispositivo `MOBILE`, `DESKTOP` ou `TABLET` com lance obrigatório (0 exclui).
+/// Device `MOBILE`, `DESKTOP` or `TABLET` with a required bid modifier (0 excludes it).
 pub(crate) fn device_criterion(
     device: Option<&str>,
     bid_modifier: Option<f64>,
@@ -88,7 +84,7 @@ pub(crate) fn device_criterion(
     let raw = required(&device, &f)?.trim().to_uppercase();
     if !["MOBILE", "DESKTOP", "TABLET"].contains(&raw.as_str()) {
         return Err(invalid(format!(
-            "{f}: dispositivo desconhecido '{raw}'; use MOBILE, DESKTOP ou TABLET."
+            "{f}: unknown device '{raw}'; use MOBILE, DESKTOP or TABLET."
         ))
         .with_field(f));
     }
@@ -97,7 +93,7 @@ pub(crate) fn device_criterion(
     Ok(json!({ "device": { "type": raw }, "bidModifier": bid }))
 }
 
-/// Horário: dia, `start_hour` 0..=23, `end_hour` 1..=24 e `start < end`; minutos `ZERO`.
+/// Ad schedule: day, `start_hour` 0..=23, `end_hour` 1..=24 and `start < end`; minutes `ZERO`.
 pub(crate) fn ad_schedule_criterion(
     day: Option<&str>,
     start_hour: Option<i64>,
@@ -118,24 +114,23 @@ pub(crate) fn ad_schedule_criterion(
     ]
     .contains(&day.as_str())
     {
-        return Err(invalid(format!(
-            "{df}: dia desconhecido '{day}'; use MONDAY a SUNDAY."
-        ))
-        .with_field(df));
+        return Err(
+            invalid(format!("{df}: unknown day '{day}'; use MONDAY to SUNDAY.")).with_field(df),
+        );
     }
     let sf = format!("{field}.start_hour");
     let ef = format!("{field}.end_hour");
     let start = *required(&start_hour, &sf)?;
     let end = *required(&end_hour, &ef)?;
     if !(0..=23).contains(&start) {
-        return Err(invalid(format!("{sf} deve ficar entre 0 e 23.")).with_field(sf));
+        return Err(invalid(format!("{sf} must be between 0 and 23.")).with_field(sf));
     }
     if !(1..=24).contains(&end) {
-        return Err(invalid(format!("{ef} deve ficar entre 1 e 24.")).with_field(ef));
+        return Err(invalid(format!("{ef} must be between 1 and 24.")).with_field(ef));
     }
     if start >= end {
         return Err(
-            invalid(format!("{ef} deve ser maior que start_hour ({start}).")).with_field(ef),
+            invalid(format!("{ef} must be greater than start_hour ({start}).")).with_field(ef),
         );
     }
     let mut body = json!({ "adSchedule": {
@@ -161,7 +156,7 @@ pub(crate) fn audience_criterion(
         "userList": resources::rn(&ctx.customer_id, "userLists", &id) } }))
 }
 
-/// Posicionamento: URL `http(s)://…` ou domínio (`exemplo.com.br`).
+/// Placement: `http(s)://…` URL or domain (`example.com`).
 pub(crate) fn placement_criterion(url: Option<&str>, field: &str) -> Result<Value, ToolError> {
     let f = format!("{field}.url");
     let url = required(&url, &f)?.trim();
@@ -180,7 +175,7 @@ pub(crate) fn placement_criterion(url: Option<&str>, field: &str) -> Result<Valu
             .all(|c| c.is_alphanumeric() || c == '.' || c == '-');
     if !ok {
         return Err(invalid(format!(
-            "{f}: informe uma URL http(s) ou um domínio (recebido '{url}')."
+            "{f}: provide an http(s) URL or a domain (got '{url}')."
         ))
         .with_field(f));
     }
@@ -192,7 +187,7 @@ pub(crate) fn topic_criterion(topic_id: Option<&str>, field: &str) -> Result<Val
     Ok(json!({ "topic": { "topicConstant": format!("topicConstants/{id}") } }))
 }
 
-/// Acrescenta o pai (`campaign`, `adGroup`) ao corpo de um critério.
+/// Adds the parent (`campaign`, `adGroup`) to a criterion body.
 pub(crate) fn with_parent(mut body: Value, parent_field: &str, parent_rn: &str) -> Value {
     body[parent_field] = json!(parent_rn);
     body
@@ -202,7 +197,7 @@ fn id_of(v: Option<&str>, field: &str) -> Result<String, ToolError> {
     valid_id(required(&v, field)?, field)
 }
 
-// ------------------------------------------------------------------ entrada
+// -------------------------------------------------------------------- input
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
@@ -225,7 +220,7 @@ enum Kind {
 }
 
 impl Kind {
-    /// `type` do critério na API.
+    /// The criterion's API `type`.
     fn api_type(self) -> &'static str {
         match self {
             Kind::Location => "LOCATION",
@@ -239,13 +234,13 @@ impl Kind {
     }
     fn label(self) -> &'static str {
         match self {
-            Kind::Location => "local",
-            Kind::Language => "idioma",
-            Kind::Device => "dispositivo",
-            Kind::AdSchedule => "horário",
-            Kind::Audience => "público",
-            Kind::Placement => "posicionamento",
-            Kind::Topic => "tópico",
+            Kind::Location => "location",
+            Kind::Language => "language",
+            Kind::Device => "device",
+            Kind::AdSchedule => "ad schedule",
+            Kind::Audience => "audience",
+            Kind::Placement => "placement",
+            Kind::Topic => "topic",
         }
     }
     fn allows_ad_group(self) -> bool {
@@ -258,44 +253,44 @@ impl Kind {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct CriterionIn {
-    /// `location`, `language`, `device`, `ad_schedule`, `audience`, `placement` ou `topic`.
+    /// `location`, `language`, `device`, `ad_schedule`, `audience`, `placement` or `topic`.
     #[serde(rename = "type")]
     kind: Kind,
-    /// `location`: id do local (`geo_target_constant`).
+    /// `location`: location id (`geo_target_constant`).
     #[serde(default)]
     geo_id: Option<String>,
-    /// `location`: `true` exclui o local.
+    /// `location`: `true` excludes the location.
     #[serde(default)]
     negative: Option<bool>,
-    /// `language`: id do idioma (`language_constant`).
+    /// `language`: language id (`language_constant`).
     #[serde(default)]
     language_id: Option<String>,
-    /// `device`: `MOBILE`, `DESKTOP` ou `TABLET`.
+    /// `device`: `MOBILE`, `DESKTOP` or `TABLET`.
     #[serde(default)]
     device: Option<String>,
-    /// `device` (obrigatório), `ad_schedule` (opcional) e `set_bid_modifier`: de 0.1 a
-    /// 10.0 (o dispositivo aceita 0, que o exclui).
+    /// `device` (required), `ad_schedule` (optional) and `set_bid_modifier`: 0.1 to
+    /// 10.0 (a device also accepts 0, which excludes it).
     #[serde(default)]
     bid_modifier: Option<f64>,
-    /// `ad_schedule`: `MONDAY` a `SUNDAY`.
+    /// `ad_schedule`: `MONDAY` to `SUNDAY`.
     #[serde(default)]
     day: Option<String>,
-    /// `ad_schedule`: de 0 a 23.
+    /// `ad_schedule`: 0 to 23.
     #[serde(default)]
     start_hour: Option<i64>,
-    /// `ad_schedule`: de 1 a 24, maior que `start_hour`.
+    /// `ad_schedule`: 1 to 24, greater than `start_hour`.
     #[serde(default)]
     end_hour: Option<i64>,
-    /// `audience`: id da lista de usuários.
+    /// `audience`: user list id.
     #[serde(default)]
     user_list_id: Option<String>,
-    /// `placement`: URL http(s) ou domínio.
+    /// `placement`: http(s) URL or domain.
     #[serde(default)]
     url: Option<String>,
-    /// `topic`: id do tópico.
+    /// `topic`: topic id.
     #[serde(default)]
     topic_id: Option<String>,
-    /// `remove` e `set_bid_modifier`: id do critério existente.
+    /// `remove` and `set_bid_modifier`: id of the existing criterion.
     #[serde(default)]
     criterion_id: Option<String>,
 }
@@ -306,17 +301,17 @@ struct ManageTargetingInput {
     #[allow(dead_code)]
     account: AccountRef,
     campaign_id: String,
-    /// Com ele o critério vai no grupo de anúncios (só `audience`, `placement` e
-    /// `topic`); sem ele, na campanha.
+    /// With it, the criterion goes on the ad group (only `audience`, `placement` and
+    /// `topic`); without it, on the campaign.
     #[serde(default)]
     ad_group_id: Option<String>,
-    /// `add`, `remove` ou `set_bid_modifier`.
+    /// `add`, `remove` or `set_bid_modifier`.
     action: Action,
-    /// De 1 a 200 por chamada.
+    /// 1 to 200 per call.
     criteria: Vec<CriterionIn>,
 }
 
-/// Onde os critérios ficam.
+/// Where the criteria live.
 struct Level {
     collection: &'static str,
     resource: &'static str,
@@ -339,7 +334,7 @@ impl Level {
                 parent_collection: "campaigns",
                 parent_filter: "campaign.id",
                 bid_field: "campaign_criterion.bid_modifier",
-                label: format!("campanha {campaign}"),
+                label: format!("campaign {campaign}"),
                 parent_id: campaign,
             },
             Some(ag) => {
@@ -351,7 +346,7 @@ impl Level {
                     parent_collection: "adGroups",
                     parent_filter: "ad_group.id",
                     bid_field: "ad_group_criterion.bid_modifier",
-                    label: format!("grupo de anúncios {ag}"),
+                    label: format!("ad group {ag}"),
                     parent_id: ag,
                 }
             }
@@ -362,7 +357,7 @@ impl Level {
         self.resource == "ad_group_criterion"
     }
 
-    /// Campo `type` do critério na linha lida (camelCase).
+    /// The criterion's `type` field in the row read (camelCase).
     fn type_path(&self) -> String {
         format!(
             "{}.type",
@@ -379,25 +374,25 @@ fn list(items: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     if items.len() > SUMMARY_ITEMS {
-        out.push_str(&format!(", e mais {}", items.len() - SUMMARY_ITEMS));
+        out.push_str(&format!(", and {} more", items.len() - SUMMARY_ITEMS));
     }
     out
 }
 
 fn limit(n: usize) -> Result<(), ToolError> {
     if n == 0 {
-        return Err(invalid("Informe ao menos um critério.").with_field("criteria"));
+        return Err(invalid("Provide at least one criterion.").with_field("criteria"));
     }
     if n > MAX_CRITERIA {
         return Err(invalid(format!(
-            "No máximo {MAX_CRITERIA} critérios por chamada (vieram {n})."
+            "At most {MAX_CRITERIA} criteria per call (got {n})."
         ))
         .with_field("criteria"));
     }
     Ok(())
 }
 
-// ------------------------------------------------------------------ ferramenta
+// --------------------------------------------------------------------- tool
 
 struct ManageTargeting;
 
@@ -406,11 +401,12 @@ impl WriteTool for ManageTargeting {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<ManageTargetingInput>(
             MANAGE_TARGETING,
-            "Gerencia a segmentação de uma campanha (ou grupo de anúncios) do Google Ads: \
-             adicionar, remover ou ajustar o lance de local, idioma, dispositivo, horário, \
-             público, posicionamento e tópico. Local, idioma, dispositivo e horário só valem \
-             na campanha. Os ids de local e de idioma podem ser encontrados com `gaql_search` \
-             em `geo_target_constant` e `language_constant`. Remover não pode ser desfeito.",
+            "Manages the targeting of a Google Ads campaign (or ad group): add, remove or \
+             set the bid modifier of location, language, device, ad schedule, audience, \
+             placement and topic criteria. Location, language, device and ad schedule apply \
+             only at the campaign level. Find location and language ids with `gaql_search` \
+             on `geo_target_constant` and `language_constant`. The remove action cannot be \
+             undone.",
             ToolGroup::Edit,
             true,
         )
@@ -429,17 +425,17 @@ impl WriteTool for ManageTargeting {
     }
 }
 
-/// Corpo (sem pai) e descrição de um critério novo.
+/// Body (without parent) and description of a new criterion.
 fn build(ctx: &Ctx, c: &CriterionIn, i: usize) -> Result<(Value, String), ToolError> {
     let f = format!("criteria[{i}]");
     Ok(match c.kind {
         Kind::Location => (
             location_criterion(c.geo_id.as_deref(), c.negative.unwrap_or(false), &f)?,
             format!(
-                "local {}{}",
+                "location {}{}",
                 c.geo_id.as_deref().unwrap_or_default(),
                 if c.negative == Some(true) {
-                    " (excluído)"
+                    " (excluded)"
                 } else {
                     ""
                 }
@@ -447,12 +443,12 @@ fn build(ctx: &Ctx, c: &CriterionIn, i: usize) -> Result<(Value, String), ToolEr
         ),
         Kind::Language => (
             language_criterion(c.language_id.as_deref(), &f)?,
-            format!("idioma {}", c.language_id.as_deref().unwrap_or_default()),
+            format!("language {}", c.language_id.as_deref().unwrap_or_default()),
         ),
         Kind::Device => (
             device_criterion(c.device.as_deref(), c.bid_modifier, &f)?,
             format!(
-                "dispositivo {} (lance {})",
+                "device {} (bid modifier {})",
                 c.device.as_deref().unwrap_or_default().to_uppercase(),
                 c.bid_modifier.unwrap_or_default()
             ),
@@ -466,7 +462,7 @@ fn build(ctx: &Ctx, c: &CriterionIn, i: usize) -> Result<(Value, String), ToolEr
                 &f,
             )?,
             format!(
-                "horário {} {}h-{}h",
+                "ad schedule {} {}h-{}h",
                 c.day.as_deref().unwrap_or_default().to_uppercase(),
                 c.start_hour.unwrap_or_default(),
                 c.end_hour.unwrap_or_default()
@@ -474,25 +470,22 @@ fn build(ctx: &Ctx, c: &CriterionIn, i: usize) -> Result<(Value, String), ToolEr
         ),
         Kind::Audience => (
             audience_criterion(ctx, c.user_list_id.as_deref(), &f)?,
-            format!("público {}", c.user_list_id.as_deref().unwrap_or_default()),
+            format!("audience {}", c.user_list_id.as_deref().unwrap_or_default()),
         ),
         Kind::Placement => (
             placement_criterion(c.url.as_deref(), &f)?,
-            format!(
-                "posicionamento {}",
-                c.url.as_deref().unwrap_or_default().trim()
-            ),
+            format!("placement {}", c.url.as_deref().unwrap_or_default().trim()),
         ),
         Kind::Topic => (
             topic_criterion(c.topic_id.as_deref(), &f)?,
-            format!("tópico {}", c.topic_id.as_deref().unwrap_or_default()),
+            format!("topic {}", c.topic_id.as_deref().unwrap_or_default()),
         ),
     })
 }
 
 fn wrong_level(kind: Kind, i: usize) -> ToolError {
     invalid(format!(
-        "O critério '{}' só vale no nível de campanha; tire o ad_group_id.",
+        "The '{}' criterion applies only at the campaign level; remove ad_group_id.",
         kind.label()
     ))
     .with_field(format!("criteria[{i}].type"))
@@ -527,7 +520,7 @@ fn add(ctx: &Ctx, lvl: &Level, criteria: &[CriterionIn]) -> Result<WritePlan, To
     }
     Ok(WritePlan {
         summary: format!(
-            "Adicionar {} critério(s) de segmentação à {}: {}",
+            "Adds {} targeting criterion(s) to {}: {}",
             names.len(),
             lvl.label,
             list(&names)
@@ -541,9 +534,9 @@ fn add(ctx: &Ctx, lvl: &Level, criteria: &[CriterionIn]) -> Result<WritePlan, To
     })
 }
 
-/// Linhas dos critérios informados (`criterion_id`), na ordem da entrada, com o nome do
-/// recurso. O id precisa existir no nível, não estar removido e ser do tipo pedido; senão
-/// `NOT_FOUND` em `criteria[i].criterion_id` (e nada é enviado).
+/// Rows of the given criteria (`criterion_id`), in input order, with the resource name.
+/// The id must exist at the level, not be removed and be of the requested type;
+/// otherwise `NOT_FOUND` on `criteria[i].criterion_id` (and nothing is sent).
 async fn existing(
     ctx: &Ctx,
     lvl: &Level,
@@ -555,7 +548,7 @@ async fn existing(
         let id = id_of(c.criterion_id.as_deref(), &field)?;
         if ids.contains(&id) {
             return Err(
-                invalid(format!("O critério {id} aparece mais de uma vez.")).with_field(field)
+                invalid(format!("Criterion {id} appears more than once.")).with_field(field)
             );
         }
         if lvl.is_ad_group() && !c.kind.allows_ad_group() {
@@ -605,7 +598,7 @@ async fn existing(
                     ToolError::new(
                         codes::NOT_FOUND,
                         format!(
-                            "Critério {id} do tipo '{}' não encontrado na {}.",
+                            "Criterion {id} of type '{}' not found in {}.",
                             c.kind.label(),
                             lvl.label
                         ),
@@ -630,7 +623,7 @@ async fn remove(ctx: &Ctx, lvl: &Level, criteria: &[CriterionIn]) -> Result<Writ
     }
     Ok(WritePlan {
         summary: format!(
-            "Remover {} critério(s) de segmentação da {}: {}",
+            "Removes {} targeting criterion(s) from {}: {}",
             names.len(),
             lvl.label,
             list(&names)
@@ -652,7 +645,7 @@ async fn set_bid_modifier(
     for (i, c) in criteria.iter().enumerate() {
         if !c.kind.has_bid_modifier() {
             return Err(invalid(format!(
-                "O critério '{}' não tem ajuste de lance.",
+                "The '{}' criterion has no bid modifier.",
                 c.kind.label()
             ))
             .with_field(format!("criteria[{i}].type")));
@@ -665,7 +658,7 @@ async fn set_bid_modifier(
     for ((rn, row), c) in found.iter().zip(criteria) {
         let bid = c.bid_modifier.unwrap_or_default();
         let label = format!(
-            "lance de {} {}",
+            "bid modifier of {} {}",
             c.kind.label(),
             c.criterion_id.as_deref().unwrap_or_default()
         );

@@ -1,5 +1,5 @@
-//! Edição no Google Ads: `update_campaign`, `update_ad_group` e `update_ad`, contra
-//! um Google falso com estado (search lê e mutate grava no mesmo mapa).
+//! Google Ads edits: `update_campaign`, `update_ad_group` and `update_ad`, against a
+//! stateful fake Google (search reads and mutate writes the same map).
 
 mod common;
 
@@ -28,7 +28,7 @@ const SEARCH_PATH: &str = "/v26/customers/111/googleAds:search";
 
 type State = Arc<Mutex<HashMap<String, Value>>>;
 
-/// Google falso: `{rn: recurso em camelCase}`.
+/// Fake Google: `{rn: resource in camelCase}`.
 struct FakeAds {
     state: State,
 }
@@ -50,7 +50,7 @@ impl FakeAds {
 fn headlines(n: usize) -> Value {
     Value::Array(
         (0..n)
-            .map(|i| json!({ "text": format!("Título {i}") }))
+            .map(|i| json!({ "text": format!("Headline {i}") }))
             .collect(),
     )
 }
@@ -88,7 +88,7 @@ fn seed(bidding: &str, shared: bool) -> HashMap<String, Value> {
     ])
 }
 
-/// Número depois de `needle` na query.
+/// Number after `needle` in the query.
 fn id_after(q: &str, needle: &str) -> Option<String> {
     let rest = &q[q.find(needle)? + needle.len()..];
     Some(rest.chars().take_while(char::is_ascii_digit).collect())
@@ -105,7 +105,7 @@ fn search_rows(st: &HashMap<String, Value>, q: &str) -> Vec<Value> {
             "ad_group_criterion" => ("adGroupCriteria", "ad_group.id = "),
             "campaign_criterion" => ("campaignCriteria", "campaign.id = "),
             "shared_criterion" => ("sharedCriteria", "shared_set.id = "),
-            other => panic!("consulta inesperada em {other}: {q}"),
+            other => panic!("unexpected query on {other}: {q}"),
         };
         let rest = &q[q.find("criterion_id IN (").unwrap() + 17..];
         let parent = id_after(q, parent_key).unwrap();
@@ -165,7 +165,7 @@ fn search_rows(st: &HashMap<String, Value>, q: &str) -> Vec<Value> {
                     })
                     .collect();
             }
-            other => panic!("consulta inesperada em {other}: {q}"),
+            other => panic!("unexpected query on {other}: {q}"),
         }
     };
     row.into_iter().collect()
@@ -182,7 +182,7 @@ fn merge(dst: &mut Value, src: &Value) {
     }
 }
 
-/// Nome real de um temporário (`-N` vira `100 + N`, também em ids compostos `a~-N`).
+/// Real name of a temporary id (`-N` becomes `100 + N`, also in composite ids `a~-N`).
 fn real_name(rn: &str) -> String {
     let (head, id) = rn.rsplit_once('/').unwrap();
     let id: Vec<String> = id
@@ -240,7 +240,7 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
         let rn = if let Some(rn) = inner["remove"].as_str() {
             if apply {
                 st.remove(rn)
-                    .unwrap_or_else(|| panic!("remove de {rn} inexistente"));
+                    .unwrap_or_else(|| panic!("remove of missing {rn}"));
             }
             rn.to_string()
         } else if inner["create"].is_object() {
@@ -248,14 +248,15 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
             subst(&mut obj, &temps);
             let rn = match obj["resourceName"].as_str() {
                 Some(rn) => rn.to_string(),
-                // `campaignSharedSet` sem nome: o Google deriva de campanha e lista.
+                // Asset group asset without a name: Google derives it from asset group, asset
+                // and field type.
                 None if obj["fieldType"].is_string() => format!(
                     "customers/111/assetGroupAssets/{}~{}~{}",
                     last_id(obj["assetGroup"].as_str().unwrap()),
                     last_id(obj["asset"].as_str().unwrap()),
                     obj["fieldType"].as_str().unwrap()
                 ),
-                // Sinal de asset group sem nome: o Google deriva o id do conteúdo.
+                // Asset group signal without a name: Google derives the id from the content.
                 None if obj["assetGroup"].is_string() => {
                     derived += 1;
                     format!(
@@ -264,7 +265,7 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
                         100 + derived
                     )
                 }
-                // Critério de campanha ou grupo sem nome: o Google deriva o id.
+                // Campaign or ad group criterion without a name: Google derives the id.
                 None if obj["sharedSet"].is_null() => {
                     derived += 1;
                     let (collection, parent) = match obj["campaign"].as_str() {
@@ -277,6 +278,7 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
                         100 + derived
                     )
                 }
+                // `campaignSharedSet` without a name: Google derives it from campaign and list.
                 None => format!(
                     "customers/111/campaignSharedSets/{}~{}",
                     last_id(obj["campaign"].as_str().unwrap()),
@@ -284,7 +286,7 @@ fn mutate(st: &mut HashMap<String, Value>, body: &Value) -> Value {
                 ),
             };
             obj["resourceName"] = json!(rn);
-            // O Google devolve ENABLED quando a criação não traz status.
+            // Google returns ENABLED when the create has no status.
             let collection = rn.split('/').nth(2).unwrap();
             if [
                 "adGroupCriteria",
@@ -367,7 +369,7 @@ async fn mutate_bodies(h: &GoogleHarness) -> Vec<Value> {
         .collect()
 }
 
-/// Consultas GAQL enviadas ao search.
+/// GAQL queries sent to search.
 async fn queries_of(h: &GoogleHarness) -> Vec<String> {
     h.server
         .received_requests()
@@ -382,7 +384,7 @@ async fn queries_of(h: &GoogleHarness) -> Vec<String> {
         .collect()
 }
 
-/// Operações do último mutate de verdade (sem `validateOnly`).
+/// Operations of the last real mutate (without `validateOnly`).
 async fn last_applied_ops(h: &GoogleHarness) -> Vec<Value> {
     let bodies = mutate_bodies(h).await;
     let last = bodies
@@ -393,11 +395,11 @@ async fn last_applied_ops(h: &GoogleHarness) -> Vec<Value> {
     last["mutateOperations"].as_array().unwrap().clone()
 }
 
-/// A operação `key` de `ops` (ex.: `campaignOperation`).
+/// The `key` operation in `ops` (e.g. `campaignOperation`).
 fn op<'a>(ops: &'a [Value], key: &str) -> &'a Value {
     ops.iter()
         .find_map(|o| o.get(key))
-        .unwrap_or_else(|| panic!("sem {key} em {ops:?}"))
+        .unwrap_or_else(|| panic!("no {key} in {ops:?}"))
 }
 
 fn with_account(mut input: Value) -> Value {
@@ -438,7 +440,7 @@ async fn update_campaign_name_and_budget() {
     assert_eq!(out["reversible"], true);
     assert_eq!(
         out["summary"],
-        "Campanha 5: nome 'A' → 'B', orçamento 30 → 50 BRL"
+        "Campaign 5: name 'A' → 'B', budget 30 → 50 BRL"
     );
 
     let bodies = mutate_bodies(&h).await;
@@ -475,7 +477,7 @@ async fn update_campaign_name_and_budget() {
         }))
     );
 
-    // Desfazer: restore_fields volta os dois campos.
+    // Undo: restore_fields sets both fields back.
     let change_id = out["change_id"].as_str().unwrap();
     let undo = engine
         .call_tool("undo_change", json!({ "change_id": change_id }), None)
@@ -509,7 +511,7 @@ async fn approval_mode_roundtrip() {
         .await
         .unwrap();
     assert_eq!(out["status"], "pending", "{out}");
-    // Pendente: só o validateOnly.
+    // Pending: only the validateOnly.
     assert_eq!(mutate_bodies(&h).await.len(), 1);
     assert_eq!(g.get(CAMPAIGN)["name"], "A");
 
@@ -548,14 +550,14 @@ async fn shared_budget_warns() {
     );
     let v = h.adapter.validate(&c).await.unwrap();
     let warning = v.warning.unwrap();
-    assert!(warning.contains("compartilhado"), "{warning}");
+    assert!(warning.contains("shared"), "{warning}");
     assert!(
         warning.contains(
-            "Este orçamento é compartilhado por outras campanhas e todas serão afetadas."
+            "This budget is shared with other campaigns, and all of them will be affected."
         )
     );
 
-    // Sem compartilhar, sem aviso.
+    // Not shared: no warning.
     let h = google_harness().await;
     fake(&h, seed("TARGET_SPEND", false)).await;
     let v = h.adapter.validate(&c).await.unwrap();
@@ -631,7 +633,7 @@ async fn bidding_type_switch_refused() {
     assert_eq!(err.code, codes::INVALID_INPUT);
     assert_eq!(
         err.message,
-        "Trocar o tipo de estratégia de lance ainda não é suportado; ajuste o alvo da estratégia atual."
+        "Changing the bidding strategy type is not supported yet; adjust the target of the current strategy."
     );
     assert!(mutate_bodies(&h).await.is_empty());
 }
@@ -749,7 +751,7 @@ async fn update_ad_status_and_texts() {
     let h = google_harness().await;
     let g = fake(&h, seed("TARGET_SPEND", false)).await;
     let engine = engine(&h, WriteMode::Direct);
-    let new_headlines = ["Um", "Dois", "Três", "Quatro"];
+    let new_headlines = ["One", "Two", "Three", "Four"];
     let out = engine
         .call_tool(
             "update_ad",
@@ -764,7 +766,7 @@ async fn update_ad_status_and_texts() {
     assert_eq!(out["status"], "applied", "{out}");
     let ops = last_applied_ops(&h).await;
     assert_eq!(ops.len(), 2, "{ops:?}");
-    // Confirmado na conta real (2026-10-18, T9.1): status no ad_group_ad; textos e URLs no recurso ad.
+    // Verified on a real account: status on ad_group_ad; texts and URLs on the ad resource.
     let aga = op(&ops, "adGroupAdOperation");
     assert_eq!(aga["update"]["resourceName"], AD_GROUP_AD);
     assert_eq!(aga["updateMask"], "status");
@@ -777,7 +779,7 @@ async fn update_ad_status_and_texts() {
     );
     assert_eq!(
         ad["update"]["responsiveSearchAd"]["headlines"],
-        json!([{ "text": "Um" }, { "text": "Dois" }, { "text": "Três" }, { "text": "Quatro" }])
+        json!([{ "text": "One" }, { "text": "Two" }, { "text": "Three" }, { "text": "Four" }])
     );
     assert_eq!(ad["update"]["finalUrls"], json!(["https://b.com"]));
     assert_eq!(g.get(AD_GROUP_AD)["status"], "PAUSED");
@@ -805,7 +807,7 @@ async fn update_ad_text_limits() {
         (json!({ "headlines": ["a", "b", long] }), "headlines"),
         (json!({ "headlines": ["a", "b"] }), "headlines"),
         (json!({ "headlines": vec!["a"; 16] }), "headlines"),
-        (json!({ "descriptions": ["só uma"] }), "descriptions"),
+        (json!({ "descriptions": ["just one"] }), "descriptions"),
         (json!({ "descriptions": vec!["d"; 5] }), "descriptions"),
         (
             json!({ "descriptions": ["d", "y".repeat(91)] }),
@@ -822,7 +824,7 @@ async fn update_ad_text_limits() {
     }
     assert!(mutate_bodies(&h).await.is_empty());
 
-    // 30 caracteres (não bytes) passa.
+    // 30 characters (not bytes) pass.
     h.adapter
         .validate(&call(
             CONN,
@@ -835,7 +837,7 @@ async fn update_ad_text_limits() {
         .await
         .unwrap();
 
-    // Textos só em RSA.
+    // Texts only on RSAs.
     g.set(AD, &["type"], json!("EXPANDED_TEXT_AD"));
     let err = validate_err(
         &h,
@@ -844,7 +846,7 @@ async fn update_ad_text_limits() {
     )
     .await;
     assert_eq!(err.code, codes::INVALID_INPUT);
-    // Status vale para qualquer tipo.
+    // Status works for any ad type.
     h.adapter
         .validate(&call(
             CONN,
@@ -908,13 +910,13 @@ async fn edit_tools_are_exposed_reversible_idempotent() {
     }
 }
 
-/// Títulos como a API devolve: com campos só de saída e um fixado.
+/// Headlines as the API returns them: with output-only fields and one pinned.
 fn api_headlines(label: &str) -> Value {
     json!([
-        { "text": "Título 0", "pinnedField": "HEADLINE_1", "assetPerformanceLabel": label,
+        { "text": "Headline 0", "pinnedField": "HEADLINE_1", "assetPerformanceLabel": label,
           "policySummaryInfo": { "reviewStatus": "REVIEWED", "approvalStatus": "APPROVED" } },
-        { "text": "Título 1", "assetPerformanceLabel": label },
-        { "text": "Título 2", "policySummaryInfo": { "reviewStatus": "REVIEW_IN_PROGRESS" } }
+        { "text": "Headline 1", "assetPerformanceLabel": label },
+        { "text": "Headline 2", "policySummaryInfo": { "reviewStatus": "REVIEW_IN_PROGRESS" } }
     ])
 }
 
@@ -929,7 +931,7 @@ async fn ad_text_output_only_keys_are_ignored_and_not_restored() {
         .call_tool(
             "update_ad",
             with_account(json!({ "ad_group_id": "3", "ad_id": "9",
-                                 "headlines": ["Um", "Dois", "Três"] })),
+                                 "headlines": ["One", "Two", "Three"] })),
             None,
         )
         .await
@@ -939,19 +941,19 @@ async fn ad_text_output_only_keys_are_ignored_and_not_restored() {
     let rec = h.db.get_change(&change_id).unwrap().unwrap();
     assert_eq!(
         rec.before.unwrap()[AD]["ad.responsive_search_ad.headlines"],
-        json!([{ "text": "Título 0", "pinnedField": "HEADLINE_1" },
-               { "text": "Título 1" }, { "text": "Título 2" }])
+        json!([{ "text": "Headline 0", "pinnedField": "HEADLINE_1" },
+               { "text": "Headline 1" }, { "text": "Headline 2" }])
     );
 
-    // Depois da revisão, a API acrescenta campos só de saída aos títulos novos.
+    // After review, the API adds output-only fields to the new headlines.
     g.set(
         AD,
         &["responsiveSearchAd", "headlines"],
         json!([
-            { "text": "Um", "assetPerformanceLabel": "LEARNING",
+            { "text": "One", "assetPerformanceLabel": "LEARNING",
               "policySummaryInfo": { "reviewStatus": "REVIEWED" } },
-            { "text": "Dois", "assetPerformanceLabel": "GOOD" },
-            { "text": "Três" }
+            { "text": "Two", "assetPerformanceLabel": "GOOD" },
+            { "text": "Three" }
         ]),
     );
     let undo = engine
@@ -963,8 +965,8 @@ async fn ad_text_output_only_keys_are_ignored_and_not_restored() {
     let restored = &op(&ops, "adOperation")["update"]["responsiveSearchAd"]["headlines"];
     assert_eq!(
         *restored,
-        json!([{ "text": "Título 0", "pinnedField": "HEADLINE_1" },
-               { "text": "Título 1" }, { "text": "Título 2" }])
+        json!([{ "text": "Headline 0", "pinnedField": "HEADLINE_1" },
+               { "text": "Headline 1" }, { "text": "Headline 2" }])
     );
     for item in restored.as_array().unwrap() {
         for key in item.as_object().unwrap().keys() {
@@ -975,7 +977,7 @@ async fn ad_text_output_only_keys_are_ignored_and_not_restored() {
 
 #[tokio::test]
 async fn ad_text_edit_warns_when_pins_are_dropped() {
-    let pins = "As fixações (pins) atuais dos títulos/descrições serão removidas.";
+    let pins = "The current headline/description pins will be removed.";
     let h = google_harness().await;
     let mut seeded = seed("TARGET_SPEND", false);
     seeded.get_mut(AD).unwrap()["responsiveSearchAd"]["headlines"] = api_headlines("BEST");
@@ -992,14 +994,14 @@ async fn ad_text_edit_warns_when_pins_are_dropped() {
         "{:?}",
         v.warning
     );
-    // Só status ou descrições sem pins: sem aviso.
+    // Only status, or descriptions without pins: no warning.
     let v = validate(json!({ "ad_group_id": "3", "ad_id": "9", "status": "PAUSED" })).await;
     assert!(v.warning.is_none(), "{:?}", v.warning);
     let v =
         validate(json!({ "ad_group_id": "3", "ad_id": "9", "descriptions": ["d1", "d2"] })).await;
     assert!(v.warning.is_none(), "{:?}", v.warning);
 
-    // Sem pins atuais, editar títulos não avisa.
+    // Without current pins, editing headlines doesn't warn.
     let h = google_harness().await;
     fake(&h, seed("TARGET_SPEND", false)).await;
     let c = call(
@@ -1015,7 +1017,7 @@ async fn ad_text_edit_warns_when_pins_are_dropped() {
 async fn single_date_is_checked_against_current_dates() {
     let h = google_harness().await;
     let g = fake(&h, seed("TARGET_SPEND", false)).await;
-    // Início atual: 2026-01-01.
+    // Current start: 2026-01-01.
     let err = validate_err(
         &h,
         "update_campaign",
@@ -1043,7 +1045,7 @@ async fn single_date_is_checked_against_current_dates() {
     .await;
     assert_eq!(err.code, codes::INVALID_INPUT);
     assert_eq!(err.field.as_deref(), Some("start_date"));
-    // Só o validateOnly da data válida chegou ao mutate.
+    // Only the validateOnly of the valid date reached mutate.
     assert_eq!(mutate_bodies(&h).await.len(), 1);
 }
 
@@ -1066,7 +1068,7 @@ async fn campaign_dates_use_datetime_fields_and_undo_restores_them() {
     assert_eq!(c["updateMask"], "start_date_time,end_date_time");
     assert_eq!(c["update"]["startDateTime"], "2026-02-01 00:00:00");
     assert_eq!(c["update"]["endDateTime"], "2026-12-31 23:59:59");
-    // As consultas pedem os campos de datetime, nunca start_date/end_date.
+    // The queries ask for the datetime fields, never start_date/end_date.
     for q in queries_of(&h).await {
         assert!(!q.contains("campaign.start_date,"), "{q}");
         assert!(!q.contains("campaign.end_date,"), "{q}");
@@ -1084,7 +1086,7 @@ async fn campaign_dates_use_datetime_fields_and_undo_restores_them() {
         )
     );
 
-    // Desfazer: o início volta ao datetime antigo e o término nulo limpa o campo.
+    // Undo: the start goes back to the old datetime and the null end clears the field.
     undo(&engine, &out).await;
     let c = op(&last_applied_ops(&h).await, "campaignOperation").clone();
     let mut mask: Vec<&str> = c["updateMask"].as_str().unwrap().split(',').collect();
@@ -1109,12 +1111,12 @@ fn kw_seed() -> HashMap<String, Value> {
         KW44.into(),
         json!({ "resourceName": KW44, "criterionId": "44", "status": "ENABLED",
                 "cpcBidMicros": "500000",
-                "keyword": { "text": "sapato", "matchType": "BROAD" } }),
+                "keyword": { "text": "shoe", "matchType": "BROAD" } }),
     );
     s.insert(
         KW45.into(),
         json!({ "resourceName": KW45, "criterionId": "45", "status": "PAUSED",
-                "keyword": { "text": "bota de couro", "matchType": "PHRASE" } }),
+                "keyword": { "text": "leather boot", "matchType": "PHRASE" } }),
     );
     s
 }
@@ -1161,8 +1163,8 @@ async fn add_keywords_and_undo() {
         &engine,
         "manage_keywords",
         json!({ "ad_group_id": "3", "action": "add", "keywords": [
-            { "text": "sapato couro", "match_type": "EXACT", "cpc_bid": 1.5 },
-            { "text": "bota", "match_type": "PHRASE" } ] }),
+            { "text": "leather shoe", "match_type": "EXACT", "cpc_bid": 1.5 },
+            { "text": "boot", "match_type": "PHRASE" } ] }),
     )
     .await;
     assert_eq!(out["reversible"], true);
@@ -1174,13 +1176,13 @@ async fn add_keywords_and_undo() {
         json!({ "adGroupCriterionOperation": { "create": {
             "resourceName": "customers/111/adGroupCriteria/3~-1",
             "adGroup": AD_GROUP, "status": "PAUSED", "cpcBidMicros": "1500000",
-            "keyword": { "text": "sapato couro", "matchType": "EXACT" } } } })
+            "keyword": { "text": "leather shoe", "matchType": "EXACT" } } } })
     );
     let second = &ops[1]["adGroupCriterionOperation"]["create"];
     assert_eq!(second["resourceName"], "customers/111/adGroupCriteria/3~-2");
     assert_eq!(
         second["keyword"],
-        json!({ "text": "bota", "matchType": "PHRASE" })
+        json!({ "text": "boot", "matchType": "PHRASE" })
     );
     assert!(second.get("cpcBidMicros").is_none());
 
@@ -1226,7 +1228,7 @@ async fn pause_keyword_restorable() {
     assert_eq!(out["reversible"], true);
     assert_eq!(
         out["summary"],
-        "Grupo de anúncios 3: status de 'sapato' ACTIVE → PAUSED"
+        "Ad group 3: status of 'shoe' ACTIVE → PAUSED"
     );
     let ops = last_applied_ops(&h).await;
     assert_eq!(
@@ -1272,10 +1274,7 @@ async fn set_bid_restorable() {
     )
     .await;
     assert_eq!(g.get(KW44)["cpcBidMicros"], "2500000");
-    assert_eq!(
-        out["summary"],
-        "Grupo de anúncios 3: lance de 'sapato' 0.5 → 2.5 BRL"
-    );
+    assert_eq!(out["summary"], "Ad group 3: bid of 'shoe' 0.5 → 2.5 BRL");
     undo(&engine, &out).await;
     assert_eq!(g.get(KW44)["cpcBidMicros"], "500000");
 
@@ -1338,7 +1337,7 @@ async fn change_match_type_one_mutate() {
     .await;
     assert_eq!(out["reversible"], false);
     let bodies = mutate_bodies(&h).await;
-    assert_eq!(bodies.len(), 2, "validateOnly + aplicação");
+    assert_eq!(bodies.len(), 2, "validateOnly + apply");
     let ops = last_applied_ops(&h).await;
     assert_eq!(ops.len(), 2);
     assert_eq!(
@@ -1346,7 +1345,7 @@ async fn change_match_type_one_mutate() {
         json!({ "adGroupCriterionOperation": { "create": {
             "resourceName": "customers/111/adGroupCriteria/3~-1",
             "adGroup": AD_GROUP, "status": "ENABLED", "cpcBidMicros": "500000",
-            "keyword": { "text": "sapato", "matchType": "EXACT" } } } })
+            "keyword": { "text": "shoe", "matchType": "EXACT" } } } })
     );
     assert_eq!(removes(&ops[1..]), vec![KW44]);
     let new = g.get("customers/111/adGroupCriteria/3~101");
@@ -1354,11 +1353,11 @@ async fn change_match_type_one_mutate() {
     assert!(g.state.lock().unwrap().get(KW44).is_none());
     assert!(!h.db.list_changes(&ChangeFilter::default()).unwrap()[0].reversible);
 
-    // O aviso do plano aparece na validação, na aprovação e na resposta aplicada.
+    // The plan's warning shows in validation, approval and the applied response.
     assert_eq!(
         out["warning"],
-        "O Google não permite trocar o tipo de correspondência; a keyword antiga será \
-         removida e uma nova criada. This change cannot be undone."
+        "Google does not allow changing the match type; the old keyword will be removed \
+         and a new one created. This change cannot be undone."
     );
     let v = h
         .adapter
@@ -1372,11 +1371,11 @@ async fn change_match_type_one_mutate() {
         .await
         .unwrap();
     assert!(v.warning.unwrap().starts_with(
-        "O Google não permite trocar o tipo de correspondência; \
-             a keyword antiga será removida e uma nova criada."
+        "Google does not allow changing the match type; \
+             the old keyword will be removed and a new one created."
     ));
 
-    // Mesmo tipo: nada a fazer.
+    // Same match type: nothing to do.
     let e = validate_err(
         &h,
         "manage_keywords",
@@ -1431,7 +1430,7 @@ async fn keyword_input_validation() {
         let e = validate_err(&h, "manage_keywords", input.clone()).await;
         assert_eq!(e.field.as_deref(), Some(field), "{input} -> {e:?}");
     }
-    // Limites exatos passam: 80 caracteres e 10 palavras.
+    // Exact limits pass: 80 characters and 10 words.
     let ok = json!({ "ad_group_id": "3", "action": "add", "keywords": [
         { "text": "x".repeat(80), "match_type": "EXACT" },
         { "text": "a b c d e f g h i j", "match_type": "BROAD" }] });
@@ -1439,7 +1438,7 @@ async fn keyword_input_validation() {
         .validate(&call(CONN, "111", "manage_keywords", with_account(ok)))
         .await
         .unwrap();
-    // Mais de 200 por chamada.
+    // More than 200 per call.
     let many: Vec<Value> = (0..201)
         .map(|i| json!({ "text": format!("k{i}"), "match_type": "EXACT" }))
         .collect();
@@ -1453,7 +1452,7 @@ async fn keyword_input_validation() {
     let e = validate_err(
         &h,
         "manage_keywords",
-        json!({ "ad_group_id": "3", "action": "add", "keywords": [{ "text": "a", "match_type": "EXATA" }] }),
+        json!({ "ad_group_id": "3", "action": "add", "keywords": [{ "text": "a", "match_type": "STRICT" }] }),
     )
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT);
@@ -1465,12 +1464,12 @@ async fn negatives_levels() {
     let g = fake(&h, kw_seed()).await;
     let engine = engine(&h, WriteMode::Direct);
 
-    // campanha
+    // campaign
     let out = applied(
         &engine,
         "manage_negatives",
         json!({ "level": "campaign", "campaign_id": "5", "action": "add",
-                "keywords": [{ "text": "grátis", "match_type": "BROAD" }] }),
+                "keywords": [{ "text": "free", "match_type": "BROAD" }] }),
     )
     .await;
     assert_eq!(out["reversible"], true);
@@ -1480,19 +1479,19 @@ async fn negatives_levels() {
         json!({ "campaignCriterionOperation": { "create": {
             "resourceName": "customers/111/campaignCriteria/5~-1",
             "campaign": CAMPAIGN, "negative": true,
-            "keyword": { "text": "grátis", "matchType": "BROAD" } } } })
+            "keyword": { "text": "free", "matchType": "BROAD" } } } })
     );
     let real = "customers/111/campaignCriteria/5~101";
     assert_eq!(g.get(real)["negative"], true);
     undo(&engine, &out).await;
     assert_eq!(removes(&last_applied_ops(&h).await), vec![real]);
 
-    // grupo de anúncios
+    // ad group
     let out = applied(
         &engine,
         "manage_negatives",
         json!({ "level": "ad_group", "ad_group_id": "3", "action": "add",
-                "keywords": [{ "text": "usado", "match_type": "EXACT" }] }),
+                "keywords": [{ "text": "used", "match_type": "EXACT" }] }),
     )
     .await;
     let c = &last_applied_ops(&h).await[0]["adGroupCriterionOperation"]["create"];
@@ -1501,23 +1500,23 @@ async fn negatives_levels() {
     assert!(c.get("status").is_none());
     undo(&engine, &out).await;
 
-    // lista compartilhada
+    // shared list
     applied(
         &engine,
         "manage_negatives",
         json!({ "level": "shared_list", "shared_set_id": "9", "action": "add",
-                "keywords": [{ "text": "barato", "match_type": "PHRASE" }] }),
+                "keywords": [{ "text": "cheap", "match_type": "PHRASE" }] }),
     )
     .await;
     let c = &last_applied_ops(&h).await[0]["sharedCriterionOperation"]["create"];
     assert_eq!(c["sharedSet"], "customers/111/sharedSets/9");
     assert_eq!(
         c["keyword"],
-        json!({ "text": "barato", "matchType": "PHRASE" })
+        json!({ "text": "cheap", "matchType": "PHRASE" })
     );
     assert!(c.get("negative").is_none());
 
-    // ids exigidos por nível
+    // ids required per level
     let kw = json!([{ "text": "a", "match_type": "EXACT" }]);
     for (input, field) in [
         (
@@ -1568,9 +1567,9 @@ async fn negatives_remove_is_irreversible() {
     s.insert(
         neg.into(),
         json!({ "resourceName": neg, "criterionId": "70", "negative": true,
-            "keyword": { "text": "grátis", "matchType": "BROAD" } }),
+            "keyword": { "text": "free", "matchType": "BROAD" } }),
     );
-    // Um local da campanha (não é keyword) e uma keyword positiva do grupo.
+    // A campaign location (not a keyword) and a positive ad group keyword.
     let loc = "customers/111/campaignCriteria/5~71";
     s.insert(
         loc.into(),
@@ -1591,11 +1590,11 @@ async fn negatives_remove_is_irreversible() {
     assert!(g.state.lock().unwrap().get(neg).is_none());
     assert_eq!(
         out["summary"],
-        "Remover 1 negativa(s) da campanha 5: 'grátis' [BROAD]"
+        "Removes 1 negative keyword(s) from campaign 5: 'free' [BROAD]"
     );
     let applied_before = mutate_bodies(&h).await.len();
 
-    // Local da campanha e keyword positiva do grupo: NOT_FOUND, sem mutate.
+    // Campaign location and positive ad group keyword: NOT_FOUND, no mutate.
     for input in [
         json!({ "level": "campaign", "campaign_id": "5", "action": "remove",
                 "keywords": [{ "criterion_id": "71" }] }),
@@ -1619,7 +1618,7 @@ async fn negative_removed_elsewhere_is_undo_conflict() {
         &engine,
         "manage_negatives",
         json!({ "level": "campaign", "campaign_id": "5", "action": "add",
-                "keywords": [{ "text": "grátis", "match_type": "broad" }] }),
+                "keywords": [{ "text": "free", "match_type": "broad" }] }),
     )
     .await;
     let real = "customers/111/campaignCriteria/5~101";
@@ -1658,7 +1657,7 @@ async fn match_type_is_case_insensitive_with_field_error() {
         &h,
         "manage_keywords",
         json!({ "ad_group_id": "3", "action": "add",
-                "keywords": [{ "text": "a", "match_type": "EXATA" }] }),
+                "keywords": [{ "text": "a", "match_type": "STRICT" }] }),
     )
     .await;
     assert_eq!(e.field.as_deref(), Some("keywords[0].match_type"));
@@ -1672,16 +1671,16 @@ async fn create_and_attach_list() {
     let out = applied(
         &engine,
         "manage_negatives",
-        json!({ "action": "create_list", "list_name": "Negativas gerais", "campaign_id": "5",
-                "keywords": [{ "text": "grátis", "match_type": "BROAD" },
-                             { "text": "usado", "match_type": "EXACT" }] }),
+        json!({ "action": "create_list", "list_name": "General negatives", "campaign_id": "5",
+                "keywords": [{ "text": "free", "match_type": "BROAD" },
+                             { "text": "used", "match_type": "EXACT" }] }),
     )
     .await;
     assert_eq!(out["reversible"], true);
     let ops = last_applied_ops(&h).await;
     assert_eq!(ops.len(), 4);
     let set = op(&ops, "sharedSetOperation")["create"].clone();
-    assert_eq!(set["name"], "Negativas gerais");
+    assert_eq!(set["name"], "General negatives");
     assert_eq!(set["type"], "NEGATIVE_KEYWORDS");
     let temp = set["resourceName"].as_str().unwrap();
     assert!(temp.starts_with("customers/111/sharedSets/-"));
@@ -1694,8 +1693,8 @@ async fn create_and_attach_list() {
     let attach = &op(&ops, "campaignSharedSetOperation")["create"];
     assert_eq!(attach["sharedSet"], temp);
     assert_eq!(attach["campaign"], CAMPAIGN);
-    // O vínculo vai sem nome (o `-N` dele repetiria o do sharedSet: DUPLICATE_TEMP_IDS) e
-    // nenhum temporário se repete entre as operações.
+    // The link has no name (its `-N` would repeat the sharedSet's: DUPLICATE_TEMP_IDS) and
+    // no temporary id repeats across the operations.
     assert!(attach.get("resourceName").is_none(), "{attach}");
     let mut names: Vec<&str> = ops
         .iter()
@@ -1711,9 +1710,9 @@ async fn create_and_attach_list() {
         .collect();
     assert_eq!(own_ids.len(), 3, "{names:?}");
 
-    // O temporário vira o id real em tudo; o desfazer remove filhos antes da lista.
+    // The temporary id becomes the real id everywhere; undo removes children before the list.
     let set_real = "customers/111/sharedSets/101";
-    assert_eq!(g.get(set_real)["name"], "Negativas gerais");
+    assert_eq!(g.get(set_real)["name"], "General negatives");
     assert_eq!(
         g.get("customers/111/sharedCriteria/101~102")["sharedSet"],
         set_real
@@ -1729,7 +1728,7 @@ async fn create_and_attach_list() {
     assert!(rm[..3].iter().all(|r| !r.contains("/sharedSets/")));
     assert!(g.state.lock().unwrap().get(set_real).is_none());
 
-    // Anexar uma lista que já existe.
+    // Attach a list that already exists.
     let out = applied(
         &engine,
         "manage_negatives",
@@ -1941,7 +1940,7 @@ async fn ad_group_level_rules() {
         "manage_targeting",
         json!({ "campaign_id": "5", "ad_group_id": "3", "action": "add", "criteria": [
             { "type": "audience", "user_list_id": "9" },
-            { "type": "placement", "url": "https://exemplo.com.br/pagina" },
+            { "type": "placement", "url": "https://example.com/page" },
             { "type": "topic", "topic_id": "66" } ] }),
     )
     .await;
@@ -1954,7 +1953,7 @@ async fn ad_group_level_rules() {
     );
     assert_eq!(
         ops[1]["adGroupCriterionOperation"]["create"]["placement"],
-        json!({ "url": "https://exemplo.com.br/pagina" })
+        json!({ "url": "https://example.com/page" })
     );
     assert_eq!(
         ops[2]["adGroupCriterionOperation"]["create"]["topic"],
@@ -1967,12 +1966,12 @@ async fn ad_group_level_rules() {
             .contains_key("customers/111/adGroupCriteria/3~101")
     );
 
-    // Nível de campanha também aceita os três.
+    // The campaign level also accepts all three.
     applied(
         &engine,
         "manage_targeting",
         json!({ "campaign_id": "5", "action": "add", "criteria": [
-            { "type": "placement", "url": "exemplo.com.br" } ] }),
+            { "type": "placement", "url": "example.com" } ] }),
     )
     .await;
     let ops = last_applied_ops(&h).await;
@@ -1995,7 +1994,7 @@ async fn bid_modifier_limits_and_restore() {
         assert_eq!(e.code, codes::INVALID_INPUT, "{bad}");
         assert_eq!(e.field.as_deref(), Some("criteria[0].bid_modifier"));
     }
-    // Dispositivo aceita 0 (exclusão).
+    // A device accepts 0 (exclusion).
     let engine = engine(&h, WriteMode::Direct);
     let out = applied(
         &engine,
@@ -2046,7 +2045,7 @@ async fn bid_modifier_limits_and_restore() {
     .await;
     assert_eq!(g.get(AC_AUD)["bidModifier"], 2.0);
 
-    // Idioma não tem lance; critério de outro tipo não é tocado.
+    // Language has no bid modifier; a criterion of another type is not touched.
     for (kind, id) in [("language", "72"), ("device", "70")] {
         let e = validate_err(
             &h,
@@ -2092,7 +2091,7 @@ async fn schedule_hours_validated() {
     )
     .await;
     assert_eq!(e.field.as_deref(), Some("criteria[0].day"));
-    // 0-24 vale.
+    // 0-24 is valid.
     h.adapter
         .validate(&call(
             CONN,
@@ -2116,7 +2115,7 @@ async fn targeting_input_validation() {
         ),
         (json!({ "type": "location" }), "criteria[0].geo_id"),
         (
-            json!({ "type": "placement", "url": "não é url" }),
+            json!({ "type": "placement", "url": "not a url" }),
             "criteria[0].url",
         ),
         (
@@ -2173,8 +2172,8 @@ async fn targeting_remove_checks_kind_and_is_irreversible() {
     let g = fake(&h, targeting_seed()).await;
     let engine = engine(&h, WriteMode::Direct);
 
-    // Um tipo diferente do pedido (keyword 44 do grupo, local 70 como idioma) e id
-    // desconhecido: NOT_FOUND, sem mutate.
+    // A type other than the requested one (ad group keyword 44, location 70 as a
+    // language) and an unknown id: NOT_FOUND, no mutate.
     let before = mutate_bodies(&h).await.len();
     for input in [
         json!({ "campaign_id": "5", "action": "remove",
@@ -2222,13 +2221,13 @@ async fn targeting_tool_is_exposed_and_flagged() {
         .tools()
         .into_iter()
         .find(|t| t.name == "manage_targeting")
-        .expect("manage_targeting exposta");
+        .expect("manage_targeting is exposed");
     assert!(spec.description.contains("geo_target_constant"));
     assert!(spec.description.contains("language_constant"));
     assert!(spec.reversible);
 }
 
-// ------------------------------------------------- recomendações e asset group
+// ------------------------------------------------ recommendations and asset group
 
 const REC: &str = "customers/111/recommendations/abc";
 const REC_DISMISSED: &str = "customers/111/recommendations/old";
@@ -2245,7 +2244,7 @@ fn aga(asset: u32, field_type: &str) -> (String, Value) {
     )
 }
 
-/// Grupo com o mínimo: 3 títulos, 1 título longo, 2 descrições, 2 imagens e 1 logo.
+/// Asset group at the minimum: 3 headlines, 1 long headline, 2 descriptions, 2 images and 1 logo.
 fn pmax_seed() -> HashMap<String, Value> {
     let mut s = seed("TARGET_SPEND", false);
     s.insert(
@@ -2258,7 +2257,7 @@ fn pmax_seed() -> HashMap<String, Value> {
     );
     s.insert(
         AG.into(),
-        json!({ "resourceName": AG, "id": "20", "name": "Grupo A", "status": "ENABLED",
+        json!({ "resourceName": AG, "id": "20", "name": "Group A", "status": "ENABLED",
                 "finalUrls": ["https://a.com"] }),
     );
     for (asset, ft) in [
@@ -2277,7 +2276,7 @@ fn pmax_seed() -> HashMap<String, Value> {
         s.insert(
             format!("customers/111/assets/{asset}"),
             json!({ "resourceName": format!("customers/111/assets/{asset}"),
-                    "textAsset": { "text": format!("Texto {asset}") } }),
+                    "textAsset": { "text": format!("Text {asset}") } }),
         );
     }
     s.insert(
@@ -2286,7 +2285,7 @@ fn pmax_seed() -> HashMap<String, Value> {
     );
     s.insert(
         SIGNAL.into(),
-        json!({ "resourceName": SIGNAL, "assetGroup": AG, "searchTheme": { "text": "sapatos" } }),
+        json!({ "resourceName": SIGNAL, "assetGroup": AG, "searchTheme": { "text": "shoes" } }),
     );
     s
 }
@@ -2340,7 +2339,7 @@ async fn apply_recommendation_is_irreversible() {
                 "campaignBudget": { "newBudgetAmountMicros": "9000000" } }] }),
         ]
     );
-    // Nenhuma chamada ao mutate: a escrita é direta.
+    // No mutate call: the write is direct.
     assert!(mutate_bodies(&h).await.is_empty());
     let change =
         h.db.get_change(out["change_id"].as_str().unwrap())
@@ -2375,11 +2374,11 @@ async fn recommendation_must_exist_and_be_open() {
     mock_recommendation_post(&h, "apply").await;
     mock_recommendation_post(&h, "dismiss").await;
     for tool in ["apply_recommendation", "dismiss_recommendation"] {
-        let e = validate_err(&h, tool, json!({ "recommendation": "naoexiste" })).await;
+        let e = validate_err(&h, tool, json!({ "recommendation": "missing" })).await;
         assert_eq!(e.code, codes::NOT_FOUND, "{tool}");
         let e = validate_err(&h, tool, json!({ "recommendation": "old" })).await;
         assert_eq!(e.code, codes::INVALID_INPUT, "{tool}");
-        assert!(e.message.contains("dispensada"), "{}", e.message);
+        assert!(e.message.contains("dismissed"), "{}", e.message);
         for bad in [
             "customers/999/recommendations/abc",
             "customers/111/campaigns/5",
@@ -2418,7 +2417,7 @@ async fn asset_group_add_headline() {
         &engine,
         "update_asset_group",
         json!({ "asset_group_id": "20",
-                "add_assets": [{ "field_type": "headline", "text": "  Frete grátis " }] }),
+                "add_assets": [{ "field_type": "headline", "text": "  Free shipping " }] }),
     )
     .await;
     assert_eq!(out["reversible"], true);
@@ -2428,8 +2427,8 @@ async fn asset_group_add_headline() {
         vec![
             json!({ "assetOperation": { "create": {
                 "resourceName": "customers/111/assets/-1",
-                "textAsset": { "text": "Frete grátis" } } } }),
-            // Sem `resourceName`: o id do vínculo é derivado do asset (como no PMax).
+                "textAsset": { "text": "Free shipping" } } } }),
+            // No `resourceName`: the link id is derived from the asset (as in PMax).
             json!({ "assetGroupAssetOperation": { "create": {
                 "assetGroup": AG, "asset": "customers/111/assets/-1",
                 "fieldType": "HEADLINE" } } }),
@@ -2445,7 +2444,7 @@ async fn asset_group_add_headline() {
         change.after,
         Some(json!({ real: { "asset_group_asset.status": "ENABLED" } }))
     );
-    // Desfazer remove o vínculo real (o asset em si fica).
+    // Undo removes the real link (the asset itself stays).
     undo(&engine, &out).await;
     assert_eq!(removes(&last_applied_ops(&h).await), vec![real]);
     assert!(!g.state.lock().unwrap().contains_key(real));
@@ -2458,15 +2457,15 @@ async fn asset_group_minimums_enforced() {
     for (rn, min) in [
         (
             "customers/111/assetGroupAssets/20~31~HEADLINE",
-            "mínimo é 3",
+            "minimum is 3",
         ),
         (
             "customers/111/assetGroupAssets/20~34~LONG_HEADLINE",
-            "mínimo é 1",
+            "minimum is 1",
         ),
         (
             "customers/111/assetGroupAssets/20~35~DESCRIPTION",
-            "mínimo é 2",
+            "minimum is 2",
         ),
         (
             "customers/111/assetGroupAssets/20~37~MARKETING_IMAGE",
@@ -2486,7 +2485,7 @@ async fn asset_group_minimums_enforced() {
         assert_eq!(e.code, codes::INVALID_INPUT, "{rn}");
         assert!(e.message.contains(min), "{rn}: {}", e.message);
     }
-    // Trocar um título por outro na mesma chamada mantém o mínimo.
+    // Swapping one headline for another in the same call keeps the minimum.
     let v = h
         .adapter
         .validate(&call(
@@ -2495,7 +2494,7 @@ async fn asset_group_minimums_enforced() {
             "update_asset_group",
             with_account(json!({ "asset_group_id": "20",
                 "remove_assets": ["customers/111/assetGroupAssets/20~31~HEADLINE"],
-                "add_assets": [{ "field_type": "HEADLINE", "text": "Novo" }] })),
+                "add_assets": [{ "field_type": "HEADLINE", "text": "New" }] })),
         ))
         .await
         .unwrap();
@@ -2523,7 +2522,7 @@ async fn asset_group_maximums_enforced() {
     )
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT);
-    assert!(e.message.contains("máximo é 5"), "{}", e.message);
+    assert!(e.message.contains("maximum is 5"), "{}", e.message);
     assert_eq!(e.field.as_deref(), Some("add_assets"));
 }
 
@@ -2532,7 +2531,8 @@ async fn asset_group_remove_is_irreversible_and_scoped_to_the_group() {
     let h = google_harness().await;
     let g = fake(&h, pmax_seed()).await;
     let engine = engine(&h, WriteMode::Direct);
-    // Vínculo de outro grupo, inexistente e já removido: NOT_FOUND, nada é enviado.
+    // A link from another asset group and one that doesn't exist (or was removed): NOT_FOUND,
+    // nothing is sent.
     for rn in [AG_OTHER_ASSET, "customers/111/assetGroupAssets/20~999~LOGO"] {
         let e = validate_err(
             &h,
@@ -2575,7 +2575,7 @@ async fn asset_group_search_theme_signal() {
         &engine,
         "update_asset_group",
         json!({ "asset_group_id": "20", "add_signals": {
-            "search_themes": ["tênis de corrida"],
+            "search_themes": ["running shoes"],
             "audiences": ["customers/111/audiences/77"] } }),
     )
     .await;
@@ -2589,7 +2589,7 @@ async fn asset_group_search_theme_signal() {
                 "audience": { "audience": "customers/111/audiences/77" } } } }),
             json!({ "assetGroupSignalOperation": { "create": {
                 "assetGroup": AG,
-                "searchTheme": { "text": "tênis de corrida" } } } }),
+                "searchTheme": { "text": "running shoes" } } } }),
         ]
     );
     let reals = [
@@ -2611,7 +2611,7 @@ async fn asset_group_field_edit_and_undo() {
     let out = applied(
         &engine,
         "update_asset_group",
-        json!({ "asset_group_id": "20", "name": "Grupo B", "status": "PAUSED",
+        json!({ "asset_group_id": "20", "name": "Group B", "status": "PAUSED",
                 "final_urls": ["https://b.com"] }),
     )
     .await;
@@ -2620,13 +2620,13 @@ async fn asset_group_field_edit_and_undo() {
     let update = &op(&ops, "assetGroupOperation")["update"];
     assert_eq!(
         *update,
-        json!({ "resourceName": AG, "name": "Grupo B", "status": "PAUSED",
+        json!({ "resourceName": AG, "name": "Group B", "status": "PAUSED",
                 "finalUrls": ["https://b.com"] })
     );
-    assert_eq!(g.get(AG)["name"], "Grupo B");
+    assert_eq!(g.get(AG)["name"], "Group B");
     undo(&engine, &out).await;
     let ag = g.get(AG);
-    assert_eq!(ag["name"], "Grupo A");
+    assert_eq!(ag["name"], "Group A");
     assert_eq!(ag["status"], "ENABLED");
     assert_eq!(ag["finalUrls"], json!(["https://a.com"]));
 }
@@ -2669,7 +2669,7 @@ async fn asset_group_existing_asset_and_input_rules() {
             "add_assets[0]",
         ),
         (
-            json!({ "field_type": "NADA", "text": "a" }),
+            json!({ "field_type": "NOTHING", "text": "a" }),
             "add_assets[0].field_type",
         ),
         (
@@ -2702,7 +2702,7 @@ async fn asset_group_existing_asset_and_input_rules() {
         assert_eq!(e.code, codes::INVALID_INPUT, "{item}");
         assert_eq!(e.field.as_deref(), Some(field), "{item}");
     }
-    // URL de host local é recusada antes de qualquer request, no campo da imagem.
+    // A local host URL is refused before any request, on the image field.
     let e = validate_err(
         &h,
         "update_asset_group",
@@ -2712,7 +2712,7 @@ async fn asset_group_existing_asset_and_input_rules() {
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT);
     assert_eq!(e.field.as_deref(), Some("add_assets[0].image"), "{e:?}");
-    // ImageRef malformado: o erro aponta o campo.
+    // Malformed ImageRef: the error names the field.
     let e = validate_err(
         &h,
         "update_asset_group",
@@ -2722,7 +2722,7 @@ async fn asset_group_existing_asset_and_input_rules() {
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT);
     assert_eq!(e.field.as_deref(), Some("add_assets[0].image"), "{e:?}");
-    // Vínculo repetido, edição + inclusão juntas e chamada vazia.
+    // Repeated link, edit + add together, and an empty call.
     let e = validate_err(
         &h,
         "update_asset_group",
@@ -2732,10 +2732,10 @@ async fn asset_group_existing_asset_and_input_rules() {
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT);
     assert_eq!(
-        e.message, "Este asset já está no asset group como LOGO.",
+        e.message, "This asset is already in the asset group as LOGO.",
         "{e:?}"
     );
-    // O mesmo asset duas vezes na chamada (e ainda fora do grupo).
+    // The same asset twice in the call (and not yet in the asset group).
     let e = validate_err(
         &h,
         "update_asset_group",
@@ -2744,7 +2744,7 @@ async fn asset_group_existing_asset_and_input_rules() {
             { "field_type": "LOGO", "asset": "customers/111/assets/77" }] }),
     )
     .await;
-    assert!(e.message.contains("aparece mais de uma vez"), "{e:?}");
+    assert!(e.message.contains("appears more than once"), "{e:?}");
     for input in [
         json!({ "asset_group_id": "20", "name": "x",
                 "add_assets": [{ "field_type": "HEADLINE", "text": "a" }] }),
@@ -2763,7 +2763,7 @@ async fn asset_group_existing_asset_and_input_rules() {
     assert_eq!(e.code, codes::NOT_FOUND);
 }
 
-/// PNG mínimo: assinatura + `IHDR` com as dimensões.
+/// Minimal PNG: signature + `IHDR` with the dimensions.
 fn png(w: u32, h: u32) -> Vec<u8> {
     let mut b = vec![0x89, b'P', b'N', b'G', 0x0D, 0x0A, 0x1A, 0x0A];
     b.extend_from_slice(&13u32.to_be_bytes());
@@ -2785,9 +2785,9 @@ async fn asset_group_accepts_file_image() {
         std::fs::write(&p, bytes).unwrap();
         p.to_string_lossy().into_owned()
     };
-    let landscape = file("paisagem.png", png(1200, 628));
-    let copy = file("copia.png", png(1200, 628));
-    let square = file("quadrada.png", png(1200, 1200));
+    let landscape = file("landscape.png", png(1200, 628));
+    let copy = file("copy.png", png(1200, 628));
+    let square = file("square.png", png(1200, 1200));
     let out = applied(
         &engine,
         "update_asset_group",
@@ -2831,7 +2831,7 @@ async fn asset_group_accepts_file_image() {
     undo(&engine, &out).await;
     assert!(!g.state.lock().unwrap().contains_key(real));
 
-    // Os mesmos bytes duas vezes no mesmo tipo: recusado.
+    // The same bytes twice in the same type: refused.
     let e = validate_err(
         &h,
         "update_asset_group",
@@ -2841,10 +2841,10 @@ async fn asset_group_accepts_file_image() {
     )
     .await;
     assert_eq!(e.code, codes::INVALID_INPUT, "{e:?}");
-    // Proporção errada para o tipo, e arquivo que não existe: no campo da imagem.
+    // Wrong aspect ratio for the type, and a missing file: on the image field.
     for image in [
         json!({ "file_path": square }),
-        json!({ "file_path": "/nao/existe.png" }),
+        json!({ "file_path": "/does/not/exist.png" }),
     ] {
         let e = validate_err(
             &h,
@@ -2885,7 +2885,7 @@ async fn asset_group_accepts_youtube_links() {
         );
     }
     for bad in [
-        "https://youtu.be/curto",
+        "https://youtu.be/short",
         "https://www.youtube.com/watch?x=1",
         "https://vimeo.com/123",
     ] {

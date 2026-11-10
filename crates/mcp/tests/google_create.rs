@@ -2887,7 +2887,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
     assert_eq!(a.after[UPLOAD_RN]["you_tube_video_upload.state"], "FAILED");
     assert_eq!(a.after["asset_resource_name"], Value::Null);
     assert!(
-        a.after["mensagem"].as_str().unwrap().contains("FAILED"),
+        a.after["message"].as_str().unwrap().contains("FAILED"),
         "{}",
         a.after
     );
@@ -2915,10 +2915,10 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
     );
     assert_eq!(a.after["video_id"], VIDEO_ID);
     assert_eq!(
-        a.after["mensagem"],
+        a.after["message"],
         format!(
-            "O vídeo ainda está processando. Quando terminar, crie o asset com \
-             upload_asset kind=youtube e o video_id {VIDEO_ID}."
+            "The video is still processing. When it finishes, create the asset with \
+             upload_asset kind=youtube and video_id {VIDEO_ID}."
         )
     );
     assert!(a.inverse.is_some());
@@ -2942,7 +2942,7 @@ async fn upload_video_partial_failures_are_recorded_with_undo() {
         "PROCESSED"
     );
     assert_eq!(a.after["asset_resource_name"], Value::Null);
-    let msg = a.after["mensagem"].as_str().unwrap();
+    let msg = a.after["message"].as_str().unwrap();
     assert!(msg.contains("upload_asset kind=youtube"), "{msg}");
     assert!(a.inverse.is_some());
 
@@ -3010,12 +3010,10 @@ async fn upload_video_validates_file() {
     assert!(v.summary.contains("validate_only"), "{}", v.summary);
     let w = v.warning.as_deref().unwrap_or_default();
     assert!(
-        w.contains(
-            "Durante o upload e o processamento, outras escritas nesta conta ficam esperando."
-        ),
+        w.contains("During the upload and processing, other writes to this account wait."),
         "{w}"
     );
-    assert!(w.contains("Desfazer remove o vídeo"), "{w}");
+    assert!(w.contains("Undo removes the video"), "{w}");
     assert!(v.summary.contains("PUBLIC"), "{}", v.summary);
     let reqs = h.server.received_requests().await.unwrap();
     assert!(reqs.iter().all(|r| r.url.path() == "/token"), "{reqs:?}");
@@ -3044,9 +3042,9 @@ async fn upload_tools_specs() {
     assert!(video.reversible && video.exposed);
     assert_eq!(video.group, adsconsole_core::config::ToolGroup::Media);
     assert!(
-        video.description.contains(
-            "Durante o upload e o processamento, outras escritas nesta conta ficam esperando."
-        ),
+        video
+            .description
+            .contains("During the upload and processing, other writes to this account wait."),
         "{}",
         video.description
     );

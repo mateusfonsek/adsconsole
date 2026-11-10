@@ -1,8 +1,8 @@
-//! Recomendações: `apply_recommendation` e `dismiss_recommendation`.
+//! Recommendations: `apply_recommendation` and `dismiss_recommendation`.
 //!
-//! Não usam o `googleAds:mutate`: são POSTs em `recommendations:apply` e
-//! `recommendations:dismiss` (`DirectExec::Post`). O plano lê a recomendação por GAQL
-//! (ela precisa existir e não estar dispensada) e as duas são irreversíveis.
+//! They don't use `googleAds:mutate`: they are POSTs to `recommendations:apply` and
+//! `recommendations:dismiss` (`DirectExec::Post`). The plan reads the recommendation
+//! through GAQL (it must exist and not be dismissed), and both are irreversible.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_google_ads::fields;
@@ -35,10 +35,10 @@ struct ApplyInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Nome do recurso (`customers/123/recommendations/abc`) ou só o id.
+    /// Resource name (`customers/123/recommendations/abc`) or just the id.
     recommendation: String,
-    /// Parâmetros da aplicação, no formato da `ApplyRecommendationOperation` do Google
-    /// para o tipo da recomendação (ex.: `{"campaignBudget": {"newBudgetAmountMicros": "…"}}`).
+    /// Apply parameters, in the format of Google's `ApplyRecommendationOperation` for
+    /// the recommendation type (e.g. `{"campaignBudget": {"newBudgetAmountMicros": "…"}}`).
     #[serde(default)]
     parameters: Option<Value>,
 }
@@ -48,11 +48,11 @@ struct DismissInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Nome do recurso (`customers/123/recommendations/abc`) ou só o id.
+    /// Resource name (`customers/123/recommendations/abc`) or just the id.
     recommendation: String,
 }
 
-/// Nome do recurso a partir do nome completo ou do id puro.
+/// Resource name from the full name or the bare id.
 fn recommendation_rn(ctx: &Ctx, raw: &str) -> Result<String, ToolError> {
     let field = "recommendation";
     let raw = raw.trim();
@@ -60,7 +60,7 @@ fn recommendation_rn(ctx: &Ctx, raw: &str) -> Result<String, ToolError> {
     let id = if raw.starts_with("customers/") {
         raw.strip_prefix(&prefix).ok_or_else(|| {
             invalid(format!(
-                "A recomendação {raw} não é da conta {}.",
+                "Recommendation {raw} does not belong to account {}.",
                 ctx.customer_id
             ))
             .with_field(field)
@@ -73,14 +73,13 @@ fn recommendation_rn(ctx: &Ctx, raw: &str) -> Result<String, ToolError> {
             .chars()
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
     {
-        return Err(
-            invalid("Informe o id (ou o nome completo) da recomendação.").with_field(field),
-        );
+        return Err(invalid("Provide the recommendation id (or its full name).").with_field(field));
     }
     Ok(format!("{prefix}{id}"))
 }
 
-/// Tipo da recomendação; `NOT_FOUND` se não existe e `INVALID_INPUT` se já foi dispensada.
+/// Recommendation type; `NOT_FOUND` if it doesn't exist, `INVALID_INPUT` if it was
+/// already dismissed.
 async fn lookup(ctx: &Ctx, tool: &str, rn: &str) -> Result<String, ToolError> {
     let query = format!(
         "{} LIMIT 1",
@@ -98,7 +97,7 @@ async fn lookup(ctx: &Ctx, tool: &str, rn: &str) -> Result<String, ToolError> {
         ToolError::new(
             codes::NOT_FOUND,
             format!(
-                "Recomendação {rn} não encontrada na conta {}.",
+                "Recommendation {rn} not found in account {}.",
                 ctx.customer_id
             ),
         )
@@ -106,10 +105,11 @@ async fn lookup(ctx: &Ctx, tool: &str, rn: &str) -> Result<String, ToolError> {
     })?;
     if text(&row, "recommendation.dismissed").as_deref() == Some("true") {
         return Err(
-            invalid(format!("A recomendação {rn} já foi dispensada.")).with_field("recommendation")
+            invalid(format!("Recommendation {rn} was already dismissed."))
+                .with_field("recommendation"),
         );
     }
-    Ok(text(&row, "recommendation.type").unwrap_or_else(|| "desconhecido".into()))
+    Ok(text(&row, "recommendation.type").unwrap_or_else(|| "unknown".into()))
 }
 
 fn post_plan(summary: String, suffix: &str, operation: Value) -> WritePlan {
@@ -134,8 +134,8 @@ impl WriteTool for ApplyRecommendation {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<ApplyInput>(
             APPLY,
-            "Aplica uma recomendação do Google Ads na conta (as recomendações vêm de \
-             `gaql_search` em `recommendation`). Não pode ser desfeito.",
+            "Applies a Google Ads recommendation to the account (list recommendations with \
+             `gaql_search` on `recommendation`). Cannot be undone.",
             ToolGroup::Edit,
             false,
         )
@@ -150,19 +150,19 @@ impl WriteTool for ApplyRecommendation {
             None | Some(Value::Null) => {}
             Some(Value::Object(m)) => {
                 if m.contains_key("resourceName") {
-                    return Err(invalid("parameters não pode trazer resourceName.")
+                    return Err(invalid("parameters must not include resourceName.")
                         .with_field("parameters"));
                 }
                 op = m;
             }
             Some(_) => {
-                return Err(invalid("parameters deve ser um objeto.").with_field("parameters"));
+                return Err(invalid("parameters must be an object.").with_field("parameters"));
             }
         }
         op.insert("resourceName".into(), json!(rn));
         let kind = lookup(ctx, APPLY, &rn).await?;
         Ok(post_plan(
-            format!("Aplicar a recomendação {kind} ({rn})"),
+            format!("Applies recommendation {kind} ({rn})"),
             "/recommendations:apply",
             Value::Object(op),
         ))
@@ -176,7 +176,7 @@ impl WriteTool for DismissRecommendation {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<DismissInput>(
             DISMISS,
-            "Dispensa uma recomendação do Google Ads. Não pode ser desfeito.",
+            "Dismisses a Google Ads recommendation. Cannot be undone.",
             ToolGroup::Edit,
             false,
         )
@@ -188,7 +188,7 @@ impl WriteTool for DismissRecommendation {
         let rn = recommendation_rn(ctx, &input.recommendation)?;
         let kind = lookup(ctx, DISMISS, &rn).await?;
         Ok(post_plan(
-            format!("Dispensar a recomendação {kind} ({rn})"),
+            format!("Dismisses recommendation {kind} ({rn})"),
             "/recommendations:dismiss",
             json!({ "resourceName": rn }),
         ))

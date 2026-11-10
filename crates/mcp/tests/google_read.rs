@@ -845,7 +845,11 @@ async fn keyword_tools_basic_level_message() {
     ] {
         let err = read(&h, tool, input).await.unwrap_err();
         assert_eq!(err.code, codes::ACCESS_LEVEL_INSUFFICIENT, "{tool}");
-        assert!(err.message.contains("nível Basic"), "{}", err.message);
+        assert!(
+            err.message.contains("Basic access level"),
+            "{}",
+            err.message
+        );
         assert!(
             err.suggestion
                 .as_deref()
@@ -982,6 +986,6 @@ async fn forecast_without_any_bid_needs_max_cpc() {
     .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
     assert_eq!(err.field.as_deref(), Some("forecast.max_cpc"));
-    assert_eq!(err.message, "Informe max_cpc para a previsão.");
+    assert_eq!(err.message, "Provide max_cpc for the forecast.");
     assert!(bodies(&h, FORECAST).await.is_empty());
 }

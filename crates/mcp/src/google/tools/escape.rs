@@ -1,5 +1,5 @@
-//! Escape `mutate`: operações brutas do `googleAds:mutate`, sem desfazer. Fica no
-//! grupo Escape, desligado por padrão.
+//! Escape `mutate`: raw `googleAds:mutate` operations, with no undo. Belongs to the
+//! Escape group, off by default.
 
 use adsconsole_core::config::ToolGroup;
 use async_trait::async_trait;
@@ -24,9 +24,9 @@ struct MutateInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// `MutateOperation`s da API REST v26 do Google Ads (ex.:
-    /// `{"campaignOperation": {"update": {...}, "updateMask": "name"}}`), enviadas como
-    /// estão, num único mutate tudo ou nada.
+    /// Google Ads REST API v26 `MutateOperation`s (e.g.
+    /// `{"campaignOperation": {"update": {...}, "updateMask": "name"}}`), sent as is in
+    /// a single all-or-nothing mutate.
     operations: Vec<Value>,
 }
 
@@ -37,8 +37,8 @@ impl WriteTool for Mutate {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<MutateInput>(
             NAME,
-            "Envia operações brutas ao googleAds:mutate da conta (validadas antes com \
-             validateOnly). Use só quando nenhuma ferramenta específica resolve.",
+            "Sends raw operations to the account's googleAds:mutate (validated first with \
+             validateOnly). Use only when no specific tool can do the job.",
             ToolGroup::Escape,
             false,
         )
@@ -49,7 +49,7 @@ impl WriteTool for Mutate {
         let input: MutateInput = parse_input(input)?;
         Ok(WritePlan {
             summary: format!(
-                "Envia {} operação(ões) brutas ao googleAds:mutate.",
+                "Sends {} raw operation(s) to googleAds:mutate.",
                 input.operations.len()
             ),
             warning: None,

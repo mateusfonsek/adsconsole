@@ -1,6 +1,6 @@
-//! Ferramentas ocultas usadas como inversa das escritas: `restore_fields`,
-//! `remove_resources` e `remove_youtube_upload`. Nunca listadas; o desfazer as chama
-//! com a conta da original.
+//! Hidden tools used as the inverse of writes: `restore_fields`, `remove_resources`
+//! and `remove_youtube_upload`. Never listed; undo calls them with the original
+//! change's account.
 
 use std::collections::BTreeMap;
 
@@ -34,7 +34,7 @@ fn invalid(msg: impl Into<String>) -> ToolError {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RestoreFieldsInput {
-    /// Valores por recurso: `{nome_do_recurso: {campo_gaql: valor}}`.
+    /// Values per resource: `{resource_name: {gaql_field: value}}`.
     updates: BTreeMap<String, BTreeMap<String, Value>>,
 }
 
@@ -45,7 +45,7 @@ impl WriteTool for RestoreFields {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<RestoreFieldsInput>(
             RESTORE_FIELDS,
-            "Volta campos de recursos do Google Ads para os valores informados.",
+            "Sets fields of Google Ads resources back to the given values.",
             ToolGroup::Edit,
             true,
         )
@@ -56,7 +56,7 @@ impl WriteTool for RestoreFields {
     async fn plan(&self, ctx: &Ctx, input: &Value) -> Result<WritePlan, ToolError> {
         let input: RestoreFieldsInput = parse_input(input)?;
         if input.updates.is_empty() {
-            return Err(invalid("Nenhum campo para restaurar.").with_field("updates"));
+            return Err(invalid("No fields to restore.").with_field("updates"));
         }
         let mut operations = Vec::new();
         let mut field_changes = Vec::new();
@@ -67,10 +67,12 @@ impl WriteTool for RestoreFields {
             let mut changes = Vec::new();
             for (gaql, value) in values {
                 let field = fields::find(gaql)
-                    .ok_or_else(|| invalid(format!("Campo não editável: {gaql}")))?;
-                // O campo tem que ser do recurso do nome (campaign.* em campaigns/…).
+                    .ok_or_else(|| invalid(format!("Field is not editable: {gaql}")))?;
+                // The field must belong to the named resource (campaign.* on campaigns/…).
                 if op_key != format!("{}Operation", fields::camel(field.resource)) {
-                    return Err(invalid(format!("O campo {gaql} não é do recurso {rn}.")));
+                    return Err(invalid(format!(
+                        "Field {gaql} does not belong to resource {rn}."
+                    )));
                 }
                 changes.push((field, value.clone()));
                 field_changes.push(FieldChange {
@@ -80,7 +82,7 @@ impl WriteTool for RestoreFields {
                 });
             }
             let Some((first, _)) = changes.first() else {
-                return Err(invalid(format!("Nenhum campo para restaurar em {rn}.")));
+                return Err(invalid(format!("No fields to restore on {rn}.")));
             };
             watch.push(Watch {
                 resource_name: rn.clone(),
@@ -91,7 +93,7 @@ impl WriteTool for RestoreFields {
         }
         Ok(WritePlan {
             summary: format!(
-                "Restaura {} campo(s) em {} recurso(s).",
+                "Restores {} field(s) on {} resource(s).",
                 field_changes.len(),
                 operations.len()
             ),
@@ -107,7 +109,7 @@ impl WriteTool for RestoreFields {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RemoveResourcesInput {
-    /// Nomes de recurso a remover, nesta ordem.
+    /// Resource names to remove, in this order.
     resource_names: Vec<String>,
 }
 
@@ -118,7 +120,7 @@ impl WriteTool for RemoveResources {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<RemoveResourcesInput>(
             REMOVE_RESOURCES,
-            "Remove recursos do Google Ads (definitivo).",
+            "Removes Google Ads resources (permanent).",
             ToolGroup::Edit,
             false,
         )
@@ -129,7 +131,7 @@ impl WriteTool for RemoveResources {
     async fn plan(&self, ctx: &Ctx, input: &Value) -> Result<WritePlan, ToolError> {
         let input: RemoveResourcesInput = parse_input(input)?;
         if input.resource_names.is_empty() {
-            return Err(invalid("Nenhum recurso para remover.").with_field("resource_names"));
+            return Err(invalid("No resources to remove.").with_field("resource_names"));
         }
         let operations = input
             .resource_names
@@ -141,7 +143,7 @@ impl WriteTool for RemoveResources {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(WritePlan {
             summary: format!(
-                "Remove {} recurso(s): {}.",
+                "Removes {} resource(s): {}.",
                 operations.len(),
                 input.resource_names.join(", ")
             ),
@@ -161,8 +163,8 @@ struct RemoveYoutubeUploadInput {
     resource_name: String,
 }
 
-/// Inversa do `upload_video`: `youTubeVideoUploads:remove` (o vídeo fica
-/// `UNAVAILABLE`; não tem volta).
+/// Inverse of `upload_video`: `youTubeVideoUploads:remove` (the video becomes
+/// `UNAVAILABLE`; this cannot be undone).
 struct RemoveYoutubeUpload;
 
 #[async_trait]
@@ -170,7 +172,7 @@ impl WriteTool for RemoveYoutubeUpload {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<RemoveYoutubeUploadInput>(
             REMOVE_YOUTUBE_UPLOAD,
-            "Remove um vídeo enviado ao YouTube pelo Google Ads (definitivo).",
+            "Removes a video uploaded to YouTube through Google Ads (permanent).",
             ToolGroup::Media,
             false,
         )
@@ -188,12 +190,12 @@ impl WriteTool for RemoveYoutubeUpload {
             .is_some_and(|id| !id.is_empty() && !id.contains('/'))
         {
             return Err(invalid(format!(
-                "Esperado um nome no formato {prefix}ID (recebido '{rn}')."
+                "Expected a name in the format {prefix}ID (got '{rn}')."
             ))
             .with_field("resource_name"));
         }
         Ok(WritePlan {
-            summary: format!("Remove o vídeo enviado {rn}."),
+            summary: format!("Removes uploaded video {rn}."),
             warning: None,
             operations: Vec::new(),
             field_changes: Vec::new(),

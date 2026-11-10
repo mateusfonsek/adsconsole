@@ -1,10 +1,10 @@
-//! Ferramentas de mídia: `upload_asset` (imagem, logo, texto ou vídeo do YouTube que
-//! já existe; irreversível) e `upload_video` (envia um arquivo de vídeo ao YouTube e
-//! cria o asset; reversível com `remove_youtube_upload`).
+//! Media tools: `upload_asset` (image, logo, text or an existing YouTube video;
+//! irreversible) and `upload_video` (uploads a video file to YouTube and creates the
+//! asset; reversible with `remove_youtube_upload`).
 //!
-//! O `upload_video` não usa o `googleAds:mutate` no `validate`: o Google não tem
-//! `validate_only` para upload. Ele só confere o arquivo e a entrada; a execução
-//! ([`run_upload`]) faz o start, os pedaços, a espera e o asset.
+//! `upload_video` does not use `googleAds:mutate` in `validate`: Google has no
+//! `validate_only` for uploads. It only checks the file and the input; the execution
+//! ([`run_upload`]) does the start, the chunks, the wait and the asset.
 
 use std::path::PathBuf;
 use std::time::{Duration, SystemTime};
@@ -49,7 +49,7 @@ const VIDEO_EXTENSIONS: [&str; 8] = ["mp4", "mov", "avi", "wmv", "flv", "webm", 
 const WAIT_DEFAULT: u32 = 10;
 const WAIT_MAX: u32 = 30;
 const STATE_FIELD: &str = "you_tube_video_upload.state";
-const CHECK_UPLOADS: &str = "Confira com gaql_search: SELECT you_tube_video_upload.resource_name, \
+const CHECK_UPLOADS: &str = "Check with gaql_search: SELECT you_tube_video_upload.resource_name, \
      you_tube_video_upload.state FROM you_tube_video_upload.";
 
 // ---------------------------------------------------------------- upload_asset
@@ -59,21 +59,21 @@ struct UploadAssetInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// `image` (1.91:1, 1:1 ou 4:5), `logo` (1:1), `text` ou `youtube`.
+    /// `image` (1.91:1, 1:1 or 4:5), `logo` (1:1), `text` or `youtube`.
     kind: String,
-    /// Imagem de `image` e `logo`: `{"file_path": "/caminho/absoluto.png"}` ou
+    /// Image for `image` and `logo`: `{"file_path": "/absolute/path.png"}` or
     /// `{"url": "https://…"}`.
     #[serde(default)]
     #[schemars(with = "Option<ImageRef>")]
     image: Option<Value>,
-    /// Texto de `text` (até 90 caracteres).
+    /// Text for `text` (up to 90 characters).
     #[serde(default)]
     text: Option<String>,
-    /// Id (11 caracteres) ou link (`youtu.be/…`, `youtube.com/watch?v=…`,
-    /// `youtube.com/shorts/…`) de um vídeo que já está no YouTube, para `youtube`.
+    /// For `youtube`: id (11 characters) or link (`youtu.be/…`, `youtube.com/watch?v=…`,
+    /// `youtube.com/shorts/…`) of a video already on YouTube.
     #[serde(default)]
     youtube_video_id: Option<String>,
-    /// Nome do asset (`text` e `youtube`; imagens recebem o nome pelo conteúdo).
+    /// Asset name (`text` and `youtube`; images are named after their content).
     #[serde(default)]
     name: Option<String>,
 }
@@ -94,13 +94,13 @@ impl AssetKind {
             "text" => Ok(AssetKind::Text),
             "youtube" => Ok(AssetKind::Youtube),
             _ => Err(invalid(format!(
-                "kind desconhecido '{raw}'; use image, logo, text ou youtube."
+                "unknown kind '{raw}'; use image, logo, text or youtube."
             ))
             .with_field("kind")),
         }
     }
 
-    /// Campo da entrada que este tipo usa.
+    /// Input field this kind uses.
     fn field(self) -> &'static str {
         match self {
             AssetKind::Image | AssetKind::Logo => "image",
@@ -112,12 +112,12 @@ impl AssetKind {
 
 fn kind_label(k: Option<ImageKind>) -> &'static str {
     match k {
-        Some(ImageKind::Landscape) => "imagem 1.91:1",
-        Some(ImageKind::Square) => "imagem 1:1",
-        Some(ImageKind::Portrait) => "imagem 4:5",
-        Some(ImageKind::Logo) => "logo 1:1",
-        Some(ImageKind::LandscapeLogo) => "logo 4:1",
-        None => "imagem",
+        Some(ImageKind::Landscape) => "1.91:1 image",
+        Some(ImageKind::Square) => "1:1 image",
+        Some(ImageKind::Portrait) => "4:5 image",
+        Some(ImageKind::Logo) => "1:1 logo",
+        Some(ImageKind::LandscapeLogo) => "4:1 logo",
+        None => "image",
     }
 }
 
@@ -128,10 +128,10 @@ impl WriteTool for UploadAsset {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UploadAssetInput>(
             UPLOAD_ASSET,
-            "Cria um asset na conta do Google Ads: imagem (1.91:1, 1:1 ou 4:5) ou logo (1:1) \
-             de um arquivo ou URL https, texto (até 90 caracteres) ou um vídeo que já está no \
-             YouTube (pelo id). Devolve o asset_resource_name para usar em campanhas e grupos \
-             de recursos. O Google não remove assets.",
+            "Creates an asset in the Google Ads account: an image (1.91:1, 1:1 or 4:5) or \
+             logo (1:1) from a file or https URL, a text (up to 90 characters) or a video \
+             already on YouTube (by id). Returns the asset_resource_name to use in campaigns \
+             and asset groups. Google does not remove assets.",
             ToolGroup::Media,
             false,
         )
@@ -147,7 +147,7 @@ impl WriteTool for UploadAsset {
         ];
         if let Some((other, _)) = given.iter().find(|(f, g)| *g && *f != kind.field()) {
             return Err(invalid(format!(
-                "kind={} usa só {} (e name); tire {other}.",
+                "kind={} uses only {} (and name); remove {other}.",
                 input.kind.trim(),
                 kind.field()
             ))
@@ -158,19 +158,19 @@ impl WriteTool for UploadAsset {
         let summary = match kind {
             AssetKind::Image | AssetKind::Logo => {
                 let raw = input.image.as_ref().ok_or_else(|| {
-                    invalid("Informe image ({\"file_path\": …} ou {\"url\": …}).")
+                    invalid("Provide image ({\"file_path\": …} or {\"url\": …}).")
                         .with_field("image")
                 })?;
                 if input.name.is_some() {
                     return Err(invalid(
-                        "Imagens recebem o nome pelo conteúdo (img-…); tire name.",
+                        "Images are named after their content (img-…); remove name.",
                     )
                     .with_field("name"));
                 }
                 let r = image_ref(raw, "image")?;
                 if let ImageRef::Asset { asset } = &r {
                     return Err(invalid(format!(
-                        "image: {asset} já é um asset; use-o direto nas campanhas."
+                        "image: {asset} is already an asset; use it directly in campaigns."
                     ))
                     .with_field("image"));
                 }
@@ -193,7 +193,7 @@ impl WriteTool for UploadAsset {
                         .1
                 };
                 format!(
-                    "Cria um asset de {} a partir de {}.",
+                    "Creates an asset ({}) from {}.",
                     kind_label(role),
                     image_source_label(&r)
                 )
@@ -204,7 +204,7 @@ impl WriteTool for UploadAsset {
                 let n = t.chars().count();
                 if input.text.is_none() || n == 0 || n > TEXT_MAX {
                     return Err(invalid(format!(
-                        "text deve ter de 1 a {TEXT_MAX} caracteres (veio com {n})."
+                        "text must have 1 to {TEXT_MAX} characters (got {n})."
                     ))
                     .with_field("text"));
                 }
@@ -213,11 +213,11 @@ impl WriteTool for UploadAsset {
                     body["name"] = json!(name_text(name, "name")?);
                 }
                 operations.push(create_op(&temps.next("assets"), body)?);
-                format!("Cria um asset de texto '{t}'.")
+                format!("Creates text asset '{t}'.")
             }
             AssetKind::Youtube => {
                 let raw = input.youtube_video_id.as_deref().ok_or_else(|| {
-                    invalid("Informe youtube_video_id.").with_field("youtube_video_id")
+                    invalid("Provide youtube_video_id.").with_field("youtube_video_id")
                 })?;
                 let id = youtube_id_or_link(raw, "youtube_video_id")?;
                 let mut body = json!({ "youtubeVideoAsset": { "youtubeVideoId": id } });
@@ -225,14 +225,14 @@ impl WriteTool for UploadAsset {
                     body["name"] = json!(name_text(name, "name")?);
                 }
                 operations.push(create_op(&temps.next("assets"), body)?);
-                format!("Cria um asset do vídeo do YouTube {id}.")
+                format!("Creates an asset for YouTube video {id}.")
             }
         };
         let asset = operations
             .first()
             .and_then(|op| op["assetOperation"]["create"]["resourceName"].as_str())
             .map(str::to_string)
-            .ok_or_else(|| ToolError::new(codes::INTERNAL, "upload_asset sem operação"))?;
+            .ok_or_else(|| ToolError::new(codes::INTERNAL, "upload_asset without an operation"))?;
         Ok(WritePlan {
             summary,
             warning: None,
@@ -248,7 +248,7 @@ impl WriteTool for UploadAsset {
         })
     }
 
-    /// `{asset_resource_name}`: o nome real do asset (a chave do "depois").
+    /// `{asset_resource_name}`: the real asset name (the key of the "after").
     fn map_applied(&self, a: Applied) -> Applied {
         let rn = a
             .after
@@ -268,33 +268,33 @@ struct UploadVideoInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Caminho absoluto do vídeo (mp4, mov, avi, wmv, flv, webm, mkv ou mpeg; até 10 GB).
+    /// Absolute path of the video (mp4, mov, avi, wmv, flv, webm, mkv or mpeg; up to 10 GB).
     file_path: String,
-    /// Título no YouTube (até 100 caracteres).
+    /// YouTube title (up to 100 characters).
     title: String,
-    /// Descrição no YouTube (até 5000 caracteres).
+    /// YouTube description (up to 5000 characters).
     #[serde(default)]
     description: Option<String>,
-    /// `UNLISTED` (padrão), `PUBLIC` ou `PRIVATE`.
+    /// `UNLISTED` (default), `PUBLIC` or `PRIVATE`.
     #[serde(default)]
     privacy: Option<String>,
-    /// Canal do YouTube do anunciante. Sem ele, o vídeo vai para um canal gerenciado
-    /// pelo Google.
+    /// The advertiser's YouTube channel. Without it, the video goes to a channel managed
+    /// by Google.
     #[serde(default)]
     channel_id: Option<String>,
-    /// Minutos de espera pelo processamento (padrão 10, máximo 30).
+    /// Minutes to wait for processing (default 10, maximum 30).
     #[serde(default)]
     wait_minutes: Option<u32>,
 }
 
-/// Tamanho e data de modificação do arquivo, para notar troca entre validar e enviar.
+/// File size and modification time, to notice a swap between validation and upload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct FileStamp {
     pub size: u64,
     pub modified: Option<SystemTime>,
 }
 
-/// Envio planejado por `upload_video` ([`DirectExec::YoutubeUpload`]).
+/// Upload planned by `upload_video` ([`DirectExec::YoutubeUpload`]).
 pub(crate) struct VideoUpload {
     pub path: PathBuf,
     pub stamp: FileStamp,
@@ -302,7 +302,7 @@ pub(crate) struct VideoUpload {
     pub description: String,
     pub privacy: &'static str,
     pub channel_id: Option<String>,
-    /// Espera máxima pelo processamento (`wait_minutes`).
+    /// Maximum wait for processing (`wait_minutes`).
     pub wait: Duration,
 }
 
@@ -310,12 +310,12 @@ fn bad_file(msg: impl Into<String>) -> ToolError {
     invalid(msg).with_field("file_path")
 }
 
-/// O arquivo de vídeo: caminho absoluto, extensão aceita, arquivo comum, 1 byte a 10 GB.
+/// The video file: absolute path, accepted extension, regular file, 1 byte to 10 GB.
 async fn video_file(raw: &str) -> Result<(PathBuf, FileStamp), ToolError> {
     let path = PathBuf::from(raw.trim());
     if !path.is_absolute() {
         return Err(bad_file(format!(
-            "file_path deve ser um caminho absoluto (recebido '{raw}')."
+            "file_path must be an absolute path (got '{raw}')."
         )));
     }
     let ext = path
@@ -325,21 +325,21 @@ async fn video_file(raw: &str) -> Result<(PathBuf, FileStamp), ToolError> {
         .unwrap_or_default();
     if !VIDEO_EXTENSIONS.contains(&ext.as_str()) {
         return Err(bad_file(format!(
-            "{}: extensão não aceita; use {}.",
+            "{}: extension not accepted; use {}.",
             path.display(),
             VIDEO_EXTENSIONS.join(", ")
         )));
     }
     let meta = tokio::fs::metadata(&path)
         .await
-        .map_err(|e| bad_file(format!("{}: arquivo não encontrado ({e}).", path.display())))?;
+        .map_err(|e| bad_file(format!("{}: file not found ({e}).", path.display())))?;
     if !meta.is_file() {
-        return Err(bad_file(format!("{} não é um arquivo.", path.display())));
+        return Err(bad_file(format!("{} is not a file.", path.display())));
     }
     let size = meta.len();
     if size == 0 || size > MAX_VIDEO_BYTES {
         return Err(bad_file(format!(
-            "{}: o vídeo deve ter de 1 byte a 10 GB (tem {size} bytes).",
+            "{}: the video must be 1 byte to 10 GB (it is {size} bytes).",
             path.display()
         )));
     }
@@ -358,7 +358,7 @@ fn bounded(raw: &str, max: usize, field: &str, required: bool) -> Result<String,
     if (required && n == 0) || n > max {
         let min = if required { 1 } else { 0 };
         return Err(invalid(format!(
-            "{field} deve ter de {min} a {max} caracteres (veio com {n})."
+            "{field} must have {min} to {max} characters (got {n})."
         ))
         .with_field(field));
     }
@@ -374,7 +374,7 @@ fn privacy(raw: Option<&str>) -> Result<&'static str, ToolError> {
         "PUBLIC" => Ok("PUBLIC"),
         "PRIVATE" => Ok("PRIVATE"),
         _ => Err(invalid(format!(
-            "privacy desconhecida '{raw}'; use UNLISTED, PUBLIC ou PRIVATE."
+            "unknown privacy '{raw}'; use UNLISTED, PUBLIC or PRIVATE."
         ))
         .with_field("privacy")),
     }
@@ -389,7 +389,7 @@ fn channel(raw: &str) -> Result<String, ToolError> {
             .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
     {
         return Err(invalid(format!(
-            "channel_id inválido '{raw}'; use o id do canal (ex.: UC…)."
+            "invalid channel_id '{raw}'; use the channel id (e.g. UC…)."
         ))
         .with_field("channel_id"));
     }
@@ -403,11 +403,11 @@ impl WriteTool for UploadVideo {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UploadVideoInput>(
             UPLOAD_VIDEO,
-            "Envia um arquivo de vídeo ao YouTube pelo Google Ads (não listado por padrão, num \
-             canal gerenciado pelo Google ou no channel_id informado), espera o processamento \
-             (até wait_minutes) e cria o asset do vídeo. Devolve video_id e \
-             asset_resource_name. Desfazer remove o vídeo do YouTube. Durante o upload e o \
-             processamento, outras escritas nesta conta ficam esperando.",
+            "Uploads a video file to YouTube through Google Ads (unlisted by default, to a \
+             channel managed by Google or to the given channel_id), waits for processing (up \
+             to wait_minutes) and creates the video asset. Returns video_id and \
+             asset_resource_name. Undo removes the video from YouTube. During the upload and \
+             processing, other writes to this account wait.",
             ToolGroup::Media,
             true,
         )
@@ -427,29 +427,29 @@ impl WriteTool for UploadVideo {
         let wait = input.wait_minutes.unwrap_or(WAIT_DEFAULT);
         if !(1..=WAIT_MAX).contains(&wait) {
             return Err(invalid(format!(
-                "wait_minutes deve ser de 1 a {WAIT_MAX} (veio {wait})."
+                "wait_minutes must be 1 to {WAIT_MAX} (got {wait})."
             ))
             .with_field("wait_minutes"));
         }
         let (path, stamp) = video_file(&input.file_path).await?;
         let place = match &channel_id {
-            Some(c) => format!("no canal {c}"),
-            None => "num canal gerenciado pelo Google".to_string(),
+            Some(c) => format!("to channel {c}"),
+            None => "to a channel managed by Google".to_string(),
         };
         let summary = format!(
-            "Envia {} ({:.1} MB) ao YouTube como \"{title}\" ({privacy}, {place}) e, quando o \
-             processamento terminar (espera até {wait} min), cria o asset do vídeo. O Google \
-             não tem validação prévia (validate_only) para upload de vídeo: só as checagens \
-             locais foram feitas.",
+            "Uploads {} ({:.1} MB) to YouTube as \"{title}\" ({privacy}, {place}) and, when \
+             processing finishes (waits up to {wait} min), creates the video asset. Google \
+             has no prior validation (validate_only) for video uploads: only local checks \
+             were made.",
             path.display(),
             stamp.size as f64 / 1_000_000.0
         );
         Ok(WritePlan {
             summary,
             warning: Some(
-                "Desfazer remove o vídeo do YouTube (fica indisponível); o asset do vídeo, se \
-                 criado, fica na conta. Durante o upload e o processamento, outras escritas \
-                 nesta conta ficam esperando."
+                "Undo removes the video from YouTube (it becomes unavailable); the video \
+                 asset, if created, stays in the account. During the upload and processing, \
+                 other writes to this account wait."
                     .into(),
             ),
             operations: Vec::new(),
@@ -469,27 +469,27 @@ impl WriteTool for UploadVideo {
     }
 }
 
-/// O arquivo do `execute` tem que ser o mesmo do `validate` (a aprovação pode vir
-/// horas depois). `seen` é o que o `validate` deste processo viu; sem ele (o processo
-/// reiniciou), vale o arquivo atual.
+/// The `execute` file must be the same as the `validate` one (approval may come hours
+/// later). `seen` is what this process's `validate` saw; without it (the process
+/// restarted), the current file is used.
 pub(crate) fn check_unchanged(seen: Option<FileStamp>, v: &VideoUpload) -> Result<(), ToolError> {
     match seen {
         Some(s) if s != v.stamp => Err(bad_file(format!(
-            "{} mudou desde a validação (tamanho ou data de modificação). Peça o envio de \
-             novo para validar o arquivo atual.",
+            "{} changed since validation (size or modification time). Request the upload \
+             again to validate the current file.",
             v.path.display()
         ))),
         _ => Ok(()),
     }
 }
 
-/// O que já se sabe do upload `rn`. O "depois" é
-/// `{rn: {"you_tube_video_upload.state": estado}, video_id, asset_resource_name, mensagem?}`.
+/// What is known so far about upload `rn`. The "after" is
+/// `{rn: {"you_tube_video_upload.state": state}, video_id, asset_resource_name, message?}`.
 ///
-/// Estado final ([`FINAL_STATES`]): o alvo observa o estado e repete o resto como fixo
-/// ([`TARGET_EXTRA`]). Estado em andamento (prazo estourado, leitura que falhou, envio
-/// interrompido): o estado ainda vai mudar sozinho, então nada é observado e o estado
-/// também vai no fixo, para o desfazer não acusar conflito por isso.
+/// Final state ([`FINAL_STATES`]): the target watches the state and repeats the rest as
+/// fixed values ([`TARGET_EXTRA`]). In-progress state (deadline passed, failed read,
+/// interrupted upload): the state will still change on its own, so nothing is watched
+/// and the state also goes in the fixed values, so undo doesn't report a conflict for it.
 fn outcome(
     rn: &str,
     state: Option<&str>,
@@ -501,7 +501,7 @@ fn outcome(
     extra.insert("video_id".into(), json!(video_id));
     extra.insert("asset_resource_name".into(), json!(asset));
     if let Some(m) = msg {
-        extra.insert("mensagem".into(), json!(m));
+        extra.insert("message".into(), json!(m));
     }
     let entry = json!({ STATE_FIELD: state });
     let is_final = state.is_some_and(|s| FINAL_STATES.contains(&s));
@@ -530,25 +530,25 @@ fn outcome(
 
 fn create_hint(rn: &str, video_id: Option<&str>) -> String {
     match video_id {
-        Some(id) => format!("upload_asset kind=youtube e o video_id {id}"),
+        Some(id) => format!("upload_asset kind=youtube and video_id {id}"),
         None => format!(
-            "upload_asset kind=youtube e o video_id (veja com gaql_search: SELECT \
+            "upload_asset kind=youtube and the video_id (find it with gaql_search: SELECT \
              you_tube_video_upload.video_id FROM you_tube_video_upload WHERE \
              you_tube_video_upload.resource_name = '{rn}')"
         ),
     }
 }
 
-/// Executa o [`VideoUpload`]: start, pedaços, espera e asset.
+/// Runs the [`VideoUpload`]: start, chunks, wait and asset.
 ///
-/// Depois que o upload tem nome, nunca devolve `Err` (o Engine gravaria `Failed` e o
-/// upload ficaria órfão): pedaço que falhou, `FAILED`/`REJECTED`, prazo estourado,
-/// leitura do estado que falhou e asset que não foi criado viram `Applied` com a
-/// inversa `remove_youtube_upload` e a explicação em `mensagem`. Quando o estado ficou
-/// em andamento, ele não é observado (ver [`outcome`]).
+/// Once the upload has a name, it never returns `Err` (the Engine would record `Failed`
+/// and the upload would be orphaned): a failed chunk, `FAILED`/`REJECTED`, a passed
+/// deadline, a failed state read and an asset that was not created become `Applied`
+/// with the `remove_youtube_upload` inverse and the explanation in `message`. When the
+/// state is still in progress, it is not watched (see [`outcome`]).
 ///
-/// Antes do nome existir (start ou pedaços sem nome), a falha é `Err`; se bytes já
-/// tinham sido enviados, é `EXECUTION_FAILED` com a sugestão de conferir os uploads.
+/// Before the name exists (start or chunks without a name), a failure is `Err`; if bytes
+/// were already sent, it is `EXECUTION_FAILED` with the suggestion to check the uploads.
 pub(crate) async fn run_upload(
     ctx: &Ctx,
     tool: &str,
@@ -569,14 +569,14 @@ pub(crate) async fn run_upload(
     .map_err(|e| translate(e, Some(ctx), tool))?;
     let size = v.stamp.size;
     let body = match upload::upload_chunks(&ctx.client, &session, &v.path, |sent| {
-        tracing::info!(tool, sent, size, "enviando vídeo");
+        tracing::info!(tool, sent, size, "uploading video");
     })
     .await
     {
         Ok(b) => b,
         Err(e) => {
             if let Some(rn) = &session.resource_name {
-                let msg = format!("O envio do vídeo falhou: {e} Desfaça para remover o upload.");
+                let msg = format!("The video upload failed: {e} Undo to remove the upload.");
                 return Ok(outcome(rn, None, None, None, Some(msg)));
             }
             let err = translate(e, Some(ctx), tool);
@@ -592,13 +592,10 @@ pub(crate) async fn run_upload(
         .clone()
         .or_else(|| upload::upload_resource_name(&body))
     else {
-        tracing::error!(
-            tool,
-            "vídeo enviado, mas a resposta não trouxe o nome do upload"
-        );
+        tracing::error!(tool, "video uploaded but the response has no upload name");
         return Ok(Applied {
-            after: json!({ "mensagem": format!(
-                "O vídeo foi enviado, mas o Google não devolveu o nome do upload. {CHECK_UPLOADS}"
+            after: json!({ "message": format!(
+                "The video was uploaded, but Google did not return the upload name. {CHECK_UPLOADS}"
             ) }),
             inverse: None,
         });
@@ -611,8 +608,8 @@ pub(crate) async fn run_upload(
             Err(e) => {
                 let e = translate(e, Some(ctx), tool);
                 let msg = format!(
-                    "O vídeo foi enviado, mas não deu para ler o estado do processamento: {} \
-                 Quando terminar, crie o asset com {}.",
+                    "The video was uploaded, but its processing state could not be read: {} \
+                 When it finishes, create the asset with {}.",
                     e.message,
                     create_hint(&rn, None)
                 );
@@ -624,12 +621,12 @@ pub(crate) async fn run_upload(
     if st != "PROCESSED" {
         let msg = if FINAL_STATES.contains(&st) {
             format!(
-                "O YouTube não aceitou o vídeo (estado {st}); o asset não foi criado. Desfaça \
-                 para remover o upload."
+                "YouTube did not accept the video (state {st}); the asset was not created. Undo \
+                 to remove the upload."
             )
         } else {
             format!(
-                "O vídeo ainda está processando. Quando terminar, crie o asset com {}.",
+                "The video is still processing. When it finishes, create the asset with {}.",
                 create_hint(&rn, vid)
             )
         };
@@ -637,7 +634,7 @@ pub(crate) async fn run_upload(
     }
     let Some(id) = vid else {
         let msg = format!(
-            "O vídeo foi processado, mas o Google não informou o video_id. Crie o asset com {}.",
+            "The video was processed, but Google did not return the video_id. Create the asset with {}.",
             create_hint(&rn, None)
         );
         return Ok(outcome(&rn, Some(st), None, None, Some(msg)));
@@ -658,23 +655,23 @@ pub(crate) async fn run_upload(
                 .and_then(|r| r["assetResult"]["resourceName"].as_str());
             let msg = real.is_none().then(|| {
                 format!(
-                    "O asset do vídeo foi criado, mas a resposta não trouxe o nome; procure o \
-                     asset do vídeo {id} com gaql_search."
+                    "The video asset was created, but the response has no name; look for the \
+                     asset of video {id} with gaql_search."
                 )
             });
             Ok(outcome(&rn, Some(st), Some(id), real, msg))
         }
         Err(e) => {
             let e = translate(e, Some(ctx), tool);
-            // Talvez aplicado (timeout, 5xx): o asset pode existir.
+            // Maybe applied (timeout, 5xx): the asset may exist.
             let what = if e.code == codes::EXECUTION_FAILED {
-                "pode não ter sido criado"
+                "may not have been created"
             } else {
-                "não foi criado"
+                "was not created"
             };
             let msg = format!(
-                "O vídeo foi processado, mas o asset {what}: {} Se ele não estiver na conta, \
-                 crie com {}.",
+                "The video was processed, but the asset {what}: {} If it is not in the \
+                 account, create it with {}.",
                 e.message,
                 create_hint(&rn, Some(id))
             );

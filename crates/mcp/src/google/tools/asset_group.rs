@@ -1,18 +1,18 @@
-//! `update_asset_group`: edita um grupo de recursos (asset group) da Performance Max.
+//! `update_asset_group`: edits a Performance Max asset group.
 //!
-//! - nome, status e URLs finais viram `FieldChange` (via [`Edits`]);
-//! - ativos e sinais novos são criados no mesmo mutate (texto novo = `asset` +
-//!   `asset_group_asset`) e a inversa é `RemoveCreated` dos vínculos e sinais;
-//! - remover ativo ou sinal é irreversível. Cada nome precisa existir neste grupo (e
-//!   não estar removido), senão `NOT_FOUND` e nada é enviado;
-//! - os mínimos e máximos de cada tipo são conferidos contra as contagens atuais.
+//! - name, status and final URLs become `FieldChange`s (through [`Edits`]);
+//! - new assets and signals are created in the same mutate (new text = `asset` +
+//!   `asset_group_asset`) and the inverse is `RemoveCreated` of the links and signals;
+//! - removing an asset or signal is irreversible. Each name must exist in this asset
+//!   group (and not be removed), otherwise `NOT_FOUND` and nothing is sent;
+//! - each type's minimums and maximums are checked against the current counts.
 //!
-//! Editar campos e criar itens na mesma chamada não é aceito: a inversa seria dupla.
-//! Com remoções junto, vale a regra do irreversível.
+//! Editing fields and creating items in the same call is not accepted: it would need
+//! two inverses. With removals included, the irreversible rule applies.
 //!
-//! Imagens: asset existente, arquivo ou URL https. Arquivo e URL são lidos só depois
-//! de todas as checagens locais e das leituras do grupo, num [`ImagePool`] (os mesmos
-//! bytes viram um asset só, com o nome pelo conteúdo).
+//! Images: existing asset, file or https URL. Files and URLs are loaded only after all
+//! local checks and asset group reads, in an [`ImagePool`] (the same bytes become a
+//! single asset, named after their content).
 
 use std::collections::HashSet;
 
@@ -44,7 +44,7 @@ const UPDATE_ASSET_GROUP: &str = "update_asset_group";
 const SUMMARY_ITEMS: usize = 5;
 pub(crate) const SEARCH_THEME_MAX: usize = 80;
 
-// ------------------------------------------------------------------ tipos
+// -------------------------------------------------------------------- types
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FieldType {
@@ -79,9 +79,9 @@ impl FieldType {
             .find(|t| t.api() == up)
             .ok_or_else(|| {
                 invalid(format!(
-                    "{field}: tipo de ativo desconhecido '{raw}'; use HEADLINE, LONG_HEADLINE, \
+                    "{field}: unknown asset type '{raw}'; use HEADLINE, LONG_HEADLINE, \
                      DESCRIPTION, MARKETING_IMAGE, SQUARE_MARKETING_IMAGE, \
-                     PORTRAIT_MARKETING_IMAGE, LOGO, LANDSCAPE_LOGO ou YOUTUBE_VIDEO."
+                     PORTRAIT_MARKETING_IMAGE, LOGO, LANDSCAPE_LOGO or YOUTUBE_VIDEO."
                 ))
                 .with_field(field)
             })
@@ -103,19 +103,19 @@ impl FieldType {
 
     pub(crate) fn label(self) -> &'static str {
         match self {
-            FieldType::Headline => "título(s)",
-            FieldType::LongHeadline => "título(s) longo(s)",
-            FieldType::Description => "descrição(ões)",
-            FieldType::MarketingImage => "imagem(ns) 1.91:1",
-            FieldType::SquareMarketingImage => "imagem(ns) 1:1",
-            FieldType::PortraitMarketingImage => "imagem(ns) 4:5",
-            FieldType::Logo => "logo(s) 1:1",
-            FieldType::LandscapeLogo => "logo(s) 4:1",
-            FieldType::YoutubeVideo => "vídeo(s)",
+            FieldType::Headline => "headline(s)",
+            FieldType::LongHeadline => "long headline(s)",
+            FieldType::Description => "description(s)",
+            FieldType::MarketingImage => "1.91:1 image(s)",
+            FieldType::SquareMarketingImage => "1:1 image(s)",
+            FieldType::PortraitMarketingImage => "4:5 image(s)",
+            FieldType::Logo => "1:1 logo(s)",
+            FieldType::LandscapeLogo => "4:1 logo(s)",
+            FieldType::YoutubeVideo => "video(s)",
         }
     }
 
-    /// Texto máximo (em caracteres) dos tipos de texto.
+    /// Maximum text length (in characters) of the text types.
     pub(crate) fn text_max(self) -> Option<usize> {
         match self {
             FieldType::Headline => Some(30),
@@ -124,7 +124,7 @@ impl FieldType {
         }
     }
 
-    /// Papel da imagem nos tipos de imagem (proporção e tamanho mínimo).
+    /// Image role of the image types (aspect ratio and minimum size).
     fn image_kind(self) -> Option<ImageKind> {
         match self {
             FieldType::MarketingImage => Some(ImageKind::Landscape),
@@ -160,31 +160,31 @@ impl FieldType {
 struct AssetIn {
     /// `HEADLINE`, `LONG_HEADLINE`, `DESCRIPTION`, `MARKETING_IMAGE` (1.91:1),
     /// `SQUARE_MARKETING_IMAGE` (1:1), `PORTRAIT_MARKETING_IMAGE` (4:5), `LOGO`,
-    /// `LANDSCAPE_LOGO` ou `YOUTUBE_VIDEO`.
+    /// `LANDSCAPE_LOGO` or `YOUTUBE_VIDEO`.
     field_type: String,
-    /// Texto novo (só `HEADLINE`, `LONG_HEADLINE` e `DESCRIPTION`).
+    /// New text (only `HEADLINE`, `LONG_HEADLINE` and `DESCRIPTION`).
     #[serde(default)]
     text: Option<String>,
-    /// Imagem (só tipos de imagem): `{"asset": "customers/…/assets/…"}`,
-    /// `{"file_path": "/caminho/absoluto.png"}` ou `{"url": "https://…"}`.
+    /// Image (image types only): `{"asset": "customers/…/assets/…"}`,
+    /// `{"file_path": "/absolute/path.png"}` or `{"url": "https://…"}`.
     #[serde(default)]
     #[schemars(with = "Option<ImageRef>")]
     image: Option<Value>,
-    /// Id do vídeo do YouTube (só `YOUTUBE_VIDEO`) ou um link (`youtu.be/…`,
+    /// YouTube video id (only `YOUTUBE_VIDEO`) or a link (`youtu.be/…`,
     /// `youtube.com/watch?v=…`, `youtube.com/shorts/…`).
     #[serde(default)]
     youtube_video_id: Option<String>,
-    /// Nome de um asset que já existe na conta, de qualquer tipo.
+    /// Name of an asset that already exists in the account, of any type.
     #[serde(default)]
     asset: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, JsonSchema)]
 struct SignalsIn {
-    /// Nomes de público (`customers/123/audiences/456`).
+    /// Audience names (`customers/123/audiences/456`).
     #[serde(default)]
     audiences: Option<Vec<String>>,
-    /// Temas de busca (texto livre).
+    /// Search themes (free text).
     #[serde(default)]
     search_themes: Option<Vec<String>>,
 }
@@ -197,30 +197,30 @@ struct UpdateAssetGroupInput {
     asset_group_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// `ACTIVE` ou `PAUSED`.
+    /// `ACTIVE` or `PAUSED`.
     #[serde(default)]
     status: Option<EditStatus>,
     #[serde(default)]
     final_urls: Option<Vec<String>>,
-    /// Ativos a incluir (textos novos viram assets criados junto).
+    /// Assets to add (new texts become assets created in the same call).
     #[serde(default)]
     add_assets: Option<Vec<AssetIn>>,
-    /// Nomes de `asset_group_asset` deste grupo (`gaql_search` em `asset_group_asset`).
+    /// `asset_group_asset` names of this asset group (`gaql_search` on `asset_group_asset`).
     #[serde(default)]
     remove_assets: Option<Vec<String>>,
-    /// Sinais de público e temas de busca a incluir.
+    /// Audience signals and search themes to add.
     #[serde(default)]
     add_signals: Option<SignalsIn>,
-    /// Nomes de `asset_group_signal` deste grupo.
+    /// `asset_group_signal` names of this asset group.
     #[serde(default)]
     remove_signals: Option<Vec<String>>,
 }
 
-/// De onde vem o ativo a incluir.
+/// Where the asset to add comes from.
 enum Source {
     NewText(String),
     NewVideo(String),
-    /// Arquivo ou URL, carregado só na montagem das operações.
+    /// File or URL, loaded only when the operations are built.
     NewImage(ImageIn),
     Existing(String),
 }
@@ -230,17 +230,17 @@ struct AddAsset {
     source: Source,
 }
 
-/// Vínculo atual do grupo.
+/// Current link of the asset group.
 struct GroupAsset {
     rn: String,
     field_type: Option<FieldType>,
     text: Option<String>,
 }
 
-// -------------------------------------------------------------- validação
+// --------------------------------------------------------------- validation
 
-/// Imagem da entrada (`field` = `add_assets[i].image`), lida sem carregar nada: asset
-/// existente (desta conta) ou arquivo/URL para carregar depois, no papel do tipo.
+/// Input image (`field` = `add_assets[i].image`), parsed without loading anything: an
+/// existing asset (of this account) or a file/URL to load later, in the type's role.
 fn image_source(img: &Value, ctx: &Ctx, kind: ImageKind, field: &str) -> Result<Source, ToolError> {
     let parsed = image_in(ctx, img, kind, field.to_string())?;
     Ok(match parsed.r {
@@ -263,7 +263,7 @@ pub(crate) fn collection_rn(
     match raw.strip_prefix(&prefix) {
         Some(id) if !id.is_empty() && !id.contains('/') => Ok(raw.to_string()),
         _ => Err(invalid(format!(
-            "{field}: esperado um nome no formato {prefix}ID (recebido '{raw}')."
+            "{field}: expected a name in the format {prefix}ID (got '{raw}')."
         ))
         .with_field(field)),
     }
@@ -289,20 +289,23 @@ fn parse_add(ctx: &Ctx, a: &AssetIn, i: usize) -> Result<AddAsset, ToolError> {
     .count();
     if given != 1 {
         return Err(invalid(format!(
-            "{f}: informe exatamente um entre text, image, youtube_video_id e asset."
+            "{f}: provide exactly one of text, image, youtube_video_id and asset."
         ))
         .with_field(f));
     }
     let source = if let Some(t) = &a.text {
         let max = field_type.text_max().ok_or_else(|| {
-            invalid(format!("{f}.text: {} não aceita texto.", field_type.api()))
-                .with_field(format!("{f}.text"))
+            invalid(format!(
+                "{f}.text: {} does not accept text.",
+                field_type.api()
+            ))
+            .with_field(format!("{f}.text"))
         })?;
         let t = t.trim();
         let n = t.chars().count();
         if n == 0 || n > max {
             return Err(invalid(format!(
-                "{f}.text deve ter de 1 a {max} caracteres (veio com {n})."
+                "{f}.text must have 1 to {max} characters (got {n})."
             ))
             .with_field(format!("{f}.text")));
         }
@@ -310,7 +313,7 @@ fn parse_add(ctx: &Ctx, a: &AssetIn, i: usize) -> Result<AddAsset, ToolError> {
     } else if let Some(img) = &a.image {
         let Some(kind) = field_type.image_kind() else {
             return Err(invalid(format!(
-                "{f}.image: {} não é um tipo de imagem.",
+                "{f}.image: {} is not an image type.",
                 field_type.api()
             ))
             .with_field(format!("{f}.image")));
@@ -318,10 +321,10 @@ fn parse_add(ctx: &Ctx, a: &AssetIn, i: usize) -> Result<AddAsset, ToolError> {
         image_source(img, ctx, kind, &format!("{f}.image"))?
     } else if let Some(v) = &a.youtube_video_id {
         if field_type != FieldType::YoutubeVideo {
-            return Err(
-                invalid(format!("{f}.youtube_video_id só vale para YOUTUBE_VIDEO."))
-                    .with_field(format!("{f}.youtube_video_id")),
-            );
+            return Err(invalid(format!(
+                "{f}.youtube_video_id is valid only for YOUTUBE_VIDEO."
+            ))
+            .with_field(format!("{f}.youtube_video_id")));
         }
         Source::NewVideo(youtube_id_or_link(v, &format!("{f}.youtube_video_id"))?)
     } else {
@@ -331,7 +334,7 @@ fn parse_add(ctx: &Ctx, a: &AssetIn, i: usize) -> Result<AddAsset, ToolError> {
     Ok(AddAsset { field_type, source })
 }
 
-/// Id de vídeo do YouTube: 11 caracteres (letras, dígitos, `_` e `-`).
+/// YouTube video id: 11 characters (letters, digits, `_` and `-`).
 pub(crate) fn youtube_id(raw: &str, field: &str) -> Result<String, ToolError> {
     let v = raw.trim();
     if v.len() != 11
@@ -340,15 +343,15 @@ pub(crate) fn youtube_id(raw: &str, field: &str) -> Result<String, ToolError> {
             .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
     {
         return Err(invalid(format!(
-            "{field} deve ter 11 caracteres (o id do vídeo, não a URL)."
+            "{field} must have 11 characters (the video id, not the URL)."
         ))
         .with_field(field));
     }
     Ok(v.to_string())
 }
 
-/// Como [`youtube_id`], aceitando também um link do YouTube (`youtu.be/<id>`,
-/// `youtube.com/watch?v=<id>` ou `youtube.com/shorts/<id>`), de onde o id é tirado.
+/// Like [`youtube_id`], also accepting a YouTube link (`youtu.be/<id>`,
+/// `youtube.com/watch?v=<id>` or `youtube.com/shorts/<id>`), from which the id is taken.
 pub(crate) fn youtube_id_or_link(raw: &str, field: &str) -> Result<String, ToolError> {
     let v = raw.trim();
     let Some(id) = youtube_link_id(v) else {
@@ -356,13 +359,13 @@ pub(crate) fn youtube_id_or_link(raw: &str, field: &str) -> Result<String, ToolE
     };
     youtube_id(&id, field).map_err(|_| {
         invalid(format!(
-            "{field}: o link não traz um id de vídeo de 11 caracteres."
+            "{field}: the link does not contain an 11-character video id."
         ))
         .with_field(field)
     })
 }
 
-/// Id do vídeo num link do YouTube; `None` se não é um link do YouTube.
+/// Video id in a YouTube link; `None` if it is not a YouTube link.
 fn youtube_link_id(raw: &str) -> Option<String> {
     let with_scheme = if raw.contains("://") {
         raw.to_string()
@@ -393,18 +396,18 @@ fn youtube_link_id(raw: &str) -> Option<String> {
     }
 }
 
-/// Vínculo `rn` (`{grupo}~{asset}~{tipo}`) que já existe no grupo ou já veio nesta
-/// chamada: a mensagem diz qual dos dois.
+/// Link `rn` (`{group}~{asset}~{type}`) that already exists in the asset group or was
+/// already given in this call: the message says which.
 fn link_taken(rn: &str, current: &[GroupAsset], ft: &str, repeated: String) -> ToolError {
     let msg = if current.iter().any(|a| a.rn == rn) {
-        format!("Este asset já está no asset group como {ft}.")
+        format!("This asset is already in the asset group as {ft}.")
     } else {
         repeated
     };
     invalid(msg).with_field("add_assets")
 }
 
-/// Lista sem repetição de nomes de uma coleção.
+/// List of names of a collection, without repeats.
 fn parse_rns(
     ctx: &Ctx,
     raw: &[String],
@@ -416,7 +419,7 @@ fn parse_rns(
         let f = format!("{field}[{i}]");
         let rn = collection_rn(ctx, r, collection, &f)?;
         if out.contains(&rn) {
-            return Err(invalid(format!("{rn} aparece mais de uma vez.")).with_field(f));
+            return Err(invalid(format!("{rn} appears more than once.")).with_field(f));
         }
         out.push(rn);
     }
@@ -431,7 +434,7 @@ pub(crate) fn list(items: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     if items.len() > SUMMARY_ITEMS {
-        out.push_str(&format!(", e mais {}", items.len() - SUMMARY_ITEMS));
+        out.push_str(&format!(", and {} more", items.len() - SUMMARY_ITEMS));
     }
     out
 }
@@ -440,7 +443,7 @@ fn search(ctx: &Ctx) -> impl Fn(adsconsole_google_ads::error::GoogleError) -> To
     move |e| translate(e, Some(ctx), UPDATE_ASSET_GROUP)
 }
 
-// ------------------------------------------------------------------ leituras
+// -------------------------------------------------------------------- reads
 
 async fn group_assets(ctx: &Ctx, id: &str) -> Result<Vec<GroupAsset>, ToolError> {
     let query = format!(
@@ -484,8 +487,8 @@ async fn group_signals(ctx: &Ctx, id: &str) -> Result<Vec<String>, ToolError> {
         .collect())
 }
 
-/// Recusa o que deixa o grupo abaixo do mínimo (nos tipos com remoção) ou acima do
-/// máximo (nos tipos com inclusão), contando o que já existe.
+/// Refuses what would leave the asset group below the minimum (for types with
+/// removals) or above the maximum (for types with additions), counting what exists.
 fn check_counts(
     current: &[GroupAsset],
     adds: &[AddAsset],
@@ -498,7 +501,7 @@ fn check_counts(
         let after = now + add - rem;
         if rem > 0 && after < t.min() {
             return Err(invalid(format!(
-                "O grupo de recursos ficaria com {after} {}; o mínimo é {}.",
+                "The asset group would have {after} {}; the minimum is {}.",
                 t.label(),
                 t.min()
             ))
@@ -509,7 +512,7 @@ fn check_counts(
             && after > max
         {
             return Err(invalid(format!(
-                "O grupo de recursos ficaria com {after} {}; o máximo é {max}.",
+                "The asset group would have {after} {}; the maximum is {max}.",
                 t.label()
             ))
             .with_field("add_assets"));
@@ -518,7 +521,7 @@ fn check_counts(
     Ok(())
 }
 
-// ---------------------------------------------------------------- ferramenta
+// --------------------------------------------------------------------- tool
 
 struct UpdateAssetGroup;
 
@@ -527,12 +530,12 @@ impl WriteTool for UpdateAssetGroup {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateAssetGroupInput>(
             UPDATE_ASSET_GROUP,
-            "Edita um grupo de recursos (asset group) de uma campanha Performance Max: nome, \
-             status, URLs finais, ativos (títulos, descrições, imagens, logos, vídeos) e sinais \
-             (públicos e temas de busca). Os mínimos do grupo são respeitados (3 títulos, \
-             1 título longo, 2 descrições, 1 imagem 1.91:1 e 1 imagem 1:1). Remover ativos \
-             ou sinais não pode ser desfeito; editar campos e incluir itens na mesma chamada \
-             não é aceito.",
+            "Edits an asset group of a Performance Max campaign: name, status, final URLs, \
+             assets (headlines, descriptions, images, logos, videos) and signals (audiences \
+             and search themes). The asset group minimums are enforced (3 headlines, 1 long \
+             headline, 2 descriptions, one 1.91:1 image and one 1:1 image). Removing assets or \
+             signals cannot be undone. Editing fields and adding items in the same call is \
+             not accepted.",
             ToolGroup::Edit,
             true,
         )
@@ -578,33 +581,33 @@ impl WriteTool for UpdateAssetGroup {
             let f = format!("add_signals.search_themes[{i}]");
             let t = t.trim();
             if t.is_empty() || t.chars().count() > SEARCH_THEME_MAX {
-                return Err(invalid(format!(
-                    "{f} deve ter de 1 a {SEARCH_THEME_MAX} caracteres."
-                ))
-                .with_field(f));
+                return Err(
+                    invalid(format!("{f} must have 1 to {SEARCH_THEME_MAX} characters."))
+                        .with_field(f),
+                );
             }
             themes.push(t.to_string());
         }
         if let Some(n) = &input.name
             && n.trim().is_empty()
         {
-            return Err(invalid("O nome não pode ficar vazio.").with_field("name"));
+            return Err(invalid("The name cannot be empty.").with_field("name"));
         }
         let urls = input.final_urls.as_deref().map(final_urls).transpose()?;
         let has_edit = input.name.is_some() || input.status.is_some() || urls.is_some();
         let creating = !adds.is_empty() || !audiences.is_empty() || !themes.is_empty();
         let removing = !remove_assets.is_empty() || !remove_signals.is_empty();
         if !has_edit && !creating && !removing {
-            return Err(invalid("Informe ao menos uma alteração."));
+            return Err(invalid("Provide at least one change."));
         }
         if has_edit && creating && !removing {
             return Err(invalid(
-                "Altere nome, status ou URLs finais em uma chamada e inclua ativos ou sinais \
-                 em outra, para cada uma poder ser desfeita.",
+                "Change name, status or final URLs in one call and add assets or signals in \
+                 another, so each one can be undone.",
             ));
         }
 
-        // Leituras: o grupo, os vínculos e os sinais atuais.
+        // Reads: the asset group, its current links and signals.
         let group = read_one(
             ctx,
             UPDATE_ASSET_GROUP,
@@ -618,10 +621,7 @@ impl WriteTool for UpdateAssetGroup {
         .ok_or_else(|| {
             ToolError::new(
                 codes::NOT_FOUND,
-                format!(
-                    "Grupo de recursos {id} não encontrado na conta {}.",
-                    ctx.customer_id
-                ),
+                format!("Asset group {id} not found in account {}.", ctx.customer_id),
             )
         })?;
         let current = if adds.is_empty() && remove_assets.is_empty() {
@@ -640,7 +640,7 @@ impl WriteTool for UpdateAssetGroup {
             removed.push(current.iter().find(|a| &a.rn == rn).ok_or_else(|| {
                 ToolError::new(
                     codes::NOT_FOUND,
-                    format!("O ativo {rn} não está no grupo de recursos {id}."),
+                    format!("Asset {rn} is not in asset group {id}."),
                 )
                 .with_field(format!("remove_assets[{i}]"))
             })?);
@@ -649,15 +649,15 @@ impl WriteTool for UpdateAssetGroup {
             if !signal_rows.contains(rn) {
                 return Err(ToolError::new(
                     codes::NOT_FOUND,
-                    format!("O sinal {rn} não está no grupo de recursos {id}."),
+                    format!("Signal {rn} is not in asset group {id}."),
                 )
                 .with_field(format!("remove_signals[{i}]")));
             }
         }
         check_counts(&current, &adds, &removed)?;
 
-        // Edições de campos.
-        let head = format!("Grupo de recursos {id}");
+        // Field edits.
+        let head = format!("Asset group {id}");
         let mut plan = if has_edit {
             let mut edits = Edits::new(head.clone(), &ctx.currency);
             if let Some(name) = &input.name {
@@ -666,7 +666,7 @@ impl WriteTool for UpdateAssetGroup {
                     "asset_group.name",
                     &group,
                     json!(name),
-                    "nome",
+                    "name",
                     Show::Quoted,
                 )?;
             }
@@ -686,7 +686,7 @@ impl WriteTool for UpdateAssetGroup {
                     "asset_group.final_urls",
                     &group,
                     u,
-                    "URLs finais",
+                    "final URLs",
                     Show::List,
                 )?;
             }
@@ -703,7 +703,7 @@ impl WriteTool for UpdateAssetGroup {
             }
         };
 
-        // Criações (as imagens novas são carregadas só aqui).
+        // Creates (new images are loaded only here).
         let mut temps = TempIds::new(&ctx.customer_id);
         let mut pool = ImagePool::default();
         let mut order: Vec<String> = Vec::new();
@@ -725,7 +725,7 @@ impl WriteTool for UpdateAssetGroup {
                             &rn,
                             &current,
                             ft,
-                            format!("O ativo {asset} aparece mais de uma vez como {ft}."),
+                            format!("Asset {asset} appears more than once as {ft}."),
                         ));
                     }
                     plan.operations
@@ -761,7 +761,7 @@ impl WriteTool for UpdateAssetGroup {
                                 .await?;
                             (asset, format!("{ft} {}", image_source_label(&img.r)))
                         }
-                        Source::Existing(_) => return Err(internal("fonte inesperada")),
+                        Source::Existing(_) => return Err(internal("unexpected source")),
                     };
                     let n = asset.rsplit('/').next().unwrap_or_default();
                     let rn = resources::rn(
@@ -769,13 +769,13 @@ impl WriteTool for UpdateAssetGroup {
                         "assetGroupAssets",
                         &format!("{id}~{n}~{ft}"),
                     );
-                    // Os mesmos bytes duas vezes no mesmo tipo dariam o mesmo vínculo.
+                    // The same bytes twice in the same type would produce the same link.
                     if !seen.insert(rn.clone()) {
                         return Err(link_taken(
                             &rn,
                             &current,
                             ft,
-                            format!("A mesma imagem aparece mais de uma vez como {ft}."),
+                            format!("The same image appears more than once as {ft}."),
                         ));
                     }
                     plan.operations.push(create_op(
@@ -794,7 +794,7 @@ impl WriteTool for UpdateAssetGroup {
             order.push(aga_rn);
         }
         if !added.is_empty() {
-            parts.push(format!("incluir {}", list(&added)));
+            parts.push(format!("add {}", list(&added)));
         }
         let mut signal_names: Vec<String> = Vec::new();
         for aud in &audiences {
@@ -810,7 +810,7 @@ impl WriteTool for UpdateAssetGroup {
             });
             order.push(rn);
             signal_names.push(format!(
-                "público {}",
+                "audience {}",
                 aud.rsplit('/').next().unwrap_or_default()
             ));
         }
@@ -826,35 +826,35 @@ impl WriteTool for UpdateAssetGroup {
                 fields: vec!["asset_group_signal.search_theme.text"],
             });
             order.push(rn);
-            signal_names.push(format!("tema '{t}'"));
+            signal_names.push(format!("theme '{t}'"));
         }
         if !signal_names.is_empty() {
-            parts.push(format!("incluir sinal(is) {}", list(&signal_names)));
+            parts.push(format!("add signal(s) {}", list(&signal_names)));
         }
 
-        // Remoções.
+        // Removals.
         if !removed.is_empty() {
             let names: Vec<String> = removed
                 .iter()
                 .map(|a| {
-                    let ft = a.field_type.map_or("ativo", FieldType::api);
+                    let ft = a.field_type.map_or("asset", FieldType::api);
                     match &a.text {
                         Some(t) => format!("{ft} '{t}'"),
                         None => format!("{ft} {}", a.rn.rsplit('/').next().unwrap_or_default()),
                     }
                 })
                 .collect();
-            parts.push(format!("remover {}", list(&names)));
+            parts.push(format!("remove {}", list(&names)));
         }
         for rn in remove_assets.iter().chain(&remove_signals) {
             plan.operations
                 .push(resources::remove_op(rn).map_err(internal)?);
         }
         if !remove_signals.is_empty() {
-            parts.push(format!("remover {} sinal(is)", remove_signals.len()));
+            parts.push(format!("remove {} signal(s)", remove_signals.len()));
         }
 
-        // Resumo e inversa.
+        // Summary and inverse.
         let tail = parts.join("; ");
         plan.summary = match (has_edit, tail.is_empty()) {
             (true, true) => plan.summary,

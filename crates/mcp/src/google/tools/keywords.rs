@@ -1,11 +1,11 @@
-//! Keywords e negativas: `manage_keywords` e `manage_negatives`.
+//! Keywords and negative keywords: `manage_keywords` and `manage_negatives`.
 //!
-//! As criações usam ids temporários (`{pai}~-N`) e têm como inversa `RemoveCreated`;
-//! pausar, ativar e mudar lance são `FieldChange` com `RestoreFields`; remover e trocar
-//! o tipo de correspondência são irreversíveis (`InverseSpec::None`).
+//! Creates use temporary ids (`{parent}~-N`) and have `RemoveCreated` as the inverse;
+//! pause, enable and bid changes are `FieldChange`s with `RestoreFields`; remove and
+//! match type changes are irreversible (`InverseSpec::None`).
 //!
-//! Os construtores de critério (`criterion_temp`, `create_op`, `keyword_body`,
-//! `keyword_text`) são `pub(crate)` para a segmentação (Task 11) e as criações (Task 13).
+//! The criterion builders (`criterion_temp`, `create_op`, `keyword_body`,
+//! `keyword_text`) are `pub(crate)` for the targeting and campaign creation tools.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::Decimal;
@@ -40,12 +40,12 @@ const MAX_KEYWORDS: usize = 200;
 const MAX_TEXT_CHARS: usize = 80;
 const MAX_TEXT_WORDS: usize = 10;
 const MAX_LIST_NAME_CHARS: usize = 255;
-/// Quantas keywords aparecem no resumo antes do "e mais N".
+/// How many keywords the summary shows before "and N more".
 const SUMMARY_ITEMS: usize = 5;
 
 pub(crate) const IRREVERSIBLE_WARNING: &str = "This change cannot be undone.";
-const MATCH_TYPE_WARNING: &str = "O Google não permite trocar o tipo de correspondência; \
-                                  a keyword antiga será removida e uma nova criada.";
+const MATCH_TYPE_WARNING: &str = "Google does not allow changing the match type; \
+                                  the old keyword will be removed and a new one created.";
 
 // ---------------------------------------------------------------- helpers
 
@@ -67,7 +67,7 @@ impl MatchType {
     }
 }
 
-/// Tipo de correspondência obrigatório, sem diferenciar maiúsculas.
+/// Required match type, case-insensitive.
 pub(crate) fn match_type(v: &Option<String>, field: &str) -> Result<MatchType, ToolError> {
     let raw = required(v, field)?;
     match raw.trim().to_uppercase().as_str() {
@@ -75,46 +75,46 @@ pub(crate) fn match_type(v: &Option<String>, field: &str) -> Result<MatchType, T
         "PHRASE" => Ok(MatchType::Phrase),
         "BROAD" => Ok(MatchType::Broad),
         _ => Err(invalid(format!(
-            "{field}: tipo de correspondência desconhecido '{raw}'; use EXACT, PHRASE ou BROAD."
+            "{field}: unknown match type '{raw}'; use EXACT, PHRASE or BROAD."
         ))
         .with_field(field)),
     }
 }
 
-/// Texto de keyword da entrada: 1 a 80 caracteres e até 10 palavras. `field` é o
-/// campo apontado no erro (ex.: `keywords[0].text`).
+/// Input keyword text: 1 to 80 characters and up to 10 words. `field` is the field
+/// named in the error (e.g. `keywords[0].text`).
 pub(crate) fn keyword_text(raw: Option<&str>, field: &str) -> Result<String, ToolError> {
     let t = raw
         .map(str::trim)
         .filter(|t| !t.is_empty())
-        .ok_or_else(|| invalid(format!("Informe {field}.")).with_field(field))?;
+        .ok_or_else(|| invalid(format!("Provide {field}.")).with_field(field))?;
     if t.chars().count() > MAX_TEXT_CHARS {
         return Err(invalid(format!(
-            "{field}: a keyword tem no máximo {MAX_TEXT_CHARS} caracteres ('{t}')."
+            "{field}: a keyword can have at most {MAX_TEXT_CHARS} characters ('{t}')."
         ))
         .with_field(field));
     }
     if t.split_whitespace().count() > MAX_TEXT_WORDS {
         return Err(invalid(format!(
-            "{field}: a keyword tem no máximo {MAX_TEXT_WORDS} palavras ('{t}')."
+            "{field}: a keyword can have at most {MAX_TEXT_WORDS} words ('{t}')."
         ))
         .with_field(field));
     }
     Ok(t.to_string())
 }
 
-/// Valor obrigatório da entrada; faltando, `INVALID_INPUT` apontando o campo.
+/// Required input value; when missing, `INVALID_INPUT` naming the field.
 pub(crate) fn required<'a, T>(v: &'a Option<T>, field: &str) -> Result<&'a T, ToolError> {
     v.as_ref()
-        .ok_or_else(|| invalid(format!("Informe {field}.")).with_field(field))
+        .ok_or_else(|| invalid(format!("Provide {field}.")).with_field(field))
 }
 
-/// Id numérico obrigatório.
+/// Required numeric id.
 fn required_id(v: &Option<String>, field: &str) -> Result<String, ToolError> {
     valid_id(required(v, field)?, field)
 }
 
-/// Nome temporário de um critério filho de `parent_id`: `customers/{c}/{collection}/{pai}~-N`.
+/// Temporary name of a child criterion of `parent_id`: `customers/{c}/{collection}/{parent}~-N`.
 pub(crate) fn criterion_temp(
     ctx: &Ctx,
     temps: &mut TempIds,
@@ -133,8 +133,8 @@ pub(crate) fn create_op(rn: &str, mut body: Value) -> Result<Value, ToolError> {
     Ok(json!({ key: { "create": body } }))
 }
 
-/// Corpo de um critério de keyword: pai (`adGroup`, `campaign` ou `sharedSet`) e
-/// `keyword {text, matchType}`; `negative: true` quando for negativa.
+/// Body of a keyword criterion: parent (`adGroup`, `campaign` or `sharedSet`) and
+/// `keyword {text, matchType}`; `negative: true` for a negative keyword.
 pub(crate) fn keyword_body(
     parent_field: &str,
     parent_rn: &str,
@@ -154,13 +154,13 @@ pub(crate) fn keyword_body(
 
 fn unique(ids: &mut Vec<String>, id: &str, field: &str) -> Result<(), ToolError> {
     if ids.iter().any(|i| i == id) {
-        return Err(invalid(format!("O critério {id} aparece mais de uma vez.")).with_field(field));
+        return Err(invalid(format!("Criterion {id} appears more than once.")).with_field(field));
     }
     ids.push(id.to_string());
     Ok(())
 }
 
-/// Lista curta para o resumo: até 5 itens e "e mais N".
+/// Short list for the summary: up to 5 items and "and N more".
 fn list(items: &[String]) -> String {
     let mut out = items
         .iter()
@@ -169,7 +169,7 @@ fn list(items: &[String]) -> String {
         .collect::<Vec<_>>()
         .join(", ");
     if items.len() > SUMMARY_ITEMS {
-        out.push_str(&format!(", e mais {}", items.len() - SUMMARY_ITEMS));
+        out.push_str(&format!(", and {} more", items.len() - SUMMARY_ITEMS));
     }
     out
 }
@@ -178,21 +178,21 @@ fn described(text: &str, match_type: &str) -> String {
     format!("'{text}' [{match_type}]")
 }
 
-/// No máximo [`MAX_KEYWORDS`] por chamada.
+/// At most [`MAX_KEYWORDS`] per call.
 fn at_most_max(n: usize) -> Result<(), ToolError> {
     if n > MAX_KEYWORDS {
         return Err(invalid(format!(
-            "No máximo {MAX_KEYWORDS} keywords por chamada (vieram {n})."
+            "At most {MAX_KEYWORDS} keywords per call (got {n})."
         ))
         .with_field("keywords"));
     }
     Ok(())
 }
 
-/// Entre 1 e [`MAX_KEYWORDS`] por chamada.
+/// Between 1 and [`MAX_KEYWORDS`] per call.
 fn limit_keywords(n: usize) -> Result<(), ToolError> {
     if n == 0 {
-        return Err(invalid("Informe ao menos uma keyword.").with_field("keywords"));
+        return Err(invalid("Provide at least one keyword.").with_field("keywords"));
     }
     at_most_max(n)
 }
@@ -212,18 +212,18 @@ enum KeywordAction {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct KeywordIn {
-    /// `add`: texto da keyword (até 80 caracteres e 10 palavras).
+    /// `add`: keyword text (up to 80 characters and 10 words).
     #[serde(default)]
     text: Option<String>,
-    /// `add`: tipo de correspondência. `change_match_type`: o novo tipo.
-    /// `EXACT`, `PHRASE` ou `BROAD` (minúsculas também valem).
+    /// `add`: match type. `change_match_type`: the new match type.
+    /// `EXACT`, `PHRASE` or `BROAD` (lowercase also works).
     #[serde(default)]
     #[schemars(with = "Option<MatchType>")]
     match_type: Option<String>,
-    /// Todas as ações menos `add`: id do critério da keyword no grupo.
+    /// Every action except `add`: criterion id of the keyword in the ad group.
     #[serde(default)]
     criterion_id: Option<String>,
-    /// `add` (opcional) e `set_bid`: lance de CPC, na moeda da conta.
+    /// `add` (optional) and `set_bid`: CPC bid, in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     cpc_bid: Option<Decimal>,
@@ -235,9 +235,9 @@ struct ManageKeywordsInput {
     #[allow(dead_code)]
     account: AccountRef,
     ad_group_id: String,
-    /// `add`, `remove`, `pause`, `enable`, `set_bid` ou `change_match_type`.
+    /// `add`, `remove`, `pause`, `enable`, `set_bid` or `change_match_type`.
     action: KeywordAction,
-    /// Até 200 por chamada.
+    /// Up to 200 per call.
     keywords: Vec<KeywordIn>,
 }
 
@@ -248,9 +248,9 @@ impl WriteTool for ManageKeywords {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<ManageKeywordsInput>(
             MANAGE_KEYWORDS,
-            "Gerencia as keywords de um grupo de anúncios do Google Ads: adicionar (nascem \
-             pausadas), remover, pausar, ativar, mudar o lance ou trocar o tipo de \
-             correspondência. Remover e trocar o tipo não podem ser desfeitos.",
+            "Manages the keywords of a Google Ads ad group: add (keywords are created \
+             paused), remove, pause, enable, set the bid or change the match type. The \
+             remove and change_match_type actions cannot be undone.",
             ToolGroup::Edit,
             true,
         )
@@ -270,9 +270,9 @@ impl WriteTool for ManageKeywords {
             );
         }
         let found = existing_keywords(ctx, &ag, &input.keywords).await?;
-        let head = format!("Grupo de anúncios {ag}");
+        let head = format!("Ad group {ag}");
         match input.action {
-            KeywordAction::Add => unreachable!("tratado acima"),
+            KeywordAction::Add => unreachable!("handled above"),
             KeywordAction::Pause | KeywordAction::Enable => {
                 let status = if input.action == KeywordAction::Pause {
                     EditStatus::Paused
@@ -282,7 +282,7 @@ impl WriteTool for ManageKeywords {
                 let google = status.to_google()?;
                 let mut edits = Edits::new(&head, &ctx.currency);
                 for (rn, row) in &found {
-                    let label = format!("status de {}", quoted(row));
+                    let label = format!("status of {}", quoted(row));
                     edits.set(
                         rn,
                         "ad_group_criterion.status",
@@ -299,7 +299,7 @@ impl WriteTool for ManageKeywords {
                 for (i, ((rn, row), kw)) in found.iter().zip(&input.keywords).enumerate() {
                     let field = format!("keywords[{i}].cpc_bid");
                     let bid = *required(&kw.cpc_bid, &field)?;
-                    let label = format!("lance de {}", quoted(row));
+                    let label = format!("bid of {}", quoted(row));
                     edits.money(
                         rn,
                         "ad_group_criterion.cpc_bid_micros",
@@ -320,7 +320,7 @@ impl WriteTool for ManageKeywords {
                 }
                 Ok(irreversible(
                     format!(
-                        "Remover {} keyword(s) do grupo de anúncios {ag}: {}",
+                        "Removes {} keyword(s) from ad group {ag}: {}",
                         names.len(),
                         list(&names)
                     ),
@@ -334,7 +334,7 @@ impl WriteTool for ManageKeywords {
     }
 }
 
-/// Plano sem inversa, com aviso.
+/// Plan with no inverse, with a warning.
 fn irreversible(
     summary: String,
     warning: &str,
@@ -352,7 +352,7 @@ fn irreversible(
     }
 }
 
-/// `'texto'` da linha lida de `ad_group_criterion`.
+/// `'text'` of the row read from `ad_group_criterion`.
 fn quoted(row: &Value) -> String {
     format!(
         "'{}'",
@@ -392,7 +392,7 @@ fn add_keywords(
     }
     Ok(WritePlan {
         summary: format!(
-            "Adicionar {} keyword(s) ao grupo de anúncios {ag} (nascem pausadas): {}",
+            "Adds {} keyword(s) to ad group {ag} (created paused): {}",
             names.len(),
             list(&names)
         ),
@@ -405,8 +405,8 @@ fn add_keywords(
     })
 }
 
-/// Linhas (`adGroupCriterion`) das keywords informadas, na ordem da entrada, com o nome
-/// do recurso. Id repetido é `INVALID_INPUT`; id que não existe no grupo, `NOT_FOUND`.
+/// Rows (`adGroupCriterion`) of the given keywords, in input order, with the resource
+/// name. A repeated id is `INVALID_INPUT`; an id not in the ad group is `NOT_FOUND`.
 async fn existing_keywords(
     ctx: &Ctx,
     ag: &str,
@@ -444,7 +444,7 @@ async fn existing_keywords(
                 .ok_or_else(|| {
                     ToolError::new(
                         codes::NOT_FOUND,
-                        format!("Keyword {id} não encontrada no grupo {ag}."),
+                        format!("Keyword {id} not found in ad group {ag}."),
                     )
                     .with_field(format!("keywords[{i}].criterion_id"))
                 })
@@ -452,8 +452,9 @@ async fn existing_keywords(
         .collect()
 }
 
-/// Cria o critério com o novo tipo e remove o antigo, no mesmo mutate. A nova keyword
-/// herda o status e o lance da antiga (é uma substituição, não uma keyword a mais).
+/// Creates the criterion with the new match type and removes the old one, in the same
+/// mutate. The new keyword inherits the old one's status and bid (it is a replacement,
+/// not an extra keyword).
 fn change_match_types(
     ctx: &Ctx,
     ag: &str,
@@ -471,7 +472,7 @@ fn change_match_types(
         let kw_text = text(row, "adGroupCriterion.keyword.text").unwrap_or_default();
         if old_type == new_type.to_google() {
             return Err(
-                invalid(format!("A keyword '{kw_text}' já é do tipo {old_type}."))
+                invalid(format!("Keyword '{kw_text}' is already {old_type}."))
                     .with_field(format!("keywords[{i}].match_type")),
             );
         }
@@ -493,7 +494,7 @@ fn change_match_types(
     }
     Ok(irreversible(
         format!(
-            "Trocar o tipo de correspondência de {} keyword(s) no grupo de anúncios {ag}: {}",
+            "Changes the match type of {} keyword(s) in ad group {ag}: {}",
             names.len(),
             list(&names)
         ),
@@ -524,14 +525,14 @@ enum NegativeAction {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct NegativeIn {
-    /// `add` e `create_list`: texto da negativa (até 80 caracteres e 10 palavras).
+    /// `add` and `create_list`: negative keyword text (up to 80 characters and 10 words).
     #[serde(default)]
     text: Option<String>,
-    /// `add` e `create_list`: `EXACT`, `PHRASE` ou `BROAD`.
+    /// `add` and `create_list`: `EXACT`, `PHRASE` or `BROAD`.
     #[serde(default)]
     #[schemars(with = "Option<MatchType>")]
     match_type: Option<String>,
-    /// `remove`: id do critério da negativa.
+    /// `remove`: criterion id of the negative keyword.
     #[serde(default)]
     criterion_id: Option<String>,
 }
@@ -541,30 +542,30 @@ struct ManageNegativesInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// `add` e `remove`: onde fica a negativa. `create_list` é sempre `shared_list` e
-    /// `attach_list` é sempre `campaign`.
+    /// `add` and `remove`: where the negative keyword lives. `create_list` is always
+    /// `shared_list` and `attach_list` is always `campaign`.
     #[serde(default)]
     level: Option<NegativeLevel>,
-    /// `level=campaign` e `attach_list`; em `create_list`, anexa a lista nova à campanha.
+    /// `level=campaign` and `attach_list`; with `create_list`, attaches the new list to this campaign.
     #[serde(default)]
     campaign_id: Option<String>,
     /// `level=ad_group`.
     #[serde(default)]
     ad_group_id: Option<String>,
-    /// `level=shared_list` e `attach_list`.
+    /// `level=shared_list` and `attach_list`.
     #[serde(default)]
     shared_set_id: Option<String>,
-    /// `add`, `remove`, `create_list` ou `attach_list`.
+    /// `add`, `remove`, `create_list` or `attach_list`.
     action: NegativeAction,
-    /// Até 200 por chamada.
+    /// Up to 200 per call.
     #[serde(default)]
     keywords: Option<Vec<NegativeIn>>,
-    /// `create_list`: nome da lista.
+    /// `create_list`: list name.
     #[serde(default)]
     list_name: Option<String>,
 }
 
-/// Onde as negativas de um nível ficam.
+/// Where the negative keywords of a level live.
 struct Level {
     collection: &'static str,
     parent_field: &'static str,
@@ -573,9 +574,9 @@ struct Level {
     negative: bool,
     resource: &'static str,
     watch_fields: Vec<&'static str>,
-    /// Filtro GAQL do pai (`campaign.id`, …) e do tipo de recurso lido.
+    /// GAQL filter of the parent (`campaign.id`, …) and of the resource type read.
     parent_filter: &'static str,
-    /// Condição extra do `remove`: só negativas de keyword ainda não removidas.
+    /// Extra `remove` condition: only keyword negatives not yet removed.
     remove_where: &'static str,
     label: String,
 }
@@ -594,7 +595,7 @@ fn level_of(input: &ManageNegativesInput) -> Result<Level, ToolError> {
                 collection: "campaignCriteria",
                 parent_field: "campaign",
                 parent_collection: "campaigns",
-                label: format!("campanha {id}"),
+                label: format!("campaign {id}"),
                 parent_id: id,
                 negative: true,
                 resource: "campaign_criterion",
@@ -609,7 +610,7 @@ fn level_of(input: &ManageNegativesInput) -> Result<Level, ToolError> {
                 collection: "adGroupCriteria",
                 parent_field: "adGroup",
                 parent_collection: "adGroups",
-                label: format!("grupo de anúncios {id}"),
+                label: format!("ad group {id}"),
                 parent_id: id,
                 negative: true,
                 resource: "ad_group_criterion",
@@ -624,7 +625,7 @@ fn level_of(input: &ManageNegativesInput) -> Result<Level, ToolError> {
                 collection: "sharedCriteria",
                 parent_field: "sharedSet",
                 parent_collection: "sharedSets",
-                label: format!("lista compartilhada {id}"),
+                label: format!("shared list {id}"),
                 parent_id: id,
                 negative: false,
                 resource: "shared_criterion",
@@ -636,8 +637,8 @@ fn level_of(input: &ManageNegativesInput) -> Result<Level, ToolError> {
     })
 }
 
-/// Cria os critérios de negativa de `lvl` sob `parent_rn` (que pode ser temporário).
-/// Devolve os nomes temporários na ordem de criação.
+/// Creates the negative keyword criteria of `lvl` under `parent_rn` (which may be
+/// temporary). Returns the temporary names in creation order.
 #[allow(clippy::too_many_arguments)]
 fn negative_creates(
     ctx: &Ctx,
@@ -681,10 +682,9 @@ impl WriteTool for ManageNegatives {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<ManageNegativesInput>(
             MANAGE_NEGATIVES,
-            "Gerencia palavras-chave negativas no Google Ads: adicionar ou remover na \
-             campanha, no grupo de anúncios ou numa lista compartilhada, criar uma lista \
-             compartilhada de negativas e anexá-la a uma campanha. Remover não pode ser \
-             desfeito.",
+            "Manages Google Ads negative keywords: add or remove them on a campaign, an ad \
+             group or a shared list, create a shared negative keyword list, and attach a \
+             list to a campaign. The remove action cannot be undone.",
             ToolGroup::Edit,
             true,
         )
@@ -713,7 +713,7 @@ impl WriteTool for ManageNegatives {
                 )?;
                 Ok(WritePlan {
                     summary: format!(
-                        "Adicionar {} negativa(s) na {}: {}",
+                        "Adds {} negative keyword(s) to {}: {}",
                         names.len(),
                         lvl.label,
                         list(&names)
@@ -737,7 +737,7 @@ impl WriteTool for ManageNegatives {
                 let names: Vec<String> = found.iter().map(|(_, d)| d.clone()).collect();
                 Ok(irreversible(
                     format!(
-                        "Remover {} negativa(s) da {}: {}",
+                        "Removes {} negative keyword(s) from {}: {}",
                         names.len(),
                         lvl.label,
                         list(&names)
@@ -748,7 +748,7 @@ impl WriteTool for ManageNegatives {
                 ))
             }
             NegativeAction::CreateList => {
-                // A lista pode nascer vazia (sem keywords), por isso não exige ao menos uma.
+                // The list may be created empty (no keywords), so at least one is not required.
                 at_most_max(keywords.len())?;
                 create_list(ctx, &input, keywords)
             }
@@ -757,10 +757,10 @@ impl WriteTool for ManageNegatives {
     }
 }
 
-/// Negativas de keyword de `lvl` com os ids informados, na ordem da entrada: nome do
-/// recurso e `'texto' [TIPO]`. Id que não é de uma negativa de keyword (uma keyword
-/// positiva, um local, um dispositivo, ou já removida) é `NOT_FOUND`, para o `remove`
-/// nunca apagar outro tipo de critério.
+/// Keyword negatives of `lvl` with the given ids, in input order: resource name and
+/// `'text' [TYPE]`. An id that is not a keyword negative (a positive keyword, a
+/// location, a device, or already removed) is `NOT_FOUND`, so `remove` never deletes
+/// another kind of criterion.
 async fn existing_negatives(
     ctx: &Ctx,
     lvl: &Level,
@@ -806,7 +806,7 @@ async fn existing_negatives(
                 .ok_or_else(|| {
                     ToolError::new(
                         codes::NOT_FOUND,
-                        format!("Negativa {id} não encontrada na {}.", lvl.label),
+                        format!("Negative keyword {id} not found in {}.", lvl.label),
                     )
                     .with_field(format!("keywords[{i}].criterion_id"))
                 })
@@ -814,11 +814,11 @@ async fn existing_negatives(
         .collect()
 }
 
-/// `level` informado tem que combinar com a ação (`create_list` e `attach_list` o fixam).
+/// The given `level` must match the action (`create_list` and `attach_list` fix it).
 fn expect_level(input: &ManageNegativesInput, expected: NegativeLevel) -> Result<(), ToolError> {
     match input.level {
         Some(l) if l != expected => Err(invalid(format!(
-            "Para {} o nível é sempre {}.",
+            "For {} the level is always {}.",
             if expected == NegativeLevel::SharedList {
                 "create_list"
             } else {
@@ -844,7 +844,7 @@ fn create_list(
     let name = required(&input.list_name, "list_name")?.trim().to_string();
     if name.is_empty() || name.chars().count() > MAX_LIST_NAME_CHARS {
         return Err(invalid(format!(
-            "list_name deve ter de 1 a {MAX_LIST_NAME_CHARS} caracteres."
+            "list_name must have 1 to {MAX_LIST_NAME_CHARS} characters."
         ))
         .with_field("list_name"));
     }
@@ -889,7 +889,7 @@ fn create_list(
         &mut names,
     )?;
     let mut summary = format!(
-        "Criar a lista de negativas '{name}' com {} palavra(s)",
+        "Creates negative keyword list '{name}' with {} keyword(s)",
         names.len()
     );
     if let Some(cid) = campaign_id {
@@ -911,7 +911,7 @@ fn create_list(
             fields: vec!["campaign_shared_set.campaign", "campaign_shared_set.status"],
         });
         order.push(rn);
-        summary.push_str(&format!(" e anexá-la à campanha {cid}"));
+        summary.push_str(&format!(" and attaches it to campaign {cid}"));
     }
     order.push(set_rn);
     if !names.is_empty() {
@@ -932,7 +932,7 @@ fn attach_list(ctx: &Ctx, input: &ManageNegativesInput) -> Result<WritePlan, Too
     expect_level(input, NegativeLevel::Campaign)?;
     let cid = required_id(&input.campaign_id, "campaign_id")?;
     let sid = required_id(&input.shared_set_id, "shared_set_id")?;
-    // O nome é determinístico (`{campanha}~{lista}`), então não precisa de temporário.
+    // The name is deterministic (`{campaign}~{list}`), so it needs no temporary id.
     let rn = resources::rn(
         &ctx.customer_id,
         "campaignSharedSets",
@@ -944,7 +944,7 @@ fn attach_list(ctx: &Ctx, input: &ManageNegativesInput) -> Result<WritePlan, Too
         "sharedSet": resources::rn(&ctx.customer_id, "sharedSets", &sid),
     } } });
     Ok(WritePlan {
-        summary: format!("Anexar a lista de negativas {sid} à campanha {cid}"),
+        summary: format!("Attaches negative keyword list {sid} to campaign {cid}"),
         warning: None,
         operations: vec![operation],
         field_changes: Vec::new(),

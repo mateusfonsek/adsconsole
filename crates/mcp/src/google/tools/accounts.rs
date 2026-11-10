@@ -1,4 +1,4 @@
-//! `list_accounts`: contas do cache, opcionalmente atualizadas antes no Google.
+//! `list_accounts`: cached accounts, optionally refreshed from Google first.
 
 use adsconsole_core::Platform;
 use adsconsole_core::config::ToolGroup;
@@ -15,10 +15,10 @@ pub(crate) const NAME: &str = "list_accounts";
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct ListAccountsInput {
-    /// Id da conexão; sem ele, lista as contas de todas.
+    /// Connection id. Without it, lists the accounts of every connection.
     #[serde(default)]
     connection: Option<String>,
-    /// Consulta o Google antes de responder (gasta operações da cota do projeto).
+    /// Queries Google before answering (uses operations from the project quota).
     #[serde(default)]
     refresh: bool,
 }
@@ -29,9 +29,9 @@ struct AccountOut {
     name: String,
     currency: String,
     timezone: Option<String>,
-    /// `ENABLED`, `CANCELED`, `SUSPENDED`, `CLOSED` ou `MANAGER` (MCC, sem campanhas).
+    /// `ENABLED`, `CANCELED`, `SUSPENDED`, `CLOSED` or `MANAGER` (MCC, no campaigns).
     status: Option<String>,
-    /// MCC pela qual a conta é acessada.
+    /// MCC through which the account is accessed.
     manager_id: Option<String>,
     connection: String,
 }
@@ -44,8 +44,8 @@ struct ListAccountsOutput {
 pub(crate) fn spec() -> ToolSpec {
     ToolSpec::read::<ListAccountsInput>(
         NAME,
-        "Lista as contas do Google Ads de cada conexão, incluindo as filhas de MCC \
-         (manager_id). Com refresh: true, consulta o Google antes.",
+        "Lists the Google Ads accounts of each connection, including MCC child \
+         accounts (manager_id). With refresh: true, queries Google first.",
         ToolGroup::Read,
     )
     .output::<ListAccountsOutput>()
@@ -54,7 +54,7 @@ pub(crate) fn spec() -> ToolSpec {
 
 pub(crate) async fn run(adapter: &GoogleAdapter, input: &Value) -> Result<Value, ToolError> {
     let input: ListAccountsInput = serde_json::from_value(input.clone())
-        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Entrada inválida: {e}")))?;
+        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Invalid input: {e}")))?;
     let connection = input.connection.as_deref().filter(|c| !c.is_empty());
     if let Some(c) = connection {
         adapter.connection(c)?;
