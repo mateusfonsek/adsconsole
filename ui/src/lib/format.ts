@@ -35,7 +35,7 @@ export function formatId(id: string): string {
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }
 
-/** Segundos como `m:ss`. */
+/** Seconds as `m:ss`. */
 export function formatCountdown(secs: number): string {
   const s = Math.max(0, Math.floor(secs));
   return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;

@@ -31,9 +31,12 @@ test("using a file warns that the token changes and calls the command", async ()
   await waitFor(() => expect(calls).toEqual(["file"]));
 });
 
+const CONFIG_RESET_MESSAGE =
+  "config.json was invalid (expected value at line 1 column 1); using the defaults. The old file was saved as config.json.corrupt-20261110T120000";
+
 test("the config reset notice appears and can be dismissed", async () => {
   installIpcMock({
-    boot_state: { issue: null, notices: [{ kind: "config_reset", message: "config.json was invalid (expected value at line 1 column 1); using the defaults. The old file was saved as config.json.corrupt-20261110T120000" }] },
+    boot_state: { issue: null, notices: [{ kind: "config_reset", message: CONFIG_RESET_MESSAGE }] },
     app_version: "0.1.0",
     get_app_settings: {
       language: "en",
@@ -60,9 +63,9 @@ test("the config reset notice appears and can be dismissed", async () => {
     list_connections: [],
   });
   render(<App lang="en" />);
-  expect(await screen.findByText("config.json was invalid (expected value at line 1 column 1); using the defaults. The old file was saved as config.json.corrupt-20261110T120000")).toBeInTheDocument();
+  expect(await screen.findByText(CONFIG_RESET_MESSAGE)).toBeInTheDocument();
   await userEvent.click(screen.getByRole("button", { name: "Dismiss" }));
-  expect(screen.queryByText("config.json was invalid (expected value at line 1 column 1); using the defaults. The old file was saved as config.json.corrupt-20261110T120000")).not.toBeInTheDocument();
+  expect(screen.queryByText(CONFIG_RESET_MESSAGE)).not.toBeInTheDocument();
 });
 
 test("confirming the quit rejects the pending approvals", async () => {

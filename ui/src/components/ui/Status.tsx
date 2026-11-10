@@ -16,7 +16,7 @@ const text: Record<Tone, string> = {
   muted: "text-muted",
 };
 
-/** Indicador quadrado de 7 px, a assinatura de status do visual. */
+/** 7 px square indicator, the visual signature of status. */
 export function StatusSquare({ tone }: { tone: Tone }) {
   return <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 ${square[tone]}`} />;
 }
