@@ -1,4 +1,4 @@
-//! Regras de partida do servidor HTTP: porta, plataformas e última chamada.
+//! Start-up rules of the HTTP server: port, platforms and last request.
 
 use std::sync::{Arc, RwLock};
 
@@ -80,6 +80,6 @@ async fn last_request_at_set_after_authorized_call() {
         .await
         .unwrap();
     assert!(ok.status().is_success(), "{}", ok.status());
-    let at = server.last_request_at().expect("registrou a chamada");
+    let at = server.last_request_at().expect("recorded the request");
     assert!(at <= Utc::now());
 }

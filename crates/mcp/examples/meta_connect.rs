@@ -1,15 +1,15 @@
-//! Conecta uma conta da Meta ao diretório de dados do AdsConsole.
+//! Connects a Meta account to the AdsConsole data directory.
 //!
-//! `cargo run -p adsconsole-mcp --example meta_connect -- <nome> --login <app_id> <config_id> [--port N] [--relay <url>]`
-//! `cargo run -p adsconsole-mcp --example meta_connect -- <nome> --token [--app-id <id>]`
+//! `cargo run -p adsconsole-mcp --example meta_connect -- <name> --login <app_id> <config_id> [--port N] [--relay <url>]`
+//! `cargo run -p adsconsole-mcp --example meta_connect -- <name> --token [--app-id <id>]`
 //!
-//! O App Secret e o token nunca vêm dos argumentos: são lidos de `META_APP_SECRET` e
-//! `META_ACCESS_TOKEN`, ou digitados no terminal sem eco. Diretório de dados:
-//! `ADSCONSOLE_DATA_DIR` ou o padrão. Nunca imprime segredos.
+//! The App Secret and the token never come from the arguments: they are read from
+//! `META_APP_SECRET` and `META_ACCESS_TOKEN`, or typed in the terminal without echo.
+//! Data directory: `ADSCONSOLE_DATA_DIR` or the default. Never prints secrets.
 //!
-//! `--relay`: página https que recebe o retorno do login e o repassa ao localhost
-//! (necessária com o app publicado; cadastre-a em "URIs de redirecionamento do OAuth
-//! válidos" do app).
+//! `--relay`: https page that receives the login redirect and forwards it to localhost
+//! (required with the app published; register it under the app's "Valid OAuth Redirect
+//! URIs").
 
 use std::io::Write;
 use std::sync::Arc;
@@ -25,8 +25,8 @@ use adsconsole_mcp::meta::connections::{
 use adsconsole_meta_ads::endpoints::MetaEndpoints;
 use adsconsole_meta_ads::oauth::AppCreds;
 
-const USAGE: &str = "uso: meta_connect <nome> --login <app_id> <config_id> [--port N] [--relay <url>]\n\
-                     \x20     meta_connect <nome> --token [--app-id <id>]";
+const USAGE: &str = "usage: meta_connect <name> --login <app_id> <config_id> [--port N] [--relay <url>]\n\
+                     \x20     meta_connect <name> --token [--app-id <id>]";
 
 #[derive(Debug, PartialEq)]
 enum Mode {
@@ -69,9 +69,9 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
                     .next()
                     .ok_or(USAGE)?
                     .parse()
-                    .map_err(|_| format!("porta inválida\n{USAGE}"))?;
+                    .map_err(|_| format!("invalid port\n{USAGE}"))?;
             }
-            other => return Err(format!("opção desconhecida: {other}\n{USAGE}")),
+            other => return Err(format!("unknown option: {other}\n{USAGE}")),
         }
     }
     let mode = match (mode, app_id) {
@@ -87,7 +87,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     Ok(Args { name, mode })
 }
 
-/// Lê de `var` ou do terminal, sem eco.
+/// Reads from `var` or from the terminal, without echo.
 fn secret(var: &str, prompt: &str) -> Result<Secret, Box<dyn std::error::Error>> {
     if let Ok(v) = std::env::var(var)
         && !v.trim().is_empty()
@@ -112,10 +112,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = data_dir(&env)?;
     let db = Arc::new(Db::open(&dir.join("adsconsole.db"))?);
     let (secrets, backend) = open_secret_store(&dir);
-    println!("Diretório de dados: {}", dir.display());
+    println!("Data directory: {}", dir.display());
     if backend == SecretBackend::File {
         println!(
-            "Aviso: keychain indisponível; segredos em {}",
+            "Warning: keychain unavailable; secrets in {}",
             dir.join("secrets.json").display()
         );
     }
@@ -133,7 +133,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config_id,
                 relay_url: relay,
             };
-            println!("Abrindo o navegador para o login da Meta (espera até 5 min)...");
+            println!("Opening the browser for the Meta login (waits up to 5 min)...");
             let open = |url: &str| open::that(url);
             add_meta_login_connection(
                 &adapter,
@@ -167,16 +167,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     .map_err(|e| format!("{}: {}", e.code, e.message))?;
 
     let expires = meta.expires_at.map_or_else(
-        || "não vence".to_string(),
-        |t| t.format("%d/%m/%Y").to_string(),
+        || "does not expire".to_string(),
+        |t| t.format("%Y-%m-%d").to_string(),
     );
     println!(
-        "Conexão criada: {} ({}), acesso: {expires}",
+        "Connection created: {} ({}), access: {expires}",
         meta.connection_id, meta.name
     );
     let accounts = db.list_accounts(Platform::MetaAds, Some(&meta.connection_id))?;
-    println!("Contas ({}):", accounts.len());
-    println!("  id | nome | moeda | status");
+    println!("Accounts ({}):", accounts.len());
+    println!("  id | name | currency | status");
     for (_, a) in accounts {
         println!(
             "  {} | {} | {} | {}",
@@ -200,9 +200,9 @@ mod tests {
     #[test]
     fn parses_modes() {
         assert_eq!(
-            args(&["Minha", "--login", "123", "cfg", "--port", "53682"]).unwrap(),
+            args(&["Mine", "--login", "123", "cfg", "--port", "53682"]).unwrap(),
             Args {
-                name: "Minha".into(),
+                name: "Mine".into(),
                 mode: Mode::Login {
                     app_id: "123".into(),
                     config_id: "cfg".into(),
@@ -212,7 +212,7 @@ mod tests {
             }
         );
         assert_eq!(
-            args(&["Sistema", "--token", "--app-id", "9"]).unwrap().mode,
+            args(&["System", "--token", "--app-id", "9"]).unwrap().mode,
             Mode::Token {
                 app_id: Some("9".into())
             }

@@ -36,7 +36,7 @@ reqwest.workspace = true
 wiremock.workspace = true
 open.workspace = true
 
-# Roda os testes de argumentos e da confirmação do checklist em `cargo test`.
+# Runs the checklist's argument and confirmation tests under `cargo test`.
 [[example]]
 name = "google_checklist"
 test = true

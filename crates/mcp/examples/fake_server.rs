@@ -1,8 +1,8 @@
-//! Servidor MCP com as duas plataformas fake, para testar clientes reais.
+//! MCP server with both fake platforms, to test real clients.
 //!
 //! `cargo run -p adsconsole-mcp --example fake_server`
-//! Porta: `ADSCONSOLE_PORT` (padrão 7458). Token: `ADSCONSOLE_TOKEN` ou um novo a cada execução.
-//! Modo aprovação; cada pedido é aprovado automaticamente e logado no terminal.
+//! Port: `ADSCONSOLE_PORT` (default 7458). Token: `ADSCONSOLE_TOKEN` or a new one on each run.
+//! Approval mode; each request is approved automatically and logged to the terminal.
 
 use std::sync::{Arc, RwLock};
 
@@ -34,7 +34,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut engines = Vec::new();
     for p in Platform::ALL {
-        // Um banco por plataforma: as duas fakes usam os mesmos ids de conexão.
+        // One database per platform: both fakes use the same connection ids.
         let db = Arc::new(Db::open_in_memory()?);
         let fake = FakePlatform::new(p);
         fake.seed_connections(&db)?;
@@ -63,7 +63,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             p.endpoint()
         );
     }
-    println!("Ctrl+C para sair.");
+    println!("Ctrl+C to exit.");
 
     tokio::signal::ctrl_c().await?;
     server.shutdown().await;
@@ -83,20 +83,20 @@ async fn auto_approve(engine: Engine) {
             continue;
         };
         println!(
-            "[{}] pedido {change_id}: {summary}",
+            "[{}] request {change_id}: {summary}",
             platform.display_name()
         );
         if let Some(w) = warning {
-            println!("  aviso: {w}");
+            println!("  warning: {w}");
         }
         match engine.approve(&change_id).await {
             Ok(rec) => println!(
-                "  aprovado → {:?}\n  antes:  {}\n  depois: {}",
+                "  approved → {:?}\n  before: {}\n  after:  {}",
                 rec.status,
                 rec.before.unwrap_or_default(),
                 rec.after.unwrap_or_default()
             ),
-            Err(e) => println!("  falha ao aprovar: {e}"),
+            Err(e) => println!("  failed to approve: {e}"),
         }
     }
 }

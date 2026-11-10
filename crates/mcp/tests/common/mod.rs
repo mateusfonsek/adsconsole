@@ -1,4 +1,4 @@
-//! Helpers compartilhados pelos testes do Google Ads (wiremock + Db em memória).
+//! Shared helpers for the Google Ads tests (wiremock + in-memory Db).
 #![allow(dead_code)]
 
 pub mod meta;
@@ -21,12 +21,12 @@ use serde_json::{Value, json};
 use wiremock::matchers::{body_string_contains, method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
-/// Conexão semeada pelo [`google_harness`].
+/// Connection seeded by [`google_harness`].
 pub const CONN: &str = "g_test";
-/// Projeto do Cloud da conexão semeada (é a chave de `google_ops`).
+/// Cloud project of the seeded connection (it is the key of `google_ops`).
 pub const PROJECT: &str = "proj";
 
-/// `SecretStore` em memória que deixa ver as chaves gravadas.
+/// In-memory `SecretStore` that exposes the stored keys.
 #[derive(Default)]
 pub struct TestStore(Mutex<BTreeMap<String, String>>);
 
@@ -78,7 +78,7 @@ pub fn account(id: &str, currency: &str, status: &str, manager: Option<&str>) ->
     }
 }
 
-/// Grava uma conexão (segredos + `connections_meta`) e o cache de contas dela.
+/// Stores a connection (secrets + `connections_meta`) and its account cache.
 pub fn seed_connection(
     h: &GoogleHarness,
     connection_id: &str,
@@ -94,7 +94,7 @@ pub fn seed_connection(
     save_connection(
         &h.adapter,
         connection_id,
-        &format!("Conexão {connection_id}"),
+        &format!("Connection {connection_id}"),
         &creds,
         &Secret::new(refresh),
         None,
@@ -105,9 +105,9 @@ pub fn seed_connection(
         .unwrap();
 }
 
-/// Sobe o wiremock (token sempre ok), uma `Db` em memória, um [`TestStore`] e a
-/// conexão [`CONN`] (Explorer, projeto [`PROJECT`]) com as contas 111 (BRL, ENABLED),
-/// 999 (MCC, `MANAGER`) e 222 (BRL, ENABLED, filha da 999).
+/// Starts wiremock (token always ok), an in-memory `Db`, a [`TestStore`] and the
+/// [`CONN`] connection (Explorer, project [`PROJECT`]) with accounts 111 (BRL, ENABLED),
+/// 999 (MCC, `MANAGER`) and 222 (BRL, ENABLED, child of 999).
 pub async fn google_harness() -> GoogleHarness {
     let server = MockServer::start().await;
     Mock::given(method("POST"))
@@ -166,7 +166,7 @@ fn query(url: &str) -> HashMap<String, String> {
         .collect()
 }
 
-/// Faz o papel do navegador no OAuth: GET no redirect_uri com `code` e o `state` da URL.
+/// Plays the browser in OAuth: GET on the redirect_uri with `code` and the URL's `state`.
 pub fn browser() -> impl Fn(&str) -> std::io::Result<()> + Send + Sync {
     |url: &str| {
         let q = query(url);
@@ -178,7 +178,7 @@ pub fn browser() -> impl Fn(&str) -> std::io::Result<()> + Send + Sync {
     }
 }
 
-/// `googleAds:search` da conta `customer` cujo corpo contém `needle` devolve `results`.
+/// `googleAds:search` for account `customer` whose body contains `needle` returns `results`.
 pub async fn mock_search(server: &MockServer, customer: &str, needle: &str, results: Value) {
     Mock::given(method("POST"))
         .and(path(format!("/v26/customers/{customer}/googleAds:search")))
@@ -188,7 +188,7 @@ pub async fn mock_search(server: &MockServer, customer: &str, needle: &str, resu
         .await;
 }
 
-/// Linha de `FROM customer`.
+/// Row of `FROM customer`.
 pub fn customer_row(id: &str, currency: &str, status: &str, manager: bool) -> Value {
     json!({ "customer": {
         "resourceName": format!("customers/{id}"), "id": id,
@@ -197,7 +197,7 @@ pub fn customer_row(id: &str, currency: &str, status: &str, manager: bool) -> Va
     }})
 }
 
-/// Linha de `FROM customer_client`.
+/// Row of `FROM customer_client`.
 pub fn client_row(manager: &str, id: &str, currency: &str, status: &str) -> Value {
     json!({ "customerClient": {
         "resourceName": format!("customers/{manager}/customerClients/{id}"), "id": id,
@@ -206,7 +206,7 @@ pub fn client_row(manager: &str, id: &str, currency: &str, status: &str) -> Valu
     }})
 }
 
-/// Corpo que distingue a consulta `FROM customer` (termina na aspa do JSON) da de `customer_client`.
+/// Body that tells the `FROM customer` query (ends at the JSON quote) from the `customer_client` one.
 pub const CUSTOMER_QUERY: &str = "FROM customer\"";
 pub const CLIENT_QUERY: &str = "FROM customer_client";
 
@@ -219,7 +219,7 @@ pub async fn mock_accessible(server: &MockServer, ids: &[&str]) {
         .await;
 }
 
-/// Mocks de uma conexão com 111 (BRL, ENABLED) direta e a MCC 999 com a filha 222.
+/// Mocks of a connection with 111 (BRL, ENABLED) directly and MCC 999 with child 222.
 pub async fn mock_account_tree(server: &MockServer) {
     mock_accessible(server, &["111", "999"]).await;
     mock_search(

@@ -1,82 +1,82 @@
-# Checklist do Google Ads na conta real (API v26)
+# Google Ads checklist on the real account (API v26)
 
-Registro da execução de `google_checklist` (Task 17 do Plano 2). Sem ids, nomes ou
-resource names reais da conta: use `<conta>`, `<campanha>` etc. no lugar.
+Record of the `google_checklist` run. No real ids, names or resource names from the
+account: `<account>`, `<campaign>` etc. stand in for them.
 
-- Data da execução: 2026-10-18 (seis execuções; as falhas de cada uma foram corrigidas com teste antes da seguinte)
-- Nível de acesso da conexão: Explorer
-- Comando: `ADSCONSOLE_DATA_DIR=<dados> cargo run -p adsconsole-mcp --example google_checklist -- <conta> [--video <arquivo>]`
-- Etapas rodadas: todas (execuções 1 e 2); `leituras,validacao,search,demand_gen` (3); `validacao` (4 e 5); `demand_gen` (6)
+- Run date: 2026-10-18 (six runs; the failures of each one were fixed, with a test, before the next)
+- Connection access level: Explorer
+- Command: `ADSCONSOLE_DATA_DIR=<data> cargo run -p adsconsole-mcp --example google_checklist -- <account> [--video <file>]`
+- Steps run: all (runs 1 and 2); `reads,validation,search,demand_gen` (3); `validation` (4 and 5); `demand_gen` (6)
 
-## Resultados
+## Results
 
-Resultado final de cada passo, depois das correções.
+Final result of each step, after the fixes.
 
-| Resultado | Etapa | Ferramenta | Código | Detalhe |
+| Result | Step | Tool | Code | Detail |
 |---|---|---|---|---|
-| OK | leituras | list_accounts, get_campaigns, get_search_terms, get_recommendations, get_conversion_actions, list_changes | - | |
-| OK | leituras | get_change_history | - | exigia limite superior em `change_date_time` (corrigido) |
-| OK | leituras | gaql_search | - | página 1 e cursor |
-| PULADO | leituras | keyword_ideas, keyword_metrics | ACCESS_LEVEL_INSUFFICIENT | esperado: exigem nível Basic |
-| OK | validacao | create_search_campaign, create_pmax_campaign, create_display_campaign | - | validateOnly |
-| OK | validacao | create_demand_gen_campaign | - | multi-asset + carrossel (corrigidos: CTA da lista fixa, imagens distintas por card, ordem das operações) |
-| PULADO | validacao | update_asset_group, apply/dismiss_recommendation | - | a conta não tem asset group nem recomendações |
-| OK | search | create_search_campaign | - | pausada, início futuro (corrigido: `start_date_time`) |
-| OK | search | get_campaign_details | - | corrigido: `campaign.id` no SELECT |
-| OK | search | update_campaign (nome, orçamento, end_date, start_date), update_ad_group, update_ad | - | |
+| OK | reads | list_accounts, get_campaigns, get_search_terms, get_recommendations, get_conversion_actions, list_changes | - | |
+| OK | reads | get_change_history | - | required an upper bound on `change_date_time` (fixed) |
+| OK | reads | gaql_search | - | page 1 and cursor |
+| SKIPPED | reads | keyword_ideas, keyword_metrics | ACCESS_LEVEL_INSUFFICIENT | expected: they require Basic level |
+| OK | validation | create_search_campaign, create_pmax_campaign, create_display_campaign | - | validateOnly |
+| OK | validation | create_demand_gen_campaign | - | multi-asset + carousel (fixed: CTA from the fixed list, distinct images per card, order of the operations) |
+| SKIPPED | validation | update_asset_group, apply/dismiss_recommendation | - | the account has no asset group or recommendations |
+| OK | search | create_search_campaign | - | paused, future start (fixed: `start_date_time`) |
+| OK | search | get_campaign_details | - | fixed: `campaign.id` in the SELECT |
+| OK | search | update_campaign (name, budget, end_date, start_date), update_ad_group, update_ad | - | |
 | OK | search | manage_keywords (add, pause, set_bid) | - | |
-| OK | search | manage_negatives (add, create_list com e sem campanha, attach_list) | - | corrigido: campaignSharedSet sem resourceName |
-| OK | search | manage_targeting (local, horário, set_bid_modifier) | - | corrigido: critérios sem resourceName |
-| OK | search | undo_change de cada escrita, em ordem inversa; UNDO_CONFLICT no conflito | - | |
-| OK | demand_gen | create_demand_gen_campaign + undo_change | - | campanha REMOVED |
-| OK | display | create_display_campaign + undo_change | - | campanha REMOVED |
-| OK | asset_texto | upload_asset (texto) | - | irreversível |
+| OK | search | manage_negatives (add, create_list with and without campaign, attach_list) | - | fixed: campaignSharedSet without resourceName |
+| OK | search | manage_targeting (location, schedule, set_bid_modifier) | - | fixed: criteria without resourceName |
+| OK | search | undo_change of each write, in reverse order; UNDO_CONFLICT on the conflict | - | |
+| OK | demand_gen | create_demand_gen_campaign + undo_change | - | campaign REMOVED |
+| OK | display | create_display_campaign + undo_change | - | campaign REMOVED |
+| OK | text_asset | upload_asset (text) | - | irreversible |
 | OK | video | upload_video + undo_change | - | PROCESSED → UNAVAILABLE |
 
-## Por ferramenta
+## By tool
 
-| Ferramenta | OK | FALHA | PULADO | Códigos |
+| Tool | OK | FAIL | SKIPPED | Codes |
 |---|---|---|---|---|
-| leituras (9 ferramentas) | 7 | 0 | 2 | ACCESS_LEVEL_INSUFFICIENT (esperado) |
-| criações (4 tipos) | 4 | 0 | 0 | - |
-| edições e undo | todas | 0 | 0 | UNDO_CONFLICT (esperado) |
-| update_asset_group, recomendações | 0 | 0 | 3 | sem dados na conta |
+| reads (9 tools) | 7 | 0 | 2 | ACCESS_LEVEL_INSUFFICIENT (expected) |
+| creations (4 types) | 4 | 0 | 0 | - |
+| edits and undo | all | 0 | 0 | UNDO_CONFLICT (expected) |
+| update_asset_group, recommendations | 0 | 0 | 3 | no data in the account |
 
-## Itens VERIFY(v26)
+## VERIFY(v26) items
 
-| Item | O que se verificou | Resultado | Evidência (sanitizada) |
+| Item | What was verified | Result | Evidence (sanitized) |
 |---|---|---|---|
-| T9.1 | AdOperation update em `ads/{id}` e leitura FROM ad | confirmado | update aplicado; snapshot e depois lidos FROM ad |
-| T9.2 | chaves só de saída do RSA no desfazer | confirmado | desfazer do update_ad sem UNDO_CONFLICT |
-| T9.3 / T13.2 | datas da campanha | **corrigido** | v26 só tem `start_date_time`/`end_date_time` (`"yyyy-MM-dd HH:mm:ss"`); `startDate` dá "Unknown name" |
-| T9.4 | desfazer de end_date que era nulo | confirmado | depois de limpar, `endDateTime` volta ausente (sem data sentinela) |
-| T10.1 | temporários compostos em create_list | **corrigido** | `campaignSharedSets/<c>~-1` dava DUPLICATE_TEMP_IDS; agora sem resourceName |
-| T10.2 | attach_list sem resourceName | confirmado | aplicado |
-| T11.1 | desfazer set_bid_modifier nulo | confirmado | critério volta sem `bidModifier` |
-| T12.1 / T12.2 | asset group e recomendações | não exercitado | a conta não tem |
-| T13.1 | filhos criados sem resourceName | confirmado | ad group, keywords e anúncio encontrados |
-| T14.1 | PMax assetAutomationSettings e brandGuidelinesEnabled | confirmado | validateOnly aceitou |
-| T14.2 | assets de imagem `img-<hash>` | confirmado | nomes `img-<16hex>` na conta |
-| T14.3 | sinais de público no PMax | não exercitado | a conta não tem públicos |
-| T15.1–T15.5 | Demand Gen (local/idioma no grupo, grupo sem type, businessName, CTA, card) | confirmado após correções | CTA só da lista fixa do Google; imagens únicas entre cards; um temporário não pode ser referenciado por operação do mesmo lote de operações seguidas do mesmo tipo |
-| T15.6 | Display sem networkSettings, RDA | confirmado | criação real aplicada |
-| T16.1 | nome do upload de vídeo | confirmado | resultado com upload e asset; PROCESSED |
-| T16.2 | origem da URL da sessão | confirmado | mesma origem de upload_base |
+| V1 | AdOperation update on `ads/{id}` and read FROM ad | confirmed | update applied; snapshot and after state read FROM ad |
+| V2 | output-only RSA keys on undo | confirmed | undo of update_ad without UNDO_CONFLICT |
+| V3 / V11 | campaign dates | **fixed** | v26 only has `start_date_time`/`end_date_time` (`"yyyy-MM-dd HH:mm:ss"`); `startDate` gives "Unknown name" |
+| V4 | undo of an end_date that was null | confirmed | after clearing, `endDateTime` comes back absent (no sentinel date) |
+| V5 | composite temp ids in create_list | **fixed** | `campaignSharedSets/<c>~-1` gave DUPLICATE_TEMP_IDS; now without resourceName |
+| V6 | attach_list without resourceName | confirmed | applied |
+| V7 | undo of a null set_bid_modifier | confirmed | criterion comes back without `bidModifier` |
+| V8 / V9 | asset group and recommendations | not exercised | the account has none |
+| V10 | children created without resourceName | confirmed | ad group, keywords and ad found |
+| V12 | PMax assetAutomationSettings and brandGuidelinesEnabled | confirmed | validateOnly accepted |
+| V13 | image assets `img-<hash>` | confirmed | names `img-<16hex>` in the account |
+| V14 | audience signals on PMax | not exercised | the account has no audiences |
+| V15–V19 | Demand Gen (location/language on the group, group without type, businessName, CTA, card) | confirmed after fixes | CTA only from Google's fixed list; unique images across cards; a temp id cannot be referenced by an operation in the same batch of consecutive operations of the same type |
+| V20 | Display without networkSettings, RDA | confirmed | real creation applied |
+| V21 | video upload name | confirmed | result with upload and asset; PROCESSED |
+| V22 | origin of the session URL | confirmed | same origin as upload_base |
 
-## Smoke com o Claude Code real
+## Smoke test with the real Claude Code
 
-`google_server` com `ADSCONSOLE_AUTO_APPROVE=1` (modo Approval) e `claude -p --mcp-config <tmp> --strict-mcp-config`.
+`google_server` with `ADSCONSOLE_AUTO_APPROVE=1` (Approval mode) and `claude -p --mcp-config <tmp> --strict-mcp-config`.
 
-| Pedido | Ferramenta | Resultado |
+| Request | Tool | Result |
 |---|---|---|
-| listar contas | list_accounts | OK |
-| listar campanhas | get_campaigns | OK |
-| criar campanha de pesquisa pausada | create_search_campaign | OK (applied) |
-| desfazer a criação | undo_change | OK (campanha e orçamento removidos) |
-| conferir | get_change_status | OK (`undone`, com `undone_by`) |
+| list accounts | list_accounts | OK |
+| list campaigns | get_campaigns | OK |
+| create a paused search campaign | create_search_campaign | OK (applied) |
+| undo the creation | undo_change | OK (campaign and budget removed) |
+| check | get_change_status | OK (`undone`, with `undone_by`) |
 
-## O que ficou na conta
+## What was left in the account
 
-- Objetos `REMOVED`: as campanhas de teste (Search, Demand Gen, Display e a do smoke) e seus orçamentos, ad groups, critérios, listas compartilhadas e vínculos.
-- Assets (irreversíveis): imagens de teste `img-<hash>` (Demand Gen/Display/PMax), assets de texto e os assets dos vídeos (os uploads no YouTube ficaram UNAVAILABLE).
-- Nenhuma campanha ativa; nada veicula.
+- `REMOVED` objects: the test campaigns (Search, Demand Gen, Display and the smoke one) and their budgets, ad groups, criteria, shared lists and links.
+- Assets (irreversible): `img-<hash>` test images (Demand Gen/Display/PMax), text assets and the video assets (the YouTube uploads ended up UNAVAILABLE).
+- No active campaign; nothing is serving.

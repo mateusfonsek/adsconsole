@@ -1,4 +1,4 @@
-//! Helpers dos testes da Meta (wiremock + Db em memória).
+//! Helpers for the Meta tests (wiremock + in-memory Db).
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,9 +17,9 @@ use wiremock::MockServer;
 
 use super::TestStore;
 
-/// Conexão semeada pelo [`meta_harness`].
+/// Connection seeded by [`meta_harness`].
 pub const META_CONN: &str = "m_test";
-/// Token da conexão semeada.
+/// Token of the seeded connection.
 pub const META_TOKEN: &str = "TOK";
 
 pub struct MetaHarness {
@@ -39,7 +39,7 @@ pub fn meta_endpoints(server: &MockServer) -> MetaEndpoints {
 pub fn meta_account(id: &str, currency: &str, status: &str) -> AccountInfo {
     AccountInfo {
         account_id: id.into(),
-        name: format!("Conta {id}"),
+        name: format!("Account {id}"),
         currency: currency.into(),
         timezone: Some("America/Sao_Paulo".into()),
         status: Some(status.into()),
@@ -47,7 +47,7 @@ pub fn meta_account(id: &str, currency: &str, status: &str) -> AccountInfo {
     }
 }
 
-/// Grava uma conexão de login (token, app secret e `connections_meta`) e as contas dela.
+/// Stores a login connection (token, app secret and `connections_meta`) and its accounts.
 pub fn seed_meta_connection(
     h: &MetaHarness,
     connection_id: &str,
@@ -65,7 +65,7 @@ pub fn seed_meta_connection(
     save_connection(
         &h.adapter,
         connection_id,
-        &format!("Conexão {connection_id}"),
+        &format!("Connection {connection_id}"),
         &Secret::new(token),
         None,
         &extra,
@@ -76,8 +76,8 @@ pub fn seed_meta_connection(
         .unwrap();
 }
 
-/// Wiremock, `Db` em memória, [`TestStore`] e a conexão [`META_CONN`] (sem app secret,
-/// token [`META_TOKEN`], sem vencimento) com `act_111` (ACTIVE, BRL) e `act_101` (CLOSED, BRL).
+/// Wiremock, in-memory `Db`, [`TestStore`] and the [`META_CONN`] connection (no app secret,
+/// token [`META_TOKEN`], no expiry) with `act_111` (ACTIVE, BRL) and `act_101` (CLOSED, BRL).
 pub async fn meta_harness() -> MetaHarness {
     let server = MockServer::start().await;
     let db = Arc::new(Db::open_in_memory().unwrap());
@@ -125,8 +125,8 @@ pub fn meta_call(account_id: &str, tool: &str, input: Value) -> Call {
     }
 }
 
-/// Navegador de mentira do login da Meta: lê o `redirect_uri` e o `state` da URL do
-/// diálogo e faz `GET {redirect_uri}?code=abc&state=...`.
+/// Fake browser for the Meta login: reads the `redirect_uri` and the `state` from the
+/// dialog URL and does `GET {redirect_uri}?code=abc&state=...`.
 pub fn meta_browser() -> impl Fn(&str) -> std::io::Result<()> + Send + Sync {
     |url: &str| {
         let q: std::collections::HashMap<String, String> = url::Url::parse(url)
@@ -134,7 +134,7 @@ pub fn meta_browser() -> impl Fn(&str) -> std::io::Result<()> + Send + Sync {
             .query_pairs()
             .into_owned()
             .collect();
-        // Com página de retorno (https), o navegador volta direto à porta do state.
+        // With a return page (https), the browser goes straight back to the state's port.
         let base = match q["state"].split_once('.') {
             Some((port, _)) if q["redirect_uri"].starts_with("https://") => {
                 format!("http://localhost:{port}/callback")

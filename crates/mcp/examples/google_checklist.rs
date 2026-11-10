@@ -1,21 +1,22 @@
-//! Checklist das ferramentas do Google Ads numa conta real, pelo `Engine` em modo Direct.
+//! Checklist of the Google Ads tools on a real account, through the `Engine` in Direct mode.
 //!
-//! `cargo run -p adsconsole-mcp --example google_checklist -- <account_id> [--video <arquivo>]
-//!     [--image <arquivo>] [--only <etapa,...>] [--yes]`
+//! `cargo run -p adsconsole-mcp --example google_checklist -- <account_id> [--video <file>]
+//!     [--image <file>] [--only <step,...>] [--yes]`
 //!
-//! Usa a conexão do diretório de dados (`ADSCONSOLE_DATA_DIR` ou o padrão), criada com
-//! `google_connect`. O `config.json` não é lido nem alterado: o modo Direct vale só aqui.
+//! Uses the connection in the data directory (`ADSCONSOLE_DATA_DIR` or the default), created
+//! with `google_connect`. `config.json` is neither read nor changed: Direct mode applies only
+//! here.
 //!
-//! Etapas, nesta ordem: `leituras`, `validacao` (só `validateOnly`), `search`,
-//! `demand_gen`, `display`, `asset_texto`, `imagem` (com `--image`) e `video` (com
-//! `--video`). As quatro primeiras de escrita criam objetos pausados e desfazem logo em
-//! seguida; `asset_texto` e `imagem` são irreversíveis. Antes de qualquer escrita real o
-//! plano é impresso e é preciso digitar `sim` (ou passar `--yes`).
+//! Steps, in this order: `reads`, `validation` (`validateOnly` only), `search`,
+//! `demand_gen`, `display`, `text_asset`, `image` (with `--image`) and `video` (with
+//! `--video`). The first four write steps create paused objects and undo them right
+//! after; `text_asset` and `image` are irreversible. Before any real write the plan is
+//! printed and you must type `yes` (or pass `--yes`).
 //!
-//! Cada passo imprime `OK|FALHA|PULADO <etapa> <ferramenta> <código?> <detalhe>`. No fim
-//! saem a tabela de resultados, as evidências de cada item VERIFY(v26) e o que ficou na
-//! conta. Nenhum token ou segredo é impresso. O log (com as chaves da resposta do
-//! upload de vídeo) fica em `<dados>/logs`.
+//! Each step prints `OK|FAIL|SKIPPED <step> <tool> <code?> <detail>`. At the end come the
+//! results table, the evidence for each VERIFY(v26) item and what was left in the
+//! account. No token or secret is printed. The log (with the keys of the video upload
+//! response) goes to `<data>/logs`.
 
 use std::collections::BTreeMap;
 use std::io::{BufRead, Write as _};
@@ -36,113 +37,110 @@ use adsconsole_mcp::{Call, PlatformAdapter, Validated};
 use chrono::{Days, Utc};
 use serde_json::{Value, json};
 
-const USAGE: &str = "uso: google_checklist <account_id> [--video <arquivo>] [--image <arquivo>] \
-                     [--only <etapa,...>] [--yes]";
+const USAGE: &str = "usage: google_checklist <account_id> [--video <file>] [--image <file>] \
+                     [--only <step,...>] [--yes]";
 const REQUESTED_BY: &str = "google_checklist";
-/// Rótulo da edição de anúncio (o desfazer dela é evidência de T9.2).
-const UPDATE_AD_LABEL: &str = "update_ad títulos";
+/// Label of the ad edit (undoing it is evidence for V2).
+const UPDATE_AD_LABEL: &str = "update_ad headlines";
 
-/// Etapas na ordem em que rodam.
+/// Steps in the order they run.
 const STEPS: [&str; 8] = [
-    "leituras",
-    "validacao",
+    "reads",
+    "validation",
     "search",
     "demand_gen",
     "display",
-    "asset_texto",
-    "imagem",
+    "text_asset",
+    "image",
     "video",
 ];
-/// Etapas que fazem escritas reais (pedem confirmação).
+/// Steps that make real writes (they ask for confirmation).
 const WRITE_STEPS: [&str; 6] = [
     "search",
     "demand_gen",
     "display",
-    "asset_texto",
-    "imagem",
+    "text_asset",
+    "image",
     "video",
 ];
 
-/// Itens VERIFY(v26) das Tasks 9-16, na ordem do relatório.
+/// VERIFY(v26) items, in report order.
 const VERIFY: &[(&str, &str)] = &[
     (
-        "T9.1",
-        "update_ad: AdOperation update em customers/{c}/ads/{id} e leitura FROM ad",
+        "V1",
+        "update_ad: AdOperation update on customers/{c}/ads/{id} and read FROM ad",
     ),
     (
-        "T9.2",
-        "RSA: chaves só de saída (assetPerformanceLabel, policySummaryInfo) não dão conflito no desfazer",
+        "V2",
+        "RSA: output-only keys (assetPerformanceLabel, policySummaryInfo) cause no conflict on undo",
     ),
     (
-        "T9.3",
-        "campaign.start_date_time/end_date_time (startDateTime/endDateTime); start_date/end_date não existem na v26",
+        "V3",
+        "campaign.start_date_time/end_date_time (startDateTime/endDateTime); start_date/end_date do not exist in v26",
     ),
     (
-        "T9.4",
-        "desfazer volta um valor que era nulo (end_date_time ausente)",
+        "V4",
+        "undo restores a value that was null (end_date_time absent)",
     ),
     (
-        "T10.1",
-        "temporários compostos sharedCriteria/-1~-2 e campaignSharedSets/<campanha>~-1 (create_list)",
+        "V5",
+        "composite temp ids sharedCriteria/-1~-2 and campaignSharedSets/<campaign>~-1 (create_list)",
     ),
-    ("T10.2", "attach_list com o resourceName omitido"),
+    ("V6", "attach_list with the resourceName omitted"),
+    ("V7", "undo set_bid_modifier when bid_modifier was null"),
     (
-        "T11.1",
-        "desfazer set_bid_modifier quando o bid_modifier era nulo",
-    ),
-    (
-        "T12.1",
-        "update_asset_group: assetGroupAssets/{ag}~-N~FIELD e asset existente sem resourceName",
+        "V8",
+        "update_asset_group: assetGroupAssets/{ag}~-N~FIELD and existing asset without resourceName",
     ),
     (
-        "T12.2",
-        "recommendation.dismissed (leitura do plano de apply/dismiss)",
+        "V9",
+        "recommendation.dismissed (read by the apply/dismiss plan)",
     ),
     (
-        "T13.1",
-        "filhos criados sem resourceName (critérios, adGroupAd, campaignAsset)",
+        "V10",
+        "children created without resourceName (criteria, adGroupAd, campaignAsset)",
     ),
-    ("T13.2", "startDateTime/endDateTime na criação da campanha"),
+    ("V11", "startDateTime/endDateTime on campaign creation"),
     (
         "E1",
-        "falhas API_ERROR de qualquer passo, com o erro completo (field_path)",
+        "API_ERROR failures of any step, with the full error (field_path)",
     ),
     (
         "E2",
-        "operações (tipo, temporários e referências, sem bytes) das validações que falharam",
+        "operations (type, temp ids and references, no bytes) of the validations that failed",
     ),
     (
-        "T14.1",
-        "PMax: assetAutomationSettings e brandGuidelinesEnabled",
+        "V12",
+        "PMax: assetAutomationSettings and brandGuidelinesEnabled",
     ),
     (
-        "T14.2",
-        "assets de imagem nomeados pelo conteúdo (img-<sha>) e deduplicação/DUPLICATE_ASSET_NAME",
+        "V13",
+        "image assets named by content (img-<sha>) and deduplication/DUPLICATE_ASSET_NAME",
     ),
-    ("T14.3", "PMax: quantos sinais de público por asset group"),
-    ("T15.1", "Demand Gen: local e idioma no grupo de anúncios"),
-    ("T15.2", "Demand Gen: grupo de anúncios sem type"),
+    ("V14", "PMax: how many audience signals per asset group"),
+    ("V15", "Demand Gen: location and language on the ad group"),
+    ("V16", "Demand Gen: ad group without type"),
     (
-        "T15.3",
-        "businessName: string (multi-asset e carrossel); AdTextAsset (vídeo)",
+        "V17",
+        "businessName: string (multi-asset and carousel); AdTextAsset (video)",
     ),
-    ("T15.4", "callToActionText livre (limite local 30)"),
-    ("T15.5", "carrossel: papel da imagem do card"),
+    ("V18", "free-form callToActionText (local limit 30)"),
+    ("V19", "carousel: role of the card image"),
     (
-        "T15.6",
-        "Display sem networkSettings; RDA businessName string e longHeadline {text}",
-    ),
-    (
-        "T16.1",
-        "upload_video: onde vem o nome do upload (início ou resposta do finalize)",
+        "V20",
+        "Display without networkSettings; RDA businessName string and longHeadline {text}",
     ),
     (
-        "T16.2",
-        "upload_video: URL da sessão com a mesma origem de upload_base",
+        "V21",
+        "upload_video: where the upload name comes from (start or finalize response)",
+    ),
+    (
+        "V22",
+        "upload_video: session URL with the same origin as upload_base",
     ),
 ];
 
-// ---------------------------------------------------------------- argumentos
+// ---------------------------------------------------------------- arguments
 
 #[derive(Debug, PartialEq)]
 struct Args {
@@ -154,10 +152,10 @@ struct Args {
 }
 
 impl Args {
-    /// A etapa roda nesta execução? `imagem` e `video` precisam do arquivo.
+    /// Does the step run in this execution? `image` and `video` need their file.
     fn runs(&self, step: &str) -> bool {
         match step {
-            "imagem" if self.image.is_none() => false,
+            "image" if self.image.is_none() => false,
             "video" if self.video.is_none() => false,
             _ => self
                 .only
@@ -187,10 +185,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
                     .filter(|s| !s.is_empty())
                     .collect();
                 if let Some(bad) = list.iter().find(|s| !STEPS.contains(&s.as_str())) {
-                    return Err(format!(
-                        "etapa desconhecida: {bad} (use {})",
-                        STEPS.join(", ")
-                    ));
+                    return Err(format!("unknown step: {bad} (use {})", STEPS.join(", ")));
                 }
                 if list.is_empty() {
                     return Err(USAGE.into());
@@ -198,7 +193,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
                 only = Some(list);
             }
             "--yes" => yes = true,
-            s if s.starts_with("--") => return Err(format!("opção desconhecida: {s}\n{USAGE}")),
+            s if s.starts_with("--") => return Err(format!("unknown option: {s}\n{USAGE}")),
             _ if account.is_none() => account = Some(a),
             _ => return Err(USAGE.into()),
         }
@@ -206,10 +201,10 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     let account = account.ok_or(USAGE)?;
     if let Some(l) = &only {
         if l.iter().any(|s| s == "video") && video.is_none() {
-            return Err("--only video precisa de --video <arquivo>".into());
+            return Err("--only video needs --video <file>".into());
         }
-        if l.iter().any(|s| s == "imagem") && image.is_none() {
-            return Err("--only imagem precisa de --image <arquivo>".into());
+        if l.iter().any(|s| s == "image") && image.is_none() {
+            return Err("--only image needs --image <file>".into());
         }
     }
     Ok(Args {
@@ -221,33 +216,33 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     })
 }
 
-/// Escritas reais que esta execução vai fazer, uma por linha.
+/// Real writes this execution will make, one per line.
 fn planned_writes(args: &Args) -> Vec<String> {
     let mut out = Vec::new();
     for step in WRITE_STEPS.iter().filter(|s| args.runs(s)) {
         out.push(match *step {
             "search" => {
-                "search: create_search_campaign pausada; update_campaign (nome, orçamento, \
+                "search: create_search_campaign paused; update_campaign (name, budget, \
                  end_date, start_date; v26: *_date_time), update_ad_group, update_ad, manage_keywords (add, pause, \
                  set_bid), manage_negatives (add, create_list x2, attach_list), manage_targeting \
-                 (add local e horário, set_bid_modifier); conflito com dois update_campaign; \
-                 desfaz tudo em ordem inversa e a campanha fica REMOVED"
+                 (add location and schedule, set_bid_modifier); conflict with two update_campaign; \
+                 undoes everything in reverse order and the campaign ends up REMOVED"
                     .to_string()
             }
-            "demand_gen" => "demand_gen: create_demand_gen_campaign pausada e desfazer (fica \
-                 REMOVED; os assets de imagem e texto criados ficam na conta)"
+            "demand_gen" => "demand_gen: create_demand_gen_campaign paused, then undo (ends up \
+                 REMOVED; the image and text assets created stay in the account)"
                 .to_string(),
-            "display" => "display: create_display_campaign pausada e desfazer (fica REMOVED; os \
-                 assets de imagem e texto ficam na conta)"
+            "display" => "display: create_display_campaign paused, then undo (ends up REMOVED; the \
+                 image and text assets stay in the account)"
                 .to_string(),
-            "asset_texto" => "asset_texto: upload_asset texto (irreversível)".to_string(),
-            "imagem" => format!(
-                "imagem: upload_asset imagem {} (irreversível)",
+            "text_asset" => "text_asset: upload_asset text (irreversible)".to_string(),
+            "image" => format!(
+                "image: upload_asset image {} (irreversible)",
                 args.image.as_deref().unwrap_or(Path::new("")).display()
             ),
             "video" => format!(
-                "video: upload_video {} (não listado) e desfazer (remove o vídeo do YouTube; o \
-                 asset do vídeo fica na conta)",
+                "video: upload_video {} (unlisted), then undo (removes the YouTube video; the \
+                 video asset stays in the account)",
                 args.video.as_deref().unwrap_or(Path::new("")).display()
             ),
             other => other.to_string(),
@@ -256,7 +251,7 @@ fn planned_writes(args: &Args) -> Vec<String> {
     out
 }
 
-/// Sem escritas planejadas ou com `--yes`, segue. Senão só com `sim` na entrada.
+/// Proceeds with no planned writes or with `--yes`. Otherwise only on `yes` in the input.
 fn confirmed(planned: &[String], yes: bool, input: &mut dyn BufRead) -> bool {
     if planned.is_empty() || yes {
         return true;
@@ -265,10 +260,10 @@ fn confirmed(planned: &[String], yes: bool, input: &mut dyn BufRead) -> bool {
     if input.read_line(&mut line).is_err() {
         return false;
     }
-    line.trim().eq_ignore_ascii_case("sim")
+    line.trim().eq_ignore_ascii_case("yes")
 }
 
-// ---------------------------------------------------------------- imagens
+// ---------------------------------------------------------------- images
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -304,12 +299,12 @@ fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-/// PNG válido em tons de cinza, sem compressão (deflate "stored"), com um xadrez que
-/// depende de `seed`: cada execução gera bytes novos.
+/// Valid grayscale PNG, uncompressed (deflate "stored"), with a checkerboard that
+/// depends on `seed`: each run generates new bytes.
 fn png(w: u32, h: u32, seed: u64) -> Vec<u8> {
     let mut raw = Vec::with_capacity((w as usize + 1) * h as usize);
     for y in 0..h {
-        raw.push(0); // filtro None
+        raw.push(0); // filter None
         for x in 0..w {
             let cell = u64::from(x / 40 + y / 40);
             raw.push((30 + (cell * 37 + seed) % 200) as u8);
@@ -336,15 +331,15 @@ fn png(w: u32, h: u32, seed: u64) -> Vec<u8> {
     out
 }
 
-/// Imagens geradas num diretório temporário: 1.91:1, 1:1 e logo 1:1.
+/// Images generated in a temporary directory: 1.91:1, 1:1 and a 1:1 logo.
 struct Images {
     _dir: tempfile::TempDir,
     landscape: String,
-    /// Outra 1.91:1 (o carrossel exige uma imagem diferente por card).
+    /// Another 1.91:1 (the carousel requires a different image per card).
     landscape2: String,
     square: String,
     logo: String,
-    /// (arquivo, nome do asset pelo conteúdo).
+    /// (file, asset name from the content).
     names: Vec<(String, String)>,
 }
 
@@ -373,7 +368,7 @@ fn make_images(seed: u64) -> std::io::Result<Images> {
     })
 }
 
-// ---------------------------------------------------------------- utilidades
+// ---------------------------------------------------------------- utilities
 
 fn short(s: &str, max: usize) -> String {
     let one_line = s.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -386,12 +381,12 @@ fn short(s: &str, max: usize) -> String {
 fn err_detail(e: &ToolError) -> String {
     let mut s = e.message.clone();
     if let Some(f) = &e.field {
-        s.push_str(&format!(" [campo {f}]"));
+        s.push_str(&format!(" [field {f}]"));
     }
     short(&s, 240)
 }
 
-/// Erro inteiro (código, mensagem, campo e detalhes do Google), sem segredos.
+/// The whole error (code, message, field and Google details), without secrets.
 fn err_evidence(e: &ToolError) -> String {
     short(
         &json!({ "code": e.code, "message": e.message, "field": e.field, "details": e.details })
@@ -400,7 +395,7 @@ fn err_evidence(e: &ToolError) -> String {
     )
 }
 
-/// Nomes de recurso (`customers/...`) entre as chaves de `result` de uma escrita.
+/// Resource names (`customers/...`) among the `result` keys of a write.
 fn resource_keys(body: &Value) -> Vec<String> {
     body["result"]
         .as_object()
@@ -420,7 +415,7 @@ fn find_rn(body: &Value, collection: &str) -> Option<String> {
         .find(|k| k.contains(&needle))
 }
 
-/// Último id de um nome de recurso (`.../campaigns/12` → 12, `.../x/5~7` → 7).
+/// Last id of a resource name (`.../campaigns/12` → 12, `.../x/5~7` → 7).
 fn last_id(rn: &str) -> String {
     rn.rsplit(['/', '~']).next().unwrap_or_default().to_string()
 }
@@ -429,7 +424,7 @@ fn rows(v: &Value) -> Vec<Value> {
     v["rows"].as_array().cloned().unwrap_or_default()
 }
 
-/// Valor num caminho com pontos (`adGroup.id`), como texto.
+/// Value at a dotted path (`adGroup.id`), as text.
 fn at(row: &Value, path: &str) -> Option<String> {
     let v = path.split('.').try_fold(row, |v, k| v.get(k))?;
     match v {
@@ -445,21 +440,21 @@ fn day(offset: u64) -> String {
         .to_string()
 }
 
-// ---------------------------------------------------------------- execução
+// ---------------------------------------------------------------- execution
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mark {
     Ok,
-    Falha,
-    Pulado,
+    Fail,
+    Skipped,
 }
 
 impl Mark {
     fn label(self) -> &'static str {
         match self {
             Mark::Ok => "OK",
-            Mark::Falha => "FALHA",
-            Mark::Pulado => "PULADO",
+            Mark::Fail => "FAIL",
+            Mark::Skipped => "SKIPPED",
         }
     }
 }
@@ -472,16 +467,16 @@ struct Line {
     detail: String,
 }
 
-/// Conferência depois de um desfazer.
+/// Check after an undo.
 enum AfterUndo {
     Nothing,
-    /// Lê start_date_time/end_date_time da campanha (T9.3/T9.4).
+    /// Reads the campaign start_date_time/end_date_time (V3/V4).
     CampaignDates(String),
-    /// Confere `campaign.status = REMOVED`.
+    /// Checks `campaign.status = REMOVED`.
     CampaignRemoved(String),
-    /// Lê o bid_modifier do critério de campanha (VERIFY T11.1).
+    /// Reads the bid_modifier of the campaign criterion (VERIFY V7).
     CriterionBid(String),
-    /// Lê o estado do upload de vídeo.
+    /// Reads the state of the video upload.
     VideoUpload(String),
 }
 
@@ -531,20 +526,20 @@ impl Checklist {
         if e.code == "API_ERROR" {
             self.evidence("E1", format!("{step} {tool}: {}", err_evidence(e)));
         }
-        self.line(Mark::Falha, step, tool, Some(&e.code), err_detail(e));
+        self.line(Mark::Fail, step, tool, Some(&e.code), err_detail(e));
     }
 
     fn fail_msg(&mut self, step: &str, tool: &str, detail: impl Into<String>) {
-        self.line(Mark::Falha, step, tool, None, detail.into());
+        self.line(Mark::Fail, step, tool, None, detail.into());
     }
 
     fn skip(&mut self, step: &str, tool: &str, detail: impl Into<String>) {
-        self.line(Mark::Pulado, step, tool, None, detail.into());
+        self.line(Mark::Skipped, step, tool, None, detail.into());
     }
 
     fn evidence(&mut self, item: &'static str, text: impl Into<String>) {
         let text = text.into();
-        println!("  evidência {item}: {}", short(&text, 400));
+        println!("  evidence {item}: {}", short(&text, 400));
         self.evidence.entry(item).or_default().push(text);
     }
 
@@ -563,23 +558,23 @@ impl Checklist {
             .await
     }
 
-    /// GAQL de apoio (busca de ids e evidências), sem linha no relatório.
+    /// Helper GAQL (id and evidence lookups), with no line in the report.
     async fn gaql(&self, query: &str) -> Result<Vec<Value>, ToolError> {
         self.call("gaql_search", json!({ "query": query }))
             .await
             .map(|v| rows(&v))
     }
 
-    /// GAQL de evidência: grava as linhas (ou o erro) no item.
+    /// Evidence GAQL: records the rows (or the error) on the item.
     async fn gaql_evidence(&mut self, item: &'static str, what: &str, query: &str) {
         let text = match self.gaql(query).await {
             Ok(r) => format!("{what}: {}", Value::Array(r)),
-            Err(e) => format!("{what}: erro {}", err_evidence(&e)),
+            Err(e) => format!("{what}: error {}", err_evidence(&e)),
         };
         self.evidence(item, text);
     }
 
-    /// Leitura registrada: OK com um resumo das chaves, ou FALHA com o código.
+    /// Recorded read: OK with a summary of the keys, or FAIL with the code.
     async fn read(&mut self, step: &str, tool: &str, input: Value) -> Option<Value> {
         match self.call(tool, input).await {
             Ok(v) => {
@@ -592,18 +587,22 @@ impl Checklist {
                         })
                         .collect::<Vec<_>>()
                         .join(", "),
-                    Value::Array(a) => format!("{} itens", a.len()),
+                    Value::Array(a) => format!("{} items", a.len()),
                     other => short(&other.to_string(), 80),
                 };
                 self.ok(step, tool, short(&summary, 200));
                 Some(v)
             }
-            // Token Explorer não acessa o Keyword Planner: é o comportamento correto.
+            // An Explorer token cannot access the Keyword Planner: this is the correct behavior.
             Err(e)
                 if e.code == "ACCESS_LEVEL_INSUFFICIENT"
                     && matches!(tool, "keyword_ideas" | "keyword_metrics") =>
             {
-                self.skip(step, tool, "exige nível Basic; conexão é Explorer");
+                self.skip(
+                    step,
+                    tool,
+                    "requires Basic access level; connection is Explorer",
+                );
                 None
             }
             Err(e) => {
@@ -613,8 +612,8 @@ impl Checklist {
         }
     }
 
-    /// `precheck` + `validate` do adapter (regras locais e `validateOnly`), sem gravar
-    /// mudança e sem aplicar.
+    /// The adapter's `precheck` + `validate` (local rules and `validateOnly`), without
+    /// recording a change and without applying.
     async fn validate(&self, tool: &str, input: Value) -> Result<Validated, ToolError> {
         let call = Call {
             connection_id: self.connection.clone(),
@@ -626,8 +625,8 @@ impl Checklist {
         self.adapter.validate(&call).await
     }
 
-    /// Evidência E2: resumo das operações que a ferramenta enviaria (sem bytes), com as
-    /// referências a temporários; serve para diagnosticar falhas de validateOnly.
+    /// Evidence E2: summary of the operations the tool would send (no bytes), with the
+    /// references to temp ids; used to diagnose validateOnly failures.
     async fn operations_evidence(&mut self, tool: &str, input: Value) {
         let call = Call {
             connection_id: self.connection.clone(),
@@ -638,16 +637,16 @@ impl Checklist {
         match self.adapter.describe_operations(&call).await {
             Ok(lines) => self.evidence(
                 "E2",
-                format!("{tool}: operações enviadas\n    {}", lines.join("\n    ")),
+                format!("{tool}: operations sent\n    {}", lines.join("\n    ")),
             ),
             Err(e) => self.evidence(
                 "E2",
-                format!("{tool}: plano sem envio falhou: {}", err_evidence(&e)),
+                format!("{tool}: plan without sending failed: {}", err_evidence(&e)),
             ),
         }
     }
 
-    /// Validação registrada; `accept` lista códigos de erro que contam como sucesso.
+    /// Recorded validation; `accept` lists error codes that count as success.
     async fn check_validate(
         &mut self,
         step: &str,
@@ -661,16 +660,16 @@ impl Checklist {
                 let warn = v
                     .warning
                     .as_deref()
-                    .map(|w| format!(" (aviso: {w})"))
+                    .map(|w| format!(" (warning: {w})"))
                     .unwrap_or_default();
                 self.ok(
                     step,
                     tool,
-                    short(&format!("validateOnly aceito: {}{warn}", v.summary), 240),
+                    short(&format!("validateOnly accepted: {}{warn}", v.summary), 240),
                 );
             }
             Err(e) if accept.contains(&e.code.as_str()) => {
-                let d = format!("{} (esperado): {}", e.code, err_detail(e));
+                let d = format!("{} (expected): {}", e.code, err_detail(e));
                 self.ok(step, tool, d);
             }
             Err(e) => self.fail(step, tool, e),
@@ -678,7 +677,7 @@ impl Checklist {
         r
     }
 
-    /// Escrita real registrada. Reversível: entra na pilha de desfazer.
+    /// Recorded real write. If reversible, it goes on the undo stack.
     async fn write(
         &mut self,
         step: &str,
@@ -700,7 +699,7 @@ impl Checklist {
                         &format!(
                             "{label}: {change_id} {}{}",
                             resources.join(" "),
-                            if reversible { "" } else { " (irreversível)" }
+                            if reversible { "" } else { " (irreversible)" }
                         ),
                         300,
                     ),
@@ -724,8 +723,8 @@ impl Checklist {
                         .and_then(|d| d["change_id"].as_str())
                         .unwrap_or("-");
                     self.left_behind.push(format!(
-                        "possivelmente aplicado: {label} (change_id {id}); procure \
-                         'AdsConsole checklist {}' no Google Ads",
+                        "possibly applied: {label} (change_id {id}); look for \
+                         'AdsConsole checklist {}' in Google Ads",
                         self.stamp
                     ));
                 }
@@ -734,8 +733,8 @@ impl Checklist {
         r
     }
 
-    /// Desfaz o último item da pilha. `UNDO_CONFLICT` fora do teste de conflito é uma
-    /// falha (com os diffs na evidência); tenta de novo com `force` para limpar a conta.
+    /// Undoes the last item on the stack. `UNDO_CONFLICT` outside the conflict test is a
+    /// failure (with the diffs in the evidence); retries with `force` to clean the account.
     async fn undo_last(&mut self) -> bool {
         let Some(u) = self.undo.pop() else {
             return false;
@@ -752,10 +751,7 @@ impl Checklist {
             self.fail(&step, "undo_change", e);
             println!("  diffs: {}", short(&err_evidence(e), 1500));
             if u.label == UPDATE_AD_LABEL {
-                self.evidence(
-                    "T9.2",
-                    format!("desfazer do update_ad: {}", err_evidence(e)),
-                );
+                self.evidence("V2", format!("undo of update_ad: {}", err_evidence(e)));
             }
             forced = true;
             r = self
@@ -766,16 +762,16 @@ impl Checklist {
         match r {
             Ok(v) => {
                 let id = v["change_id"].as_str().unwrap_or_default();
-                let how = if forced { " com force" } else { "" };
+                let how = if forced { " with force" } else { "" };
                 self.ok(
                     &step,
                     "undo_change",
-                    format!("{} desfeita{how} ({id})", u.label),
+                    format!("{} undone{how} ({id})", u.label),
                 );
                 if u.label == UPDATE_AD_LABEL && !forced {
                     self.evidence(
-                        "T9.2",
-                        "desfazer do update_ad sem UNDO_CONFLICT (sem chaves de saída no diff)",
+                        "V2",
+                        "undo of update_ad without UNDO_CONFLICT (no output keys in the diff)",
                     );
                 }
                 self.after_undo(&step, &u).await;
@@ -801,7 +797,7 @@ impl Checklist {
                 let q = format!(
                     "SELECT campaign.start_date_time, campaign.end_date_time FROM campaign WHERE campaign.id = {id}"
                 );
-                self.gaql_evidence("T9.4", &format!("datas depois de desfazer {}", u.label), &q)
+                self.gaql_evidence("V4", &format!("dates after undoing {}", u.label), &q)
                     .await;
             }
             AfterUndo::CampaignRemoved(id) => {
@@ -810,15 +806,15 @@ impl Checklist {
                     Ok(r) => {
                         let st = r.first().and_then(|x| at(x, "campaign.status"));
                         if st.as_deref() == Some("REMOVED") {
-                            self.ok(step, "remove_resources", format!("campanha {id} REMOVED"));
+                            self.ok(step, "remove_resources", format!("campaign {id} REMOVED"));
                         } else {
                             self.fail_msg(
                                 step,
                                 "remove_resources",
-                                format!("campanha {id} com status {st:?}"),
+                                format!("campaign {id} with status {st:?}"),
                             );
                             self.left_behind
-                                .push(format!("campanha {id} (status {st:?})"));
+                                .push(format!("campaign {id} (status {st:?})"));
                         }
                     }
                     Err(e) => self.fail(step, "remove_resources", &e),
@@ -829,7 +825,7 @@ impl Checklist {
                     "SELECT campaign_criterion.criterion_id, campaign_criterion.bid_modifier \
                      FROM campaign_criterion WHERE campaign_criterion.resource_name = '{rn}'"
                 );
-                self.gaql_evidence("T11.1", "bid_modifier depois de desfazer", &q)
+                self.gaql_evidence("V7", "bid_modifier after undo", &q)
                     .await;
             }
             AfterUndo::VideoUpload(rn) => {
@@ -837,23 +833,22 @@ impl Checklist {
                     "SELECT you_tube_video_upload.resource_name, you_tube_video_upload.state \
                      FROM you_tube_video_upload WHERE you_tube_video_upload.resource_name = '{rn}'"
                 );
-                self.gaql_evidence("T16.1", "upload depois de desfazer", &q)
-                    .await;
+                self.gaql_evidence("V21", "upload after undo", &q).await;
             }
         }
     }
 
-    /// Desfaz até sobrarem `keep` itens na pilha.
+    /// Undoes until `keep` items are left on the stack.
     async fn unwind_to(&mut self, keep: usize) {
         while self.undo.len() > keep {
             self.undo_last().await;
         }
     }
 
-    // ------------------------------------------------------------ 1. leituras
+    // ------------------------------------------------------------ 1. reads
 
     async fn reads(&mut self) {
-        let s = "leituras";
+        let s = "reads";
         let accounts = self
             .engine
             .call_tool("list_accounts", json!({}), Some(REQUESTED_BY.into()))
@@ -861,7 +856,7 @@ impl Checklist {
         match accounts {
             Ok(v) => {
                 let n = v["accounts"].as_array().map_or(0, Vec::len);
-                self.ok(s, "list_accounts", format!("{n} contas"));
+                self.ok(s, "list_accounts", format!("{n} accounts"));
             }
             Err(e) => self.fail(s, "list_accounts", &e),
         }
@@ -883,7 +878,7 @@ impl Checklist {
                 self.read(s, "get_campaign_details", json!({ "campaign_id": id }))
                     .await;
             }
-            None => self.skip(s, "get_campaign_details", "a conta não tem campanhas"),
+            None => self.skip(s, "get_campaign_details", "the account has no campaigns"),
         }
         self.read(s, "get_search_terms", json!({ "limit": 20 }))
             .await;
@@ -894,14 +889,14 @@ impl Checklist {
         self.read(
             s,
             "keyword_ideas",
-            json!({ "keywords": ["sapato social"], "language_id": "1014",
+            json!({ "keywords": ["dress shoes"], "language_id": "1014",
                     "geo_ids": ["2076"], "limit": 10 }),
         )
         .await;
         self.read(
             s,
             "keyword_metrics",
-            json!({ "keywords": ["sapato social"], "language_id": "1014", "geo_ids": ["2076"],
+            json!({ "keywords": ["dress shoes"], "language_id": "1014", "geo_ids": ["2076"],
                     "forecast": { "daily_budget": 10, "max_cpc": 1 } }),
         )
         .await;
@@ -909,9 +904,9 @@ impl Checklist {
         self.read(s, "list_changes", json!({ "limit": 5 })).await;
     }
 
-    /// `gaql_search` com resposta grande (cortada) e a segunda página pelo cursor.
+    /// `gaql_search` with a large (truncated) response and the second page through the cursor.
     async fn gaql_with_cursor(&mut self) {
-        let s = "leituras";
+        let s = "reads";
         let q = "SELECT geo_target_constant.id, geo_target_constant.name, \
                  geo_target_constant.canonical_name, geo_target_constant.target_type \
                  FROM geo_target_constant LIMIT 5000";
@@ -925,7 +920,7 @@ impl Checklist {
                 s,
                 "gaql_search",
                 format!(
-                    "{n1} linhas sem next_cursor (truncated={})",
+                    "{n1} rows without next_cursor (truncated={})",
                     first["truncated"]
                 ),
             );
@@ -933,7 +928,7 @@ impl Checklist {
         self.ok(
             s,
             "gaql_search",
-            format!("página 1: {n1} linhas, truncated=true"),
+            format!("page 1: {n1} rows, truncated=true"),
         );
         match self
             .call("gaql_search", json!({ "query": q, "cursor": cursor }))
@@ -949,13 +944,13 @@ impl Checklist {
                     self.ok(
                         s,
                         "gaql_search",
-                        format!("cursor: {n2} linhas, truncated={}", v["truncated"]),
+                        format!("cursor: {n2} rows, truncated={}", v["truncated"]),
                     );
                 } else {
                     self.fail_msg(
                         s,
                         "gaql_search",
-                        format!("cursor: {n2} linhas, repetiu {a:?}"),
+                        format!("cursor: {n2} rows, repeated {a:?}"),
                     );
                 }
             }
@@ -963,7 +958,7 @@ impl Checklist {
         }
     }
 
-    // ------------------------------------------------------------ 2. validação
+    // ------------------------------------------------------------ 2. validation
 
     fn search_input(&self, name: &str, full: bool) -> Value {
         let mut v = json!({
@@ -972,17 +967,17 @@ impl Checklist {
             "bidding": "manual_cpc",
             "languages": ["1014"],
             "ad_groups": [{
-                "name": "Grupo checklist",
+                "name": "Checklist group",
                 "cpc_bid": 1,
                 "keywords": [
-                    { "text": "sapato social checklist", "match_type": "PHRASE" },
-                    { "text": "sapato couro checklist", "match_type": "EXACT" }
+                    { "text": "dress shoes checklist", "match_type": "PHRASE" },
+                    { "text": "leather shoes checklist", "match_type": "EXACT" }
                 ],
                 "ads": [{
-                    "headlines": ["Sapatos sociais", "Sapatos de couro", "Frete grátis"],
-                    "descriptions": ["Modelos sociais e casuais.", "Entrega rápida para todo o país."],
+                    "headlines": ["Dress shoes", "Leather shoes", "Free shipping"],
+                    "descriptions": ["Dress and casual styles.", "Fast delivery nationwide."],
                     "final_url": "https://example.com",
-                    "path1": "sapatos"
+                    "path1": "shoes"
                 }]
             }]
         });
@@ -991,16 +986,16 @@ impl Checklist {
             v["start_date"] = json!(day(7));
             v["end_date"] = json!(day(60));
             v["search_partners"] = json!(true);
-            v["negatives"] = json!([{ "text": "grátis", "match_type": "BROAD" }]);
-            v["sitelinks"] = json!([{ "link_text": "Contato", "final_url": "https://example.com/contato",
-                                     "description1": "Fale com a gente", "description2": "Atendimento rápido" }]);
-            v["ad_groups"][0]["negatives"] = json!([{ "text": "usado", "match_type": "EXACT" }]);
+            v["negatives"] = json!([{ "text": "free", "match_type": "BROAD" }]);
+            v["sitelinks"] = json!([{ "link_text": "Contact", "final_url": "https://example.com/contact",
+                                     "description1": "Talk to us", "description2": "Fast support" }]);
+            v["ad_groups"][0]["negatives"] = json!([{ "text": "used", "match_type": "EXACT" }]);
         }
         v
     }
 
     fn pmax_input(&self, img: &Images, audiences: &[String]) -> Value {
-        let mut signals = json!({ "search_themes": ["sapato social", "sapato de couro"] });
+        let mut signals = json!({ "search_themes": ["dress shoes", "leather shoes"] });
         if !audiences.is_empty() {
             signals["audiences"] = json!(audiences);
         }
@@ -1009,13 +1004,13 @@ impl Checklist {
             "daily_budget": 20,
             "locations": ["2076"],
             "languages": ["1014"],
-            "brand": { "business_name": "Checklist Ltda", "logo": { "file_path": img.logo } },
+            "brand": { "business_name": "Checklist Ltd", "logo": { "file_path": img.logo } },
             "asset_groups": [{
-                "name": "Grupo 1",
+                "name": "Group 1",
                 "final_urls": ["https://example.com"],
-                "headlines": ["Sapatos", "Sapatos de couro legítimo", "Frete grátis"],
-                "long_headlines": ["Sapatos de couro com frete grátis para todo o Brasil"],
-                "descriptions": ["Compre hoje.", "Modelos sociais e casuais com entrega rápida."],
+                "headlines": ["Shoes", "Genuine leather shoes", "Free shipping"],
+                "long_headlines": ["Leather shoes with free shipping across Brazil"],
+                "descriptions": ["Shop today.", "Dress and casual styles with fast delivery."],
                 "images": {
                     "landscape": [{ "file_path": img.landscape }],
                     "square": [{ "file_path": img.square }]
@@ -1027,16 +1022,16 @@ impl Checklist {
 
     fn multi_asset_ad(img: &Images) -> Value {
         json!({ "multi_asset": {
-            "headlines": ["Sapatos de couro", "Frete grátis"],
-            "descriptions": ["Modelos sociais e casuais com entrega rápida."],
-            "business_name": "Checklist Ltda",
+            "headlines": ["Leather shoes", "Free shipping"],
+            "descriptions": ["Dress and casual styles with fast delivery."],
+            "business_name": "Checklist Ltd",
             "logo": { "file_path": img.logo },
             "images": {
                 "landscape": [{ "file_path": img.landscape }],
                 "square": [{ "file_path": img.square }]
             },
             "final_url": "https://example.com",
-            "call_to_action": "Comprar agora"
+            "call_to_action": "Shop Now"
         } })
     }
 
@@ -1048,12 +1043,12 @@ impl Checklist {
                 &img.landscape2
             };
             json!({ "headline": format!("Card {n}"), "image": { "file_path": file },
-                    "final_url": format!("https://example.com/{n}"), "call_to_action": "Saber mais" })
+                    "final_url": format!("https://example.com/{n}"), "call_to_action": "Learn More" })
         };
         json!({ "carousel": {
-            "headline": "Coleção nova",
-            "description": "Veja os modelos da estação.",
-            "business_name": "Checklist Ltda",
+            "headline": "New collection",
+            "description": "See this season's styles.",
+            "business_name": "Checklist Ltd",
             "logo": { "file_path": img.logo },
             "cards": [card(1), card(2)],
             "final_url": "https://example.com"
@@ -1065,7 +1060,7 @@ impl Checklist {
             "name": format!("AdsConsole checklist {} demand gen", self.stamp),
             "daily_budget": 50,
             "ad_groups": [{
-                "name": "Grupo 1",
+                "name": "Group 1",
                 "locations": ["2076"],
                 "languages": ["1014"],
                 "ads": if ads.is_empty() { vec![Self::multi_asset_ad(img)] } else { ads }
@@ -1080,12 +1075,12 @@ impl Checklist {
             "locations": ["2076"],
             "languages": ["1014"],
             "ad_groups": [{
-                "name": "Grupo 1",
+                "name": "Group 1",
                 "ads": [{
-                    "headlines": ["Sapatos", "Frete grátis"],
-                    "long_headline": "Sapatos de couro com frete grátis para todo o Brasil",
-                    "descriptions": ["Compre hoje."],
-                    "business_name": "Checklist Ltda",
+                    "headlines": ["Shoes", "Free shipping"],
+                    "long_headline": "Leather shoes with free shipping across Brazil",
+                    "descriptions": ["Shop today."],
+                    "business_name": "Checklist Ltd",
                     "marketing_images": [{ "file_path": img.landscape }],
                     "square_marketing_images": [{ "file_path": img.square }],
                     "final_url": "https://example.com"
@@ -1095,20 +1090,22 @@ impl Checklist {
     }
 
     async fn validations(&mut self, img: &Images) {
-        let s = "validacao";
-        let name = format!("AdsConsole checklist {} busca validacao", self.stamp);
+        let s = "validation";
+        let name = format!("AdsConsole checklist {} search validation", self.stamp);
         let input = self.search_input(&name, true);
         let r = self
             .check_validate(s, "create_search_campaign", input, &[])
             .await;
         let text = match &r {
-            Ok(_) => "validateOnly aceitou startDateTime/endDateTime na criação (com sitelinks, \
-                      negativas e critérios sem resourceName)"
-                .to_string(),
+            Ok(_) => {
+                "validateOnly accepted startDateTime/endDateTime on creation (with sitelinks, \
+                      negatives and criteria without resourceName)"
+                    .to_string()
+            }
             Err(e) => err_evidence(e),
         };
-        self.evidence("T13.2", text.clone());
-        self.evidence("T9.3", format!("criação: {text}"));
+        self.evidence("V11", text.clone());
+        self.evidence("V3", format!("creation: {text}"));
 
         let audiences: Vec<String> = match self
             .gaql("SELECT audience.resource_name FROM audience LIMIT 2")
@@ -1130,22 +1127,24 @@ impl Checklist {
             )
             .await;
         let text = match &r {
-            Ok(_) => "validateOnly aceitou assetAutomationSettings e brandGuidelinesEnabled".into(),
+            Ok(_) => {
+                "validateOnly accepted assetAutomationSettings and brandGuidelinesEnabled".into()
+            }
             Err(e) if e.code == codes::BIDDING_REQUIRES_CONVERSIONS => format!(
-                "recusado só por falta de conversões (o JSON foi aceito: nome de campo \
-                 desconhecido seria INVALID_ARGUMENT antes): {}",
+                "rejected only for lack of conversions (the JSON was accepted: an unknown \
+                 field name would be INVALID_ARGUMENT first): {}",
                 err_evidence(e)
             ),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T14.1", text.clone());
+        self.evidence("V12", text.clone());
         self.evidence(
-            "T14.3",
+            "V14",
             if audiences.is_empty() {
-                "não exercitado: a conta não tem públicos (audience)".to_string()
+                "not exercised: the account has no audiences (audience)".to_string()
             } else {
                 format!(
-                    "{} sinais de público no asset group: {text}",
+                    "{} audience signals on the asset group: {text}",
                     audiences.len()
                 )
             },
@@ -1161,11 +1160,11 @@ impl Checklist {
                 .await;
         }
         let text = match &r {
-            Ok(_) => "validateOnly aceitou (multi-asset + carrossel)".to_string(),
+            Ok(_) => "validateOnly accepted (multi-asset + carousel)".to_string(),
             Err(e) => err_evidence(e),
         };
-        for item in ["T15.1", "T15.2", "T15.3", "T15.4", "T15.5"] {
-            self.evidence(item, format!("validação Demand Gen: {text}"));
+        for item in ["V15", "V16", "V17", "V18", "V19"] {
+            self.evidence(item, format!("Demand Gen validation: {text}"));
         }
 
         let input = self.display_input(img);
@@ -1178,18 +1177,18 @@ impl Checklist {
             )
             .await;
         let text = match &r {
-            Ok(_) => "validateOnly aceitou".to_string(),
+            Ok(_) => "validateOnly accepted".to_string(),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T15.6", format!("validação Display: {text}"));
+        self.evidence("V20", format!("Display validation: {text}"));
 
         self.validate_asset_group().await;
         self.validate_recommendations().await;
     }
 
-    /// `update_asset_group` (validateOnly) num asset group que já exista na conta.
+    /// `update_asset_group` (validateOnly) on an asset group that already exists in the account.
     async fn validate_asset_group(&mut self) {
-        let s = "validacao";
+        let s = "validation";
         let tool = "update_asset_group";
         let groups = match self
             .gaql(
@@ -1202,8 +1201,8 @@ impl Checklist {
             Err(e) => return self.fail(s, tool, &e),
         };
         let Some(ag) = groups.first().and_then(|r| at(r, "assetGroup.id")) else {
-            self.skip(s, tool, "a conta não tem asset group (PMax)");
-            self.evidence("T12.1", "não exercitado: a conta não tem asset group");
+            self.skip(s, tool, "the account has no asset group (PMax)");
+            self.evidence("V8", "not exercised: the account has no asset group");
             return;
         };
         let linked: Vec<String> = self
@@ -1239,28 +1238,28 @@ impl Checklist {
             .await;
         let text = match &r {
             Ok(_) => format!(
-                "validateOnly aceitou o texto novo (temporário composto){}",
+                "validateOnly accepted the new text (composite temp id){}",
                 if existing.is_some() {
-                    " e o asset existente sem resourceName"
+                    " and the existing asset without resourceName"
                 } else {
-                    "; sem asset de texto existente para testar o link sem resourceName"
+                    "; no existing text asset to test the link without resourceName"
                 }
             ),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T12.1", text);
+        self.evidence("V8", text);
     }
 
-    /// Planos de apply/dismiss leem `recommendation.dismissed` (sem aplicar nada).
+    /// The apply/dismiss plans read `recommendation.dismissed` (nothing is applied).
     async fn validate_recommendations(&mut self) {
-        let s = "validacao";
+        let s = "validation";
         let recs = match self
             .gaql("SELECT recommendation.resource_name FROM recommendation LIMIT 1")
             .await
         {
             Ok(r) => r,
             Err(e) => {
-                self.evidence("T12.2", err_evidence(&e));
+                self.evidence("V9", err_evidence(&e));
                 return self.fail(s, "dismiss_recommendation", &e);
             }
         };
@@ -1268,9 +1267,17 @@ impl Checklist {
             .first()
             .and_then(|r| at(r, "recommendation.resourceName"))
         else {
-            self.skip(s, "dismiss_recommendation", "a conta não tem recomendações");
-            self.skip(s, "apply_recommendation", "a conta não tem recomendações");
-            self.evidence("T12.2", "não exercitado: a conta não tem recomendações");
+            self.skip(
+                s,
+                "dismiss_recommendation",
+                "the account has no recommendations",
+            );
+            self.skip(
+                s,
+                "apply_recommendation",
+                "the account has no recommendations",
+            );
+            self.evidence("V9", "not exercised: the account has no recommendations");
             return;
         };
         for tool in ["dismiss_recommendation", "apply_recommendation"] {
@@ -1278,10 +1285,10 @@ impl Checklist {
                 .check_validate(s, tool, json!({ "recommendation": rn }), &[])
                 .await;
             let text = match &r {
-                Ok(_) => format!("{tool}: o plano leu recommendation.dismissed sem erro"),
+                Ok(_) => format!("{tool}: the plan read recommendation.dismissed without error"),
                 Err(e) => format!("{tool}: {}", err_evidence(e)),
             };
-            self.evidence("T12.2", text);
+            self.evidence("V9", text);
         }
     }
 
@@ -1289,15 +1296,15 @@ impl Checklist {
 
     async fn search(&mut self) {
         self.search_steps().await;
-        // Falhou no meio: desfaz o que ficou, em ordem inversa.
+        // Failed midway: undo what is left, in reverse order.
         self.unwind_to(0).await;
     }
 
     async fn search_steps(&mut self) {
         let s = "search";
-        let name = format!("AdsConsole checklist {} busca", self.stamp);
+        let name = format!("AdsConsole checklist {} search", self.stamp);
         let mut input = self.search_input(&name, false);
-        // Início no futuro: a edição de start_date depois é válida (e cobre T13.2).
+        // Start in the future: editing start_date afterwards is valid (and covers V11).
         input["start_date"] = json!(day(7));
         let created = match self
             .write(
@@ -1311,10 +1318,10 @@ impl Checklist {
         {
             Ok(v) => v,
             Err(e) => {
-                self.evidence("T13.1", format!("criação real: {}", err_evidence(&e)));
+                self.evidence("V10", format!("real creation: {}", err_evidence(&e)));
                 self.evidence(
-                    "T13.2",
-                    format!("criação real com start_date: {}", err_evidence(&e)),
+                    "V11",
+                    format!("real creation with start_date: {}", err_evidence(&e)),
                 );
                 return;
             }
@@ -1323,7 +1330,7 @@ impl Checklist {
             return self.fail_msg(
                 s,
                 "create_search_campaign",
-                "sem o nome da campanha no resultado",
+                "no campaign name in the result",
             );
         };
         let campaign = last_id(&campaign_rn);
@@ -1377,25 +1384,25 @@ impl Checklist {
             None => None,
         };
         self.gaql_evidence(
-            "T13.2",
-            "datas da campanha criada",
+            "V11",
+            "dates of the created campaign",
             &format!("SELECT campaign.start_date_time, campaign.end_date_time FROM campaign WHERE campaign.id = {campaign}"),
         )
         .await;
         self.evidence(
-            "T13.1",
+            "V10",
             format!(
-                "criação real aplicada (com start_date); filhos encontrados: ad_group {ag:?}, {} keywords, anúncio {ad:?}",
+                "real creation applied (with start_date); children found: ad_group {ag:?}, {} keywords, ad {ad:?}",
                 keywords.len()
             ),
         );
 
-        // Edições, cada uma desfeita depois em ordem inversa.
+        // Edits, each undone later in reverse order.
         self.write(
             s,
             "update_campaign",
-            "update_campaign nome+orçamento",
-            json!({ "campaign_id": campaign, "name": format!("{name} (editada)"), "daily_budget": 12 }),
+            "update_campaign name+budget",
+            json!({ "campaign_id": campaign, "name": format!("{name} (edited)"), "daily_budget": 12 }),
             AfterUndo::Nothing,
         )
         .await
@@ -1410,11 +1417,11 @@ impl Checklist {
             )
             .await;
         if let Err(e) = &r {
-            self.evidence("T9.3", format!("update end_date: {}", err_evidence(e)));
+            self.evidence("V3", format!("update end_date: {}", err_evidence(e)));
         }
         self.gaql_evidence(
-            "T9.3",
-            "datas depois do update",
+            "V3",
+            "dates after the update",
             &format!("SELECT campaign.start_date_time, campaign.end_date_time FROM campaign WHERE campaign.id = {campaign}"),
         )
         .await;
@@ -1428,7 +1435,7 @@ impl Checklist {
             )
             .await;
         if let Err(e) = &r {
-            self.evidence("T9.3", format!("update start_date: {}", err_evidence(e)));
+            self.evidence("V3", format!("update start_date: {}", err_evidence(e)));
         }
 
         match &ag {
@@ -1436,14 +1443,14 @@ impl Checklist {
                 self.write(
                     s,
                     "update_ad_group",
-                    "update_ad_group nome+cpc",
-                    json!({ "ad_group_id": ag, "name": "Grupo checklist (editado)", "cpc_bid": 2 }),
+                    "update_ad_group name+cpc",
+                    json!({ "ad_group_id": ag, "name": "Checklist group (edited)", "cpc_bid": 2 }),
                     AfterUndo::Nothing,
                 )
                 .await
                 .ok();
             }
-            None => self.skip(s, "update_ad_group", "grupo de anúncios não encontrado"),
+            None => self.skip(s, "update_ad_group", "ad group not found"),
         }
 
         match (&ag, &ad) {
@@ -1454,43 +1461,43 @@ impl Checklist {
                         "update_ad",
                         UPDATE_AD_LABEL,
                         json!({ "ad_group_id": ag, "ad_id": ad,
-                                "headlines": ["Sapatos sociais", "Sapatos de couro", "Frete grátis", "Checklist"] }),
+                                "headlines": ["Dress shoes", "Leather shoes", "Free shipping", "Checklist"] }),
                         AfterUndo::Nothing,
                     )
                     .await;
                 let text = match &r {
                     Ok(_) => {
-                        "AdOperation update aplicado; o snapshot e o depois leram FROM ad".into()
+                        "AdOperation update applied; the snapshot and the after state were read FROM ad".into()
                     }
                     Err(e) => err_evidence(e),
                 };
-                self.evidence("T9.1", text);
+                self.evidence("V1", text);
                 self.gaql_evidence(
-                    "T9.2",
-                    "títulos lidos FROM ad depois do update",
+                    "V2",
+                    "headlines read FROM ad after the update",
                     &format!("SELECT ad.responsive_search_ad.headlines FROM ad WHERE ad.id = {ad}"),
                 )
                 .await;
             }
             _ => {
-                self.skip(s, "update_ad", "anúncio não encontrado");
-                self.evidence("T9.1", "não exercitado: anúncio não encontrado");
+                self.skip(s, "update_ad", "ad not found");
+                self.evidence("V1", "not exercised: ad not found");
             }
         }
 
         match &ag {
             Some(ag) => self.keywords(ag, &keywords).await,
-            None => self.skip(s, "manage_keywords", "grupo de anúncios não encontrado"),
+            None => self.skip(s, "manage_keywords", "ad group not found"),
         }
         self.negatives(&campaign).await;
         self.targeting(&campaign).await;
 
-        // Desfaz as edições (fica só a criação).
+        // Undo the edits (only the creation is left).
         self.unwind_to(1).await;
 
         self.conflict(&campaign, &name).await;
 
-        // Desfaz a criação: a campanha fica REMOVED.
+        // Undo the creation: the campaign ends up REMOVED.
         self.unwind_to(0).await;
     }
 
@@ -1502,7 +1509,7 @@ impl Checklist {
             t,
             "manage_keywords add",
             json!({ "ad_group_id": ag, "action": "add",
-                    "keywords": [{ "text": "sapato checklist novo", "match_type": "BROAD", "cpc_bid": 1 }] }),
+                    "keywords": [{ "text": "shoes checklist new", "match_type": "BROAD", "cpc_bid": 1 }] }),
             AfterUndo::Nothing,
         )
         .await
@@ -1529,7 +1536,7 @@ impl Checklist {
                 .await
                 .ok();
             }
-            _ => self.skip(s, t, "pause/set_bid: keywords da campanha não encontradas"),
+            _ => self.skip(s, t, "pause/set_bid: campaign keywords not found"),
         }
     }
 
@@ -1541,7 +1548,7 @@ impl Checklist {
             t,
             "manage_negatives add",
             json!({ "level": "campaign", "campaign_id": campaign, "action": "add",
-                    "keywords": [{ "text": "gratis checklist", "match_type": "PHRASE" }] }),
+                    "keywords": [{ "text": "free checklist", "match_type": "PHRASE" }] }),
             AfterUndo::Nothing,
         )
         .await
@@ -1550,34 +1557,34 @@ impl Checklist {
             .write(
                 s,
                 t,
-                "manage_negatives create_list anexada",
+                "manage_negatives create_list attached",
                 json!({ "action": "create_list", "campaign_id": campaign,
                         "list_name": format!("checklist {} A", self.stamp),
-                        "keywords": [{ "text": "barato checklist", "match_type": "EXACT" }] }),
+                        "keywords": [{ "text": "cheap checklist", "match_type": "EXACT" }] }),
                 AfterUndo::Nothing,
             )
             .await;
         let text = match &r {
             Ok(v) => format!(
-                "create_list com campaign_id aplicado: {}",
+                "create_list with campaign_id applied: {}",
                 resource_keys(v).join(" ")
             ),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T10.1", text);
+        self.evidence("V5", text);
         let r = self
             .write(
                 s,
                 t,
-                "manage_negatives create_list solta",
+                "manage_negatives create_list standalone",
                 json!({ "action": "create_list", "list_name": format!("checklist {} B", self.stamp),
-                        "keywords": [{ "text": "usado checklist", "match_type": "PHRASE" }] }),
+                        "keywords": [{ "text": "used checklist", "match_type": "PHRASE" }] }),
                 AfterUndo::Nothing,
             )
             .await;
         let Some(set) = r.as_ref().ok().and_then(|v| find_rn(v, "sharedSets")) else {
-            self.skip(s, t, "attach_list: lista nova não encontrada");
-            self.evidence("T10.2", "não exercitado: create_list sem campanha falhou");
+            self.skip(s, t, "attach_list: new list not found");
+            self.evidence("V6", "not exercised: create_list without a campaign failed");
             return;
         };
         let r = self
@@ -1590,10 +1597,10 @@ impl Checklist {
             )
             .await;
         let text = match &r {
-            Ok(v) => format!("attach_list aplicado: {}", resource_keys(v).join(" ")),
+            Ok(v) => format!("attach_list applied: {}", resource_keys(v).join(" ")),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T10.2", text);
+        self.evidence("V6", text);
     }
 
     async fn targeting(&mut self, campaign: &str) {
@@ -1603,7 +1610,7 @@ impl Checklist {
             .write(
                 s,
                 t,
-                "manage_targeting add local+horário",
+                "manage_targeting add location+schedule",
                 json!({ "campaign_id": campaign, "action": "add", "criteria": [
                     { "type": "location", "geo_id": "2076" },
                     { "type": "ad_schedule", "day": "MONDAY", "start_hour": 9, "end_hour": 18 }
@@ -1625,8 +1632,8 @@ impl Checklist {
             Err(_) => None,
         };
         let Some(rn) = location else {
-            self.skip(s, t, "set_bid_modifier: critério de local não encontrado");
-            self.evidence("T11.1", "não exercitado: critério de local não encontrado");
+            self.skip(s, t, "set_bid_modifier: location criterion not found");
+            self.evidence("V7", "not exercised: location criterion not found");
             return;
         };
         let r = self
@@ -1641,11 +1648,11 @@ impl Checklist {
             )
             .await;
         if let Err(e) = &r {
-            self.evidence("T11.1", format!("set_bid_modifier: {}", err_evidence(e)));
+            self.evidence("V7", format!("set_bid_modifier: {}", err_evidence(e)));
         }
     }
 
-    /// Duas renomeações seguidas; desfazer a primeira tem que dar `UNDO_CONFLICT`.
+    /// Two renames in a row; undoing the first must give `UNDO_CONFLICT`.
     async fn conflict(&mut self, campaign: &str, name: &str) {
         let s = "search";
         let base = self.undo.len();
@@ -1653,8 +1660,8 @@ impl Checklist {
             .write(
                 s,
                 "update_campaign",
-                "update_campaign conflito A",
-                json!({ "campaign_id": campaign, "name": format!("{name} conflito A") }),
+                "update_campaign conflict A",
+                json!({ "campaign_id": campaign, "name": format!("{name} conflict A") }),
                 AfterUndo::Nothing,
             )
             .await;
@@ -1662,13 +1669,13 @@ impl Checklist {
             .write(
                 s,
                 "update_campaign",
-                "update_campaign conflito B",
-                json!({ "campaign_id": campaign, "name": format!("{name} conflito B") }),
+                "update_campaign conflict B",
+                json!({ "campaign_id": campaign, "name": format!("{name} conflict B") }),
                 AfterUndo::Nothing,
             )
             .await;
         let (Ok(a), Ok(_)) = (a, b) else {
-            self.skip(s, "conflito", "as renomeações falharam");
+            self.skip(s, "conflict", "the renames failed");
             return self.unwind_to(base).await;
         };
         let first = a["change_id"].as_str().unwrap_or_default().to_string();
@@ -1680,32 +1687,31 @@ impl Checklist {
             Err(e) if e.code == codes::UNDO_CONFLICT => {
                 self.ok(
                     s,
-                    "conflito",
-                    format!("UNDO_CONFLICT como esperado ({first})"),
+                    "conflict",
+                    format!("UNDO_CONFLICT as expected ({first})"),
                 );
             }
-            Err(e) => self.fail(s, "conflito", &e),
+            Err(e) => self.fail(s, "conflict", &e),
             Ok(v) => {
                 self.fail_msg(
                     s,
-                    "conflito",
-                    format!("desfez sem conflito: {}", v["change_id"]),
+                    "conflict",
+                    format!("undone without conflict: {}", v["change_id"]),
                 );
-                // A primeira já foi desfeita: sai da pilha.
+                // The first one was already undone: remove it from the stack.
                 self.undo.retain(|u| u.change_id != first);
             }
         }
         self.unwind_to(base).await;
     }
 
-    // ------------------------------------------------------------ 6. Demand Gen e Display
+    // ------------------------------------------------------------ 6. Demand Gen and Display
 
     fn note_images(&mut self, img: &Images, what: &str) {
         for (file, name) in &img.names {
             if !self.irreversible.iter().any(|x| x.contains(name.as_str())) {
-                self.irreversible.push(format!(
-                    "asset de imagem {name} ({file}, {what}), se criado"
-                ));
+                self.irreversible
+                    .push(format!("image asset {name} ({file}, {what}), if created"));
             }
         }
     }
@@ -1716,7 +1722,7 @@ impl Checklist {
             "SELECT asset.resource_name, asset.name, asset.type FROM asset WHERE asset.name IN ({})",
             names.join(", ")
         );
-        self.gaql_evidence("T14.2", &format!("assets de imagem depois de {what}"), &q)
+        self.gaql_evidence("V13", &format!("image assets after {what}"), &q)
             .await;
     }
 
@@ -1734,13 +1740,13 @@ impl Checklist {
             .await;
         self.note_images(img, "Demand Gen");
         let text = match &r {
-            Ok(v) => format!("criação real aplicada: {}", resource_keys(v).join(" ")),
+            Ok(v) => format!("real creation applied: {}", resource_keys(v).join(" ")),
             Err(e) => err_evidence(e),
         };
-        for item in ["T15.1", "T15.2", "T15.3", "T15.4"] {
+        for item in ["V15", "V16", "V17", "V18"] {
             self.evidence(
                 item,
-                format!("criação real Demand Gen (multi-asset): {text}"),
+                format!("real Demand Gen creation (multi-asset): {text}"),
             );
         }
         if let Ok(v) = &r {
@@ -1754,7 +1760,7 @@ impl Checklist {
 
     async fn display(&mut self, img: &Images, fresh_seed: u64) {
         let s = "display";
-        // Mesmas imagens da Demand Gen: mostra se o Google deduplica pelo conteúdo.
+        // Same images as Demand Gen: shows whether Google deduplicates by content.
         let input = self.display_input(img);
         let mut r = self
             .write(
@@ -1769,8 +1775,8 @@ impl Checklist {
         let mut fresh_images: Option<Images> = None;
         if let Err(e) = &r {
             self.evidence(
-                "T14.2",
-                format!("Display com as mesmas imagens: {}", err_evidence(e)),
+                "V13",
+                format!("Display with the same images: {}", err_evidence(e)),
             );
             if error_text(e).contains("DUPLICATE") {
                 match make_images(fresh_seed) {
@@ -1780,7 +1786,7 @@ impl Checklist {
                             .write(
                                 s,
                                 "create_display_campaign",
-                                "create_display_campaign (imagens novas)",
+                                "create_display_campaign (new images)",
                                 input,
                                 AfterUndo::Nothing,
                             )
@@ -1788,15 +1794,15 @@ impl Checklist {
                         self.note_images(&fresh, "Display");
                         fresh_images = Some(fresh);
                     }
-                    Err(e) => self.fail_msg(s, "create_display_campaign", format!("imagens: {e}")),
+                    Err(e) => self.fail_msg(s, "create_display_campaign", format!("images: {e}")),
                 }
             }
         }
         let text = match &r {
-            Ok(v) => format!("criação real aplicada: {}", resource_keys(v).join(" ")),
+            Ok(v) => format!("real creation applied: {}", resource_keys(v).join(" ")),
             Err(e) => err_evidence(e),
         };
-        self.evidence("T15.6", format!("criação real Display: {text}"));
+        self.evidence("V20", format!("real Display creation: {text}"));
         if let Ok(v) = &r {
             if let (Some(rn), Some(u)) = (find_rn(v, "campaigns"), self.undo.last_mut()) {
                 u.after = AfterUndo::CampaignRemoved(last_id(&rn));
@@ -1807,40 +1813,38 @@ impl Checklist {
         self.unwind_to(0).await;
     }
 
-    // ------------------------------------------------------------ 7. assets e vídeo
+    // ------------------------------------------------------------ 7. assets and video
 
     async fn text_asset(&mut self) {
         let text = format!("Checklist {}", &self.stamp[..8]);
         if let Ok(v) = self
             .write(
-                "asset_texto",
+                "text_asset",
                 "upload_asset",
-                "upload_asset texto",
+                "upload_asset text",
                 json!({ "kind": "text", "text": text }),
                 AfterUndo::Nothing,
             )
             .await
         {
-            self.irreversible.push(format!(
-                "asset de texto {}",
-                v["result"]["asset_resource_name"]
-            ));
+            self.irreversible
+                .push(format!("text asset {}", v["result"]["asset_resource_name"]));
         }
     }
 
     async fn image_asset(&mut self, file: &Path) {
         if let Ok(v) = self
             .write(
-                "imagem",
+                "image",
                 "upload_asset",
-                "upload_asset imagem",
+                "upload_asset image",
                 json!({ "kind": "image", "image": { "file_path": file.to_string_lossy() } }),
                 AfterUndo::Nothing,
             )
             .await
         {
             self.irreversible.push(format!(
-                "asset de imagem {}",
+                "image asset {}",
                 v["result"]["asset_resource_name"]
             ));
         }
@@ -1862,24 +1866,21 @@ impl Checklist {
         match &r {
             Ok(v) => {
                 let result = &v["result"];
-                println!(
-                    "  resultado do upload: {}",
-                    short(&result.to_string(), 1500)
-                );
+                println!("  upload result: {}", short(&result.to_string(), 1500));
                 self.evidence(
-                    "T16.1",
+                    "V21",
                     format!(
-                        "resultado: {}; reversível {}",
+                        "result: {}; reversible {}",
                         short(&result.to_string(), 1500),
                         v["reversible"]
                     ),
                 );
                 self.evidence(
-                    "T16.2",
-                    "o início foi aceito: a URL da sessão tinha a mesma origem",
+                    "V22",
+                    "the start was accepted: the session URL had the same origin",
                 );
                 if let Some(asset) = result["asset_resource_name"].as_str() {
-                    self.irreversible.push(format!("asset do vídeo {asset}"));
+                    self.irreversible.push(format!("video asset {asset}"));
                 }
                 let upload = result
                     .as_object()
@@ -1888,8 +1889,8 @@ impl Checklist {
                     (Some(rn), Some(u)) if u.label == "upload_video" => {
                         u.after = AfterUndo::VideoUpload(rn.clone());
                         self.gaql_evidence(
-                            "T16.1",
-                            "upload lido por GAQL",
+                            "V21",
+                            "upload read by GAQL",
                             &format!(
                                 "SELECT you_tube_video_upload.resource_name, you_tube_video_upload.state, \
                                  you_tube_video_upload.video_id FROM you_tube_video_upload \
@@ -1899,23 +1900,23 @@ impl Checklist {
                         .await;
                     }
                     _ => self.left_behind.push(format!(
-                        "upload de vídeo sem desfazer: {}",
+                        "video upload without undo: {}",
                         short(&result.to_string(), 300)
                     )),
                 }
             }
             Err(e) => {
-                self.evidence("T16.1", err_evidence(e));
-                self.evidence("T16.2", err_evidence(e));
+                self.evidence("V21", err_evidence(e));
+                self.evidence("V22", err_evidence(e));
             }
         }
         self.unwind_to(0).await;
     }
 
-    /// Depois de um Ctrl+C: a escrita em andamento roda numa task do Engine e pode ter
-    /// terminado sem entrar na pilha. Põe na pilha as mudanças desta execução aplicadas,
-    /// reversíveis e ainda não desfeitas; as que ainda estão em execução vão para a
-    /// lista do que ficou.
+    /// After a Ctrl+C: the write in progress runs in an Engine task and may have
+    /// finished without reaching the stack. Puts on the stack the changes of this run that
+    /// are applied, reversible and not yet undone; the ones still running go to the
+    /// list of what was left.
     fn recover_interrupted(&mut self, db: &Db, started: chrono::DateTime<Utc>) {
         let mut mine = Vec::new();
         let mut offset = 0;
@@ -1930,7 +1931,7 @@ impl Checklist {
             let batch = match db.list_changes(&filter) {
                 Ok(b) => b,
                 Err(e) => {
-                    println!("  falha ao ler o histórico: {e}");
+                    println!("  failed to read the history: {e}");
                     break;
                 }
             };
@@ -1968,7 +1969,7 @@ impl Checklist {
                         .unwrap_or_default();
                     self.undo.push(Undoable {
                         change_id: ch.change_id,
-                        step: "interrompido".into(),
+                        step: "interrupted".into(),
                         label: ch.tool,
                         resources,
                         after: AfterUndo::Nothing,
@@ -1976,8 +1977,8 @@ impl Checklist {
                 }
                 ChangeStatus::Pending | ChangeStatus::Approved => {
                     self.left_behind.push(format!(
-                        "possivelmente aplicado: {} (change_id {}, em execução ao interromper); \
-                         procure 'AdsConsole checklist {}' no Google Ads",
+                        "possibly applied: {} (change_id {}, running when interrupted); \
+                         look for 'AdsConsole checklist {}' in Google Ads",
                         ch.tool, ch.change_id, self.stamp
                     ));
                 }
@@ -1986,11 +1987,11 @@ impl Checklist {
         }
     }
 
-    // ------------------------------------------------------------ 8. relatório
+    // ------------------------------------------------------------ 8. report
 
     fn report(&self, log_dir: &Path) {
-        println!("\n## Resultados\n");
-        println!("| Resultado | Etapa | Ferramenta | Código | Detalhe |");
+        println!("\n## Results\n");
+        println!("| Result | Step | Tool | Code | Detail |");
         println!("|---|---|---|---|---|");
         for l in &self.lines {
             println!(
@@ -2003,16 +2004,16 @@ impl Checklist {
             );
         }
 
-        println!("\n## Por ferramenta\n");
-        println!("| Ferramenta | OK | FALHA | PULADO | Códigos |");
+        println!("\n## By tool\n");
+        println!("| Tool | OK | FAIL | SKIPPED | Codes |");
         println!("|---|---|---|---|---|");
         let mut by_tool: BTreeMap<&str, (usize, usize, usize, Vec<&str>)> = BTreeMap::new();
         for l in &self.lines {
             let e = by_tool.entry(l.tool.as_str()).or_default();
             match l.mark {
                 Mark::Ok => e.0 += 1,
-                Mark::Falha => e.1 += 1,
-                Mark::Pulado => e.2 += 1,
+                Mark::Fail => e.1 += 1,
+                Mark::Skipped => e.2 += 1,
             }
             if let Some(c) = l.code.as_deref()
                 && !e.3.contains(&c)
@@ -2029,7 +2030,7 @@ impl Checklist {
             println!("| {tool} | {ok} | {fail} | {skip} | {codes} |");
         }
 
-        println!("\n## Evidências VERIFY(v26)\n");
+        println!("\n## VERIFY(v26) evidence\n");
         for (item, what) in VERIFY {
             println!("{item} {what}");
             match self.evidence.get(item) {
@@ -2038,41 +2039,41 @@ impl Checklist {
                         println!("  - {e}");
                     }
                 }
-                None => println!("  - não exercitado nesta execução"),
+                None => println!("  - not exercised in this run"),
             }
         }
 
-        println!("\n## O que ficou na conta\n");
+        println!("\n## What was left in the account\n");
         if self.left_behind.is_empty() {
-            println!("Nada reversível ficou para trás.");
+            println!("Nothing reversible was left behind.");
         } else {
-            println!("Não desfeito ou possivelmente aplicado (confira e remova no Google Ads):");
+            println!("Not undone or possibly applied (check and remove in Google Ads):");
             for l in &self.left_behind {
                 println!("  - {l}");
             }
         }
         if !self.irreversible.is_empty() {
-            println!("Irreversíveis (ficam na conta por natureza):");
+            println!("Irreversible (they stay in the account by nature):");
             for l in &self.irreversible {
                 println!("  - {l}");
             }
         }
         let (ok, fail) = self.lines.iter().fold((0, 0), |(o, f), l| match l.mark {
             Mark::Ok => (o + 1, f),
-            Mark::Falha => (o, f + 1),
-            Mark::Pulado => (o, f),
+            Mark::Fail => (o, f + 1),
+            Mark::Skipped => (o, f),
         });
-        println!("\nTotal: {ok} OK, {fail} FALHA. Log: {}", log_dir.display());
+        println!("\nTotal: {ok} OK, {fail} FAIL. Log: {}", log_dir.display());
     }
 }
 
-/// A escrita que falhou pode ter chegado ao Google: `EXECUTION_FAILED` (timeout, 5xx
-/// no mutate) ou qualquer falha do `upload_video`, que pode ter enviado bytes.
+/// A write that failed may have reached Google: `EXECUTION_FAILED` (timeout, 5xx on
+/// mutate) or any `upload_video` failure, which may have sent bytes.
 fn maybe_applied(tool: &str, e: &ToolError) -> bool {
     e.code == codes::EXECUTION_FAILED || tool == "upload_video"
 }
 
-/// Texto do erro para procurar códigos do Google (mensagem e detalhes).
+/// Error text for finding Google codes (message and details).
 fn error_text(e: &ToolError) -> String {
     format!(
         "{} {}",
@@ -2106,31 +2107,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     engine
         .refresh_accounts()
         .await
-        .map_err(|e| format!("falha ao listar as contas: {}: {}", e.code, e.message))?;
+        .map_err(|e| format!("failed to list the accounts: {}: {}", e.code, e.message))?;
 
     let account = normalize_account_id(Platform::GoogleAds, &args.account);
     let connection = resolve_connection(&db, Platform::GoogleAds, &account, None)
-        .map_err(|e| format!("conta {account}: {e}"))?;
+        .map_err(|e| format!("account {account}: {e}"))?;
     let currency = db
         .accounts_for(Platform::GoogleAds, &account)?
         .into_iter()
         .map(|(_, a)| a.currency)
         .next()
         .unwrap_or_default();
-    println!("Conta {account} (moeda {currency}), conexão {connection}");
-    println!("Diretório de dados: {}", dir.display());
+    println!("Account {account} (currency {currency}), connection {connection}");
+    println!("Data directory: {}", dir.display());
 
     let planned = planned_writes(&args);
     let go = if planned.is_empty() {
         true
     } else {
-        println!("\nEscritas reais planejadas:");
+        println!("\nPlanned real writes:");
         for p in &planned {
             println!("  - {p}");
         }
         if !args.yes {
             print!(
-                "Digite sim para fazer essas escritas (outra resposta roda só leituras e validação): "
+                "Type yes to make these writes (any other answer runs only reads and validation): "
             );
             std::io::stdout().flush()?;
         }
@@ -2140,7 +2141,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let stamp = Utc::now().format("%Y%m%d-%H%M%S").to_string();
     let seed = Utc::now().timestamp().unsigned_abs();
-    let needs_images = ["validacao", "demand_gen", "display"]
+    let needs_images = ["validation", "demand_gen", "display"]
         .iter()
         .any(|s| args.runs(s));
     let images = if needs_images {
@@ -2168,11 +2169,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if interrupted {
         println!(
-            "\nInterrompido (Ctrl+C): desfazendo o que foi criado. Outro Ctrl+C sai sem limpar."
+            "\nInterrupted (Ctrl+C): undoing what was created. Another Ctrl+C exits without cleaning up."
         );
         tokio::spawn(async {
             if tokio::signal::ctrl_c().await.is_ok() {
-                println!("\nSaindo sem terminar a limpeza: confira a conta no Google Ads.");
+                println!(
+                    "\nExiting without finishing the cleanup: check the account in Google Ads."
+                );
                 std::process::exit(130);
             }
         });
@@ -2187,17 +2190,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// As etapas pedidas, na ordem. Corre contra o Ctrl+C em `main`.
+/// The requested steps, in order. Races against Ctrl+C in `main`.
 async fn run_steps(c: &mut Checklist, args: &Args, images: Option<&Images>, go: bool, seed: u64) {
     for step in STEPS.iter().filter(|s| args.runs(s)) {
         if WRITE_STEPS.contains(step) && !go {
-            c.skip(step, "-", "escritas reais não confirmadas");
+            c.skip(step, "-", "real writes not confirmed");
             continue;
         }
         println!("\n# {step}");
         match *step {
-            "leituras" => c.reads().await,
-            "validacao" => {
+            "reads" => c.reads().await,
+            "validation" => {
                 if let Some(img) = images {
                     c.validations(img).await;
                 }
@@ -2213,8 +2216,8 @@ async fn run_steps(c: &mut Checklist, args: &Args, images: Option<&Images>, go: 
                     c.display(img, seed + 100).await;
                 }
             }
-            "asset_texto" => c.text_asset().await,
-            "imagem" => {
+            "text_asset" => c.text_asset().await,
+            "image" => {
                 if let Some(f) = args.image.clone() {
                     c.image_asset(&f).await;
                 }
@@ -2248,16 +2251,16 @@ mod tests {
         );
         assert!(a.yes);
         assert!(a.runs("search") && a.runs("video"));
-        assert!(!a.runs("leituras") && !a.runs("imagem"));
+        assert!(!a.runs("reads") && !a.runs("image"));
     }
 
     #[test]
     fn rejects_bad_arguments() {
         assert!(args("").is_err());
         assert!(args("1 2").is_err());
-        assert!(args("1 --only nada").is_err());
+        assert!(args("1 --only nothing").is_err());
         assert!(args("1 --only video").is_err());
-        assert!(args("1 --only imagem").is_err());
+        assert!(args("1 --only image").is_err());
         assert!(args("1 --video").is_err());
         assert!(args("1 --force").is_err());
     }
@@ -2265,24 +2268,24 @@ mod tests {
     #[test]
     fn file_steps_need_their_file() {
         let a = args("1").unwrap();
-        assert!(!a.runs("video") && !a.runs("imagem"));
+        assert!(!a.runs("video") && !a.runs("image"));
         assert!(STEPS[..6].iter().all(|s| a.runs(s)));
         let planned = planned_writes(&a);
         assert_eq!(planned.len(), 4);
         let b = args("1 --image i.png --video v.mp4").unwrap();
         assert_eq!(planned_writes(&b).len(), 6);
-        let reads = args("1 --only leituras,validacao").unwrap();
+        let reads = args("1 --only reads,validation").unwrap();
         assert!(planned_writes(&reads).is_empty());
     }
 
     #[test]
-    fn writes_need_sim_unless_yes() {
+    fn writes_need_yes_unless_flag() {
         let planned = vec!["search".to_string()];
         let ask = |answer: &str, yes: bool| confirmed(&planned, yes, &mut answer.as_bytes());
-        assert!(ask("sim\n", false));
-        assert!(ask("  SIM  \n", false));
-        assert!(!ask("s\n", false));
-        assert!(!ask("não\n", false));
+        assert!(ask("yes\n", false));
+        assert!(ask("  YES  \n", false));
+        assert!(!ask("y\n", false));
+        assert!(!ask("no\n", false));
         assert!(!ask("", false));
         assert!(ask("", true));
         assert!(confirmed(&[], false, &mut "".as_bytes()));
@@ -2297,7 +2300,7 @@ mod tests {
             (1200, 628, "image/png")
         );
         assert_ne!(png(1200, 628, 8), bytes);
-        // Valores de referência conhecidos.
+        // Known reference values.
         assert_eq!(crc32(b"IEND"), 0xAE42_6082);
         assert_eq!(adler32(b"Wikipedia"), 0x11E6_0398);
     }

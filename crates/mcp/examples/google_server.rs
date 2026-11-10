@@ -1,14 +1,14 @@
-//! Servidor MCP só com o Google Ads, sobre o diretório de dados real.
+//! MCP server with Google Ads only, over the real data directory.
 //!
 //! `cargo run -p adsconsole-mcp --example google_server`
 //!
-//! - Diretório de dados: `ADSCONSOLE_DATA_DIR` ou o padrão (`adsconsole.db`, `config.json`,
-//!   segredos). As conexões vêm de `google_connect`.
-//! - Porta: `ADSCONSOLE_PORT` (padrão 7458). Token: `ADSCONSOLE_TOKEN` ou o guardado
-//!   (gerado na primeira vez).
-//! - Modo de escrita: o do `config.json`.
-//! - `ADSCONSOLE_AUTO_APPROVE=1` aprova cada pedido sozinho. Sem ela, digite no terminal
-//!   `pendentes`, `aprovar <id>` ou `recusar <id>`.
+//! - Data directory: `ADSCONSOLE_DATA_DIR` or the default (`adsconsole.db`, `config.json`,
+//!   secrets). The connections come from `google_connect`.
+//! - Port: `ADSCONSOLE_PORT` (default 7458). Token: `ADSCONSOLE_TOKEN` or the stored one
+//!   (generated the first time).
+//! - Write mode: the one in `config.json`.
+//! - `ADSCONSOLE_AUTO_APPROVE=1` approves each request automatically. Without it, type
+//!   `pending`, `approve <id>` or `reject <id>` in the terminal.
 
 use std::sync::{Arc, RwLock};
 
@@ -29,7 +29,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let dir = data_dir(&env)?;
     let loaded = Config::load(&dir.join("config.json"))?;
     if let Some(w) = &loaded.warning {
-        println!("Aviso: {w}");
+        println!("Warning: {w}");
     }
     let config = loaded.config;
     let port = config.effective_port(&env);
@@ -40,7 +40,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (secrets, backend) = open_secret_store(&dir);
     if backend == SecretBackend::File {
         println!(
-            "Aviso: keychain indisponível; segredos em {}",
+            "Warning: keychain unavailable; secrets in {}",
             dir.join("secrets.json").display()
         );
     }
@@ -49,9 +49,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let adapter = GoogleAdapter::new(db.clone(), secrets, GoogleEndpoints::default());
     let engine = Engine::new(adapter, db, config.clone())?;
     match engine.refresh_accounts().await {
-        Ok(n) => println!("Contas no cache: {n}"),
+        Ok(n) => println!("Accounts in cache: {n}"),
         Err(e) => println!(
-            "Aviso: falha ao atualizar as contas: {}: {}",
+            "Warning: failed to refresh the accounts: {}: {}",
             e.code, e.message
         ),
     }
@@ -80,14 +80,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server.addr,
         Platform::GoogleAds.endpoint()
     );
-    println!("Diretório de dados: {}", dir.display());
-    println!("Modo de escrita: {mode:?}");
+    println!("Data directory: {}", dir.display());
+    println!("Write mode: {mode:?}");
     if auto {
-        println!("Aprovação automática ligada (ADSCONSOLE_AUTO_APPROVE=1).");
+        println!("Auto-approval on (ADSCONSOLE_AUTO_APPROVE=1).");
     } else {
-        println!("Comandos: pendentes | aprovar <id> | recusar <id>");
+        println!("Commands: pending | approve <id> | reject <id>");
     }
-    println!("Ctrl+C para sair.");
+    println!("Ctrl+C to exit.");
 
     tokio::select! {
         r = tokio::signal::ctrl_c() => r?,
@@ -97,54 +97,54 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Lê comandos do stdin até o fim da entrada.
+/// Reads commands from stdin until the end of the input.
 async fn command_loop(engine: Engine) {
     let mut lines = BufReader::new(tokio::io::stdin()).lines();
     while let Ok(Some(line)) = lines.next_line().await {
         let mut parts = line.split_whitespace();
         match (parts.next(), parts.next()) {
             (None, _) => {}
-            (Some("pendentes"), _) => match engine.pending() {
-                Ok(list) if list.is_empty() => println!("Nenhuma pendência."),
+            (Some("pending"), _) => match engine.pending() {
+                Ok(list) if list.is_empty() => println!("Nothing pending."),
                 Ok(list) => {
                     for p in list {
                         println!(
-                            "  {} | {} | expira {}",
+                            "  {} | {} | expires {}",
                             p.change.change_id, p.change.summary, p.expires_at
                         );
                         if let Some(w) = p.warning {
-                            println!("    aviso: {w}");
+                            println!("    warning: {w}");
                         }
                     }
                 }
-                Err(e) => println!("Falha ao listar: {}: {}", e.code, e.message),
+                Err(e) => println!("Failed to list: {}: {}", e.code, e.message),
             },
-            (Some("aprovar"), Some(id)) => match engine.approve(id).await {
-                Ok(rec) => print_record("aprovado", &rec),
-                Err(e) => println!("Falha ao aprovar: {}: {}", e.code, e.message),
+            (Some("approve"), Some(id)) => match engine.approve(id).await {
+                Ok(rec) => print_record("approved", &rec),
+                Err(e) => println!("Failed to approve: {}: {}", e.code, e.message),
             },
-            (Some("recusar"), Some(id)) => match engine.reject(id).await {
-                Ok(rec) => println!("  recusado → {:?}", rec.status),
-                Err(e) => println!("Falha ao recusar: {}: {}", e.code, e.message),
+            (Some("reject"), Some(id)) => match engine.reject(id).await {
+                Ok(rec) => println!("  rejected → {:?}", rec.status),
+                Err(e) => println!("Failed to reject: {}: {}", e.code, e.message),
             },
-            _ => println!("Comandos: pendentes | aprovar <id> | recusar <id>"),
+            _ => println!("Commands: pending | approve <id> | reject <id>"),
         }
     }
 }
 
 fn print_record(what: &str, rec: &adsconsole_core::db::ChangeRecord) {
     println!(
-        "  {what} → {:?}\n  antes:  {}\n  depois: {}",
+        "  {what} → {:?}\n  before: {}\n  after:  {}",
         rec.status,
         rec.before.clone().unwrap_or_default(),
         rec.after.clone().unwrap_or_default()
     );
     if let Some(err) = &rec.error {
-        println!("  erro: {err}");
+        println!("  error: {err}");
     }
 }
 
-/// Sem aprovação automática: avisa cada pedido e cada resultado.
+/// Without auto-approval: reports each request and each result.
 async fn print_events(engine: Engine) {
     let mut rx = engine.subscribe();
     while let Ok(ev) = rx.recv().await {
@@ -155,16 +155,16 @@ async fn print_events(engine: Engine) {
                 warning,
                 ..
             } => {
-                println!("pedido {change_id}: {summary}");
+                println!("request {change_id}: {summary}");
                 if let Some(w) = warning {
-                    println!("  aviso: {w}");
+                    println!("  warning: {w}");
                 }
-                println!("  aprovar {change_id}  |  recusar {change_id}");
+                println!("  approve {change_id}  |  reject {change_id}");
             }
-            EngineEvent::ChangeApplied { change_id } => println!("aplicada: {change_id}"),
-            EngineEvent::ChangeFailed { change_id } => println!("falhou: {change_id}"),
-            EngineEvent::ChangeRejected { change_id } => println!("recusada: {change_id}"),
-            EngineEvent::ChangeExpired { change_id } => println!("expirada: {change_id}"),
+            EngineEvent::ChangeApplied { change_id } => println!("applied: {change_id}"),
+            EngineEvent::ChangeFailed { change_id } => println!("failed: {change_id}"),
+            EngineEvent::ChangeRejected { change_id } => println!("rejected: {change_id}"),
+            EngineEvent::ChangeExpired { change_id } => println!("expired: {change_id}"),
         }
     }
 }
@@ -181,13 +181,13 @@ async fn auto_approve(engine: Engine) {
         else {
             continue;
         };
-        println!("pedido {change_id}: {summary}");
+        println!("request {change_id}: {summary}");
         if let Some(w) = warning {
-            println!("  aviso: {w}");
+            println!("  warning: {w}");
         }
         match engine.approve(&change_id).await {
-            Ok(rec) => print_record("aprovado", &rec),
-            Err(e) => println!("  falha ao aprovar: {}: {}", e.code, e.message),
+            Ok(rec) => print_record("approved", &rec),
+            Err(e) => println!("  failed to approve: {}: {}", e.code, e.message),
         }
     }
 }

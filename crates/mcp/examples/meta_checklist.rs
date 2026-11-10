@@ -1,24 +1,26 @@
-//! Checklist da Meta Ads numa conta real: roda as ferramentas pelo Engine (modo direto),
-//! desfaz cada escrita e imprime um relatório `OK | FALHA | PULADO` com as evidências
-//! dos pontos `VERIFY(v26.0)` do código.
+//! Checklist of Meta Ads on a real account: runs the tools through the Engine (direct mode),
+//! undoes each write and prints an `OK | FAIL | SKIPPED` report with the evidence for
+//! the `VERIFY(v26.0)` points in the code.
 //!
 //! `cargo run -p adsconsole-mcp --example meta_checklist -- <act_id> [--page <page_id>]
-//!     [--image <arquivo>] [--video <arquivo>] [--only <etapas>] [--yes]`
+//!     [--image <file>] [--video <file>] [--only <steps>] [--yes]`
 //!
-//! - Etapas: leituras, imagem, validacao, criativo_novo, criacao, rollback, orcamento,
-//!   duplicar, video. Sem `--only`, rodam todas menos `criativo_novo` e `video`.
-//! - A Página dos anúncios é só a de `--page`; sem ela, as etapas que precisam de Página
-//!   são puladas.
-//! - Os anúncios usam um post que já existe na Página (`existing_post`), porque um app em
-//!   modo de desenvolvimento não pode anunciar posts criados por ele; `criativo_novo`
-//!   (só com `--only` e `--image`) registra se um criativo novo funciona no modo atual do
-//!   app, e se funcionar cria um post não publicado na Página.
-//! - `--sem-anuncio`: para conta sem forma de pagamento (a Meta recusa o anúncio), edição,
-//!   orçamento e duplicação rodam numa campanha + ad set pausados criados por `graph_post`
-//!   e apagados no fim da etapa.
-//! - Antes de qualquer escrita real, imprime o plano e pede `sim` (ou `--yes`).
-//! - Toda escrita real é desfeita em seguida, inclusive a imagem; Ctrl+C desfaz o que já
-//!   foi criado. O vídeo fica na conta (a Meta não deixa apagá-lo pela API).
+//! - Steps: reads, image, validation, new_creative, creation, rollback, budget,
+//!   duplicate, empty_field, video. Without `--only`, all run except `new_creative` and
+//!   `video`.
+//! - The ads' Page is only the one from `--page`; without it, the steps that need a Page
+//!   are skipped.
+//! - The ads use a post that already exists on the Page (`existing_post`), because an app
+//!   in development mode cannot advertise posts it created; `new_creative` (only with
+//!   `--only` and `--image`) records whether a new creative works in the app's current
+//!   mode, and if it does, creates an unpublished post on the Page.
+//! - `--no-ads`: for an account with no payment method (Meta rejects the ad), the edit,
+//!   budget and duplication steps run on a paused campaign + ad set created through
+//!   `graph_post` and deleted at the end of the step.
+//! - Before any real write, prints the plan and asks for `yes` (or `--yes`).
+//! - Every real write is undone right after, including the image; Ctrl+C undoes what has
+//!   already been created. The video stays in the account (Meta does not allow deleting
+//!   it through the API).
 
 use std::collections::BTreeMap;
 use std::io::BufRead;
@@ -39,87 +41,90 @@ use adsconsole_meta_ads::endpoints::MetaEndpoints;
 use chrono::Utc;
 use serde_json::{Value, json};
 
-const USAGE: &str = "uso: meta_checklist <act_id> [--page <page_id>] [--link <url>] [--sem-anuncio] [--image <arquivo>] [--video <arquivo>] \
-                     [--only <etapa,...>] [--yes] [--undo <change_id>]... [--list-media] [--delete-image <hash>]... \
+const USAGE: &str = "usage: meta_checklist <act_id> [--page <page_id>] [--link <url>] [--no-ads] [--image <file>] [--video <file>] \
+                     [--only <step,...>] [--yes] [--undo <change_id>]... [--list-media] [--delete-image <hash>]... \
                      [--delete-video <id>]... [--delete-creative <id>]...";
 const STEPS: [&str; 10] = [
-    "leituras",
-    "imagem",
-    "validacao",
-    "criativo_novo",
-    "criacao",
+    "reads",
+    "image",
+    "validation",
+    "new_creative",
+    "creation",
     "rollback",
-    "orcamento",
-    "duplicar",
-    "campo_vazio",
+    "budget",
+    "duplicate",
+    "empty_field",
     "video",
 ];
 const WRITE_STEPS: [&str; 8] = [
-    "imagem",
-    "criativo_novo",
-    "criacao",
+    "image",
+    "new_creative",
+    "creation",
     "rollback",
-    "orcamento",
-    "duplicar",
-    "campo_vazio",
+    "budget",
+    "duplicate",
+    "empty_field",
     "video",
 ];
-/// Etapas que só rodam pedidas em `--only`: deixam rastro fora do controle do desfazer.
-const OPT_IN_STEPS: [&str; 2] = ["criativo_novo", "video"];
+/// Steps that only run when requested with `--only`: they leave traces outside undo control.
+const OPT_IN_STEPS: [&str; 2] = ["new_creative", "video"];
 const BY: &str = "meta_checklist";
 
-/// Pontos marcados `VERIFY(v26.0)` no código e o que o checklist observa de cada um.
+/// Points marked `VERIFY(v26.0)` in the code and what the checklist observes for each.
 const VERIFY: [(&str, &str); 10] = [
     (
         "V1",
-        "login no navegador com porta aleatória em localhost (app em modo de desenvolvimento)",
+        "browser login with a random port on localhost (app in development mode)",
     ),
     (
         "V2",
-        "targeting_automation.advantage_audience exigido no ad set",
+        "targeting_automation.advantage_audience required on the ad set",
     ),
     (
         "V3",
-        "is_adset_budget_sharing_enabled sem orçamento de campanha",
+        "is_adset_budget_sharing_enabled without a campaign budget",
     ),
-    ("V4", "criativo de imagem com link_data e call_to_action"),
-    ("V5", "anúncio com creative {creative_id}"),
-    ("V6", "desfazer de uma criação apaga a campanha e os filhos"),
-    ("V7", "limite de 4 mudanças de orçamento por hora no ad set"),
+    ("V4", "image creative with link_data and call_to_action"),
+    ("V5", "ad with creative {creative_id}"),
+    (
+        "V6",
+        "undoing a creation deletes the campaign and its children",
+    ),
+    ("V7", "limit of 4 budget changes per hour on the ad set"),
     (
         "V8",
-        "cópia síncrona com /copies (deep_copy, status_option, rename_options)",
+        "synchronous copy with /copies (deep_copy, status_option, rename_options)",
     ),
     (
         "V9",
-        "criativo novo (object_story_spec) com o app no modo atual",
+        "new creative (object_story_spec) with the app in its current mode",
     ),
-    ("V10", "criativo de post existente (object_story_id)"),
+    ("V10", "creative from an existing post (object_story_id)"),
 ];
 
 #[derive(Debug, PartialEq)]
 struct Args {
     account: String,
-    /// Página dos anúncios (nunca escolhida sozinha).
+    /// The ads' Page (never chosen automatically).
     page: Option<String>,
-    /// Destino do criativo novo (padrão https://example.com/).
+    /// Destination of the new creative (default https://example.com/).
     link: String,
-    /// Edição, orçamento e duplicação numa campanha sem anúncio (conta sem pagamento).
+    /// Edit, budget and duplication on a campaign without ads (account with no payment method).
     no_ads: bool,
     image: Option<PathBuf>,
     video: Option<PathBuf>,
     only: Option<Vec<String>>,
     yes: bool,
-    /// Só desfaz estas mudanças (com force) e sai: limpeza de sobras.
+    /// Only undoes these changes (with force) and exits: cleanup of leftovers.
     undo: Vec<String>,
-    /// Só lista os vídeos e imagens da conta e sai.
+    /// Only lists the account's videos and images and exits.
     list_media: bool,
-    /// Só diz, para cada conta das conexões, se há forma de pagamento (sem os dados).
+    /// Only says, for each account in the connections, whether there is a payment method (no details).
     funding: bool,
-    /// Apaga estas imagens (hash) e vídeos (id) de teste e sai.
+    /// Deletes these test images (hash) and videos (id) and exits.
     delete_images: Vec<String>,
     delete_videos: Vec<String>,
-    /// Apaga estes criativos (id) de teste e sai.
+    /// Deletes these test creatives (id) and exits.
     delete_creatives: Vec<String>,
 }
 
@@ -154,7 +159,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
     while let Some(a) = it.next() {
         match a.as_str() {
             "--page" => args.page = Some(it.next().ok_or(USAGE)?),
-            "--sem-anuncio" => args.no_ads = true,
+            "--no-ads" => args.no_ads = true,
             "--link" => args.link = it.next().ok_or(USAGE)?,
             "--image" => args.image = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
             "--video" => args.video = Some(PathBuf::from(it.next().ok_or(USAGE)?)),
@@ -174,20 +179,17 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
                     .filter(|s| !s.is_empty())
                     .collect();
                 if let Some(bad) = list.iter().find(|s| !STEPS.contains(&s.as_str())) {
-                    return Err(format!(
-                        "etapa desconhecida: {bad} (use {})",
-                        STEPS.join(", ")
-                    ));
+                    return Err(format!("unknown step: {bad} (use {})", STEPS.join(", ")));
                 }
                 args.only = Some(list);
             }
-            other => return Err(format!("opção desconhecida: {other}\n{USAGE}")),
+            other => return Err(format!("unknown option: {other}\n{USAGE}")),
         }
     }
     Ok(args)
 }
 
-/// Sem escritas planejadas ou com `--yes`, segue. Senão só com `sim` na entrada.
+/// Proceeds with no planned writes or with `--yes`. Otherwise only on `yes` in the input.
 fn confirmed(planned: &[&str], yes: bool, input: &mut dyn BufRead) -> bool {
     if planned.is_empty() || yes {
         return true;
@@ -196,10 +198,10 @@ fn confirmed(planned: &[&str], yes: bool, input: &mut dyn BufRead) -> bool {
     if input.read_line(&mut line).is_err() {
         return false;
     }
-    line.trim().eq_ignore_ascii_case("sim")
+    line.trim().eq_ignore_ascii_case("yes")
 }
 
-// ---------------------------------------------------------------- imagem gerada
+// ---------------------------------------------------------------- generated image
 
 fn crc32(data: &[u8]) -> u32 {
     let mut crc = 0xFFFF_FFFFu32;
@@ -234,7 +236,7 @@ fn png_chunk(out: &mut Vec<u8>, kind: &[u8; 4], data: &[u8]) {
     out.extend_from_slice(&crc.to_be_bytes());
 }
 
-/// PNG válido em cinza, sem compressão, com um xadrez que depende de `seed`.
+/// Valid grayscale PNG, uncompressed, with a checkerboard that depends on `seed`.
 fn png(w: u32, h: u32, seed: u64) -> Vec<u8> {
     let mut raw = Vec::with_capacity((w as usize + 1) * h as usize);
     for y in 0..h {
@@ -281,23 +283,23 @@ struct Checklist {
     stamp: String,
     lines: Vec<Line>,
     evidence: BTreeMap<&'static str, Vec<String>>,
-    /// Mudanças a desfazer, na ordem em que foram feitas: (change_id, rótulo).
+    /// Changes to undo, in the order they were made: (change_id, label).
     undo: Vec<(String, String)>,
     left_behind: Vec<String>,
     irreversible: Vec<String>,
     page_id: Option<String>,
     image_hash: Option<String>,
-    /// Post da Página para os anúncios (`existing_post`).
+    /// Page post for the ads (`existing_post`).
     post_id: Option<String>,
     no_ads: bool,
     link: String,
-    /// Criativos da conta antes da rodada: a limpeza apaga os que surgiram depois.
+    /// Account creatives before the run: the cleanup deletes the ones that appeared afterwards.
     creatives_before: Option<Vec<String>>,
-    /// Desfazer do envio de imagem: roda depois de apagar os criativos que a usam.
+    /// Undo of the image upload: runs after deleting the creatives that use it.
     image_undo: Option<(String, String)>,
 }
 
-/// Entrada da pilha de desfazer que não é mudança: campanha de apoio a apagar.
+/// Entry on the undo stack that is not a change: a helper campaign to delete.
 const FIXTURE: &str = "fixture:";
 
 fn short(s: &str) -> String {
@@ -318,7 +320,7 @@ fn err_json(e: &ToolError) -> String {
     }
 }
 
-/// "Nome (id)" de cada Página de um `get_pages`.
+/// "Name (id)" of each Page in a `get_pages` result.
 fn pages_list(v: &Value) -> String {
     v["pages"]
         .as_array()
@@ -367,12 +369,12 @@ impl Checklist {
 
     fn fail(&mut self, step: &str, tool: &str, e: &ToolError) {
         let detail = e.message.clone();
-        self.line("FALHA", step, tool, &e.code, detail);
+        self.line("FAIL", step, tool, &e.code, detail);
         self.note("E1", format!("{step} {tool}: {}", err_json(e)));
     }
 
     fn skip(&mut self, step: &str, tool: &str, why: &str) {
-        self.line("PULADO", step, tool, "-", why);
+        self.line("SKIPPED", step, tool, "-", why);
     }
 
     fn note(&mut self, key: &'static str, text: impl Into<String>) {
@@ -383,8 +385,8 @@ impl Checklist {
         if tool != "list_ad_accounts" && tool != "undo_change" {
             input["account_id"] = json!(self.account);
         }
-        // No tier Limited (60 pontos a cada 5 min), o checklist inteiro passa do limite:
-        // espera o tempo que o erro indica e tenta de novo (até 3 vezes).
+        // On the Limited tier (60 points every 5 min), the whole checklist goes over the limit:
+        // wait the time the error indicates and retry (up to 3 times).
         for _ in 0..3 {
             match self
                 .engine
@@ -398,10 +400,7 @@ impl Checklist {
                         .and_then(|d| d["retry_after_secs"].as_u64())
                         .unwrap_or(60)
                         .min(400);
-                    println!(
-                        "  limite de chamadas da Meta: esperando {} s para {tool}...",
-                        secs + 2
-                    );
+                    println!("  Meta call limit: waiting {} s for {tool}...", secs + 2);
                     tokio::time::sleep(std::time::Duration::from_secs(secs + 2)).await;
                 }
                 other => return other,
@@ -410,7 +409,7 @@ impl Checklist {
         self.engine.call_tool(tool, input, Some(BY.into())).await
     }
 
-    /// Escrita: em OK, entra na pilha de desfazer (se reversível).
+    /// Write: on OK, goes onto the undo stack (if reversible).
     async fn write(&mut self, step: &str, tool: &str, label: &str, input: Value) -> Option<Value> {
         match self.call(tool, input).await {
             Ok(out) => {
@@ -435,7 +434,7 @@ impl Checklist {
         }
     }
 
-    /// Desfaz a última mudança da pilha.
+    /// Undoes the last change on the stack.
     async fn undo_last(&mut self, step: &str) {
         let Some((id, label)) = self.undo.pop() else {
             return;
@@ -449,31 +448,31 @@ impl Checklist {
                 step,
                 "undo_change",
                 format!(
-                    "{label} desfeita ({})",
+                    "{label} undone ({})",
                     out["change_id"].as_str().unwrap_or("?")
                 ),
             ),
             Err(e) => {
                 self.left_behind
-                    .push(format!("{label} ({id}): desfazer falhou: {}", e.message));
+                    .push(format!("{label} ({id}): undo failed: {}", e.message));
                 self.fail(step, "undo_change", &e);
             }
         }
     }
 
-    /// Desfaz tudo até a pilha ficar com `keep` itens (com force, no fim ou no Ctrl+C).
+    /// Undoes everything until the stack has `keep` items (with force, at the end or on Ctrl+C).
     async fn unwind_to(&mut self, keep: usize) {
         while self.undo.len() > keep {
             let (id, label) = self.undo.pop().unwrap_or_default();
             if let Some(obj) = id.strip_prefix(FIXTURE) {
-                self.delete_fixture("limpeza", obj, &label).await;
+                self.delete_fixture("cleanup", obj, &label).await;
                 continue;
             }
             match self
                 .call("undo_change", json!({ "change_id": id, "force": true }))
                 .await
             {
-                Ok(_) => println!("  desfeita: {label}"),
+                Ok(_) => println!("  undone: {label}"),
                 Err(e) => self
                     .left_behind
                     .push(format!("{label} ({id}): {}", e.message)),
@@ -481,21 +480,21 @@ impl Checklist {
         }
     }
 
-    /// Apaga a campanha de apoio (os ad sets vão junto).
+    /// Deletes the helper campaign (its ad sets go with it).
     async fn delete_fixture(&mut self, step: &str, id: &str, label: &str) {
         let input = json!({ "path": id, "params": { "method": "delete" } });
         match self.call("graph_post", input).await {
-            Ok(_) => self.ok(step, "graph_post", format!("{label} apagada ({id})")),
+            Ok(_) => self.ok(step, "graph_post", format!("{label} deleted ({id})")),
             Err(e) => {
                 self.left_behind
-                    .push(format!("{label} ({id}): apagar falhou: {}", e.message));
+                    .push(format!("{label} ({id}): delete failed: {}", e.message));
                 self.fail(step, "graph_post", &e);
             }
         }
     }
 
-    /// Campanha + ad set pausados, sem anúncio, criados direto na Graph: a Meta só pede
-    /// forma de pagamento no anúncio. Entra na pilha como `fixture:` para ser apagada.
+    /// Paused campaign + ad set, without an ad, created directly on the Graph API: Meta only
+    /// asks for a payment method on the ad. Goes on the stack as `fixture:` to be deleted.
     async fn fixture_campaign(&mut self, step: &str, what: &str) -> Option<(String, String)> {
         let campaign = json!({
             "name": self.name(what),
@@ -512,14 +511,12 @@ impl Checklist {
                 return None;
             }
         };
-        self.undo.push((
-            format!("{FIXTURE}{id}"),
-            format!("campanha de apoio {what}"),
-        ));
+        self.undo
+            .push((format!("{FIXTURE}{id}"), format!("helper campaign {what}")));
         self.ok(
             step,
             "graph_post",
-            format!("campanha de apoio sem anúncio: {id}"),
+            format!("helper campaign without an ad: {id}"),
         );
         let targeting = json!({
             "geo_locations": { "countries": ["BR"] },
@@ -540,7 +537,7 @@ impl Checklist {
         match self.call("graph_post", input).await {
             Ok(out) => {
                 let adset = out["result"]["id"].as_str()?.to_string();
-                self.ok(step, "graph_post", format!("ad set de apoio: {adset}"));
+                self.ok(step, "graph_post", format!("helper ad set: {adset}"));
                 Some((id, adset))
             }
             Err(e) => {
@@ -550,7 +547,7 @@ impl Checklist {
         }
     }
 
-    /// Ids dos criativos da conta (até 500), ou `None` se não deu para listar.
+    /// Ids of the account's creatives (up to 500), or `None` if listing failed.
     async fn creative_ids(&mut self) -> Option<Vec<String>> {
         let path = format!("{}/adcreatives", self.account);
         let input = json!({ "path": path, "params": { "fields": "id", "limit": "500" } });
@@ -564,9 +561,10 @@ impl Checklist {
         )
     }
 
-    /// O desfazer de uma criação deixa os criativos na conta; o checklist apaga os da
-    /// rodada: os que não existiam antes dela (o criativo de post existente leva o texto
-    /// do post no nome) ou, sem essa lista, os com o carimbo da rodada no nome.
+    /// Undoing a creation leaves the creatives in the account; the checklist deletes the
+    /// ones from this run: those that did not exist before it (the creative of an existing
+    /// post carries the post text as its name) or, without that list, those with the run
+    /// stamp in the name.
     async fn sweep_creatives(&mut self) {
         let path = format!("{}/adcreatives", self.account);
         let input = json!({ "path": path, "params": { "fields": "id,name", "limit": "500" } });
@@ -574,7 +572,7 @@ impl Checklist {
             Ok(v) => v["data"].as_array().cloned().unwrap_or_default(),
             Err(e) => {
                 self.left_behind
-                    .push(format!("criativos: não deu para listar: {}", e.message));
+                    .push(format!("creatives: could not list: {}", e.message));
                 return;
             }
         };
@@ -591,10 +589,10 @@ impl Checklist {
             }
             let input = json!({ "path": id, "params": { "method": "delete" } });
             match self.call("graph_post", input).await {
-                Ok(_) => println!("  apagado: criativo {id}"),
+                Ok(_) => println!("  deleted: creative {id}"),
                 Err(e) => self
                     .left_behind
-                    .push(format!("criativo {id} ({name}): {}", e.message)),
+                    .push(format!("creative {id} ({name}): {}", e.message)),
             }
         }
     }
@@ -608,14 +606,14 @@ impl Checklist {
             "type": "image",
             "page_id": self.page_id,
             "link": self.link,
-            "message": "Teste do AdsConsole (pausado, apagado em seguida).",
-            "headline": "Teste AdsConsole",
+            "message": "AdsConsole test (paused, deleted right after).",
+            "headline": "AdsConsole test",
             "image_hash": hash,
             "call_to_action": "LEARN_MORE",
         })
     }
 
-    /// Criativo dos anúncios de teste: o post existente, se houver; senão um criativo novo.
+    /// Creative of the test ads: the existing post, if any; otherwise a new creative.
     fn ad_creative(&self) -> Option<Value> {
         match (&self.post_id, &self.image_hash, &self.page_id) {
             (Some(post), _, _) => Some(json!({ "type": "existing_post", "object_story_id": post })),
@@ -624,8 +622,8 @@ impl Checklist {
         }
     }
 
-    /// Campanha de 1 ad set. Com post existente, engajamento (o post não tem link externo
-    /// para otimizar clique); com criativo novo, tráfego para o site.
+    /// Campaign with 1 ad set. With an existing post, engagement (the post has no external
+    /// link to optimize clicks for); with a new creative, traffic to the website.
     fn campaign_input(&self, what: &str, ads: Vec<Value>) -> Value {
         let post = ads
             .first()
@@ -653,7 +651,7 @@ impl Checklist {
         })
     }
 
-    /// Id do objeto do `result` de uma criação cujo nome é `name`.
+    /// Id of the object in the `result` of a creation whose name is `name`.
     fn id_named(result: &Value, name: &str) -> Option<String> {
         result
             .as_object()?
@@ -665,17 +663,17 @@ impl Checklist {
     fn keep_creative_note(&mut self, what: &str) {
         if self.post_id.is_none() {
             self.irreversible
-                .push(format!("criativo do anúncio de teste ({what})"));
+                .push(format!("creative of the test ad ({what})"));
         }
     }
 
-    /// Campanha simples (1 ad set, 1 anúncio): devolve (campanha, ad set).
+    /// Simple campaign (1 ad set, 1 ad): returns (campaign, ad set).
     async fn simple_campaign(&mut self, step: &str, what: &str) -> Option<(String, String)> {
         if self.no_ads {
             return self.fixture_campaign(step, what).await;
         }
         let creative = self.ad_creative()?;
-        let ad = json!({ "name": self.name(&format!("{what} anúncio")), "creative": creative });
+        let ad = json!({ "name": self.name(&format!("{what} ad")), "creative": creative });
         let input = self.campaign_input(what, vec![ad]);
         let out = self
             .write(
@@ -692,7 +690,7 @@ impl Checklist {
     }
 
     async fn reads(&mut self) {
-        let s = "leituras";
+        let s = "reads";
         match self.call("list_ad_accounts", json!({})).await {
             Ok(v) => {
                 let found = v["accounts"]
@@ -702,15 +700,15 @@ impl Checklist {
                     self.ok(
                         s,
                         "list_ad_accounts",
-                        format!("{} contas", len(&v, "accounts")),
+                        format!("{} accounts", len(&v, "accounts")),
                     );
                 } else {
                     self.line(
-                        "FALHA",
+                        "FAIL",
                         s,
                         "list_ad_accounts",
                         "-",
-                        "a conta não está no cache",
+                        "the account is not in the cache",
                     );
                 }
             }
@@ -721,13 +719,13 @@ impl Checklist {
             ("get_insights", json!({ "level": "campaign" })),
             (
                 "search_targeting",
-                json!({ "type": "interest", "query": "futebol" }),
+                json!({ "type": "interest", "query": "soccer" }),
             ),
             ("search_targeting", json!({ "type": "behavior" })),
             ("search_targeting", json!({ "type": "demographic" })),
             (
                 "search_targeting",
-                json!({ "type": "geo", "query": "São Paulo", "geo_types": ["city"] }),
+                json!({ "type": "geo", "query": "London", "geo_types": ["city"] }),
             ),
             (
                 "estimate_audience",
@@ -739,7 +737,7 @@ impl Checklist {
                     let n = ["campaigns", "rows", "results"]
                         .iter()
                         .find_map(|k| v[*k].as_array().map(Vec::len));
-                    let detail = n.map_or_else(|| short(&v.to_string()), |n| format!("{n} itens"));
+                    let detail = n.map_or_else(|| short(&v.to_string()), |n| format!("{n} items"));
                     self.ok(s, tool, detail);
                 }
                 Err(e) => self.fail(s, tool, &e),
@@ -755,27 +753,27 @@ impl Checklist {
                         });
                         match found {
                             Some(x) if x["can_advertise"] == true => {
-                                self.ok(s, "get_pages", format!("{n} páginas; usando --page {p}"));
+                                self.ok(s, "get_pages", format!("{n} pages; using --page {p}"));
                                 self.page_posts(&p).await;
                             }
                             Some(_) => {
                                 self.line(
-                                    "FALHA",
+                                    "FAIL",
                                     s,
                                     "get_pages",
                                     "-",
-                                    format!("a Página {p} não pode anunciar"),
+                                    format!("Page {p} cannot advertise"),
                                 );
                                 self.page_id = None;
                             }
                             None => {
                                 self.line(
-                                    "FALHA",
+                                    "FAIL",
                                     s,
                                     "get_pages",
                                     "-",
                                     format!(
-                                        "a Página {p} não está entre as {n} acessíveis: {}",
+                                        "Page {p} is not among the {n} accessible ones: {}",
                                         pages_list(&v)
                                     ),
                                 );
@@ -786,7 +784,9 @@ impl Checklist {
                     None => self.ok(
                         s,
                         "get_pages",
-                        format!("{n} páginas; sem --page, as etapas com Página são puladas"),
+                        format!(
+                            "{n} pages; without --page, the steps that need a Page are skipped"
+                        ),
                     ),
                 }
             }
@@ -795,26 +795,22 @@ impl Checklist {
         match self
             .call(
                 "search_ad_library",
-                json!({ "query": "tênis", "countries": ["BR"] }),
+                json!({ "query": "sneakers", "countries": ["BR"] }),
             )
             .await
         {
-            Ok(v) => self.ok(
-                s,
-                "search_ad_library",
-                format!("{} anúncios", len(&v, "ads")),
-            ),
+            Ok(v) => self.ok(s, "search_ad_library", format!("{} ads", len(&v, "ads"))),
             Err(e) if e.code == codes::ACCESS_DENIED => self.skip(
                 s,
                 "search_ad_library",
-                "a Biblioteca exige confirmação de identidade",
+                "the Library requires identity confirmation",
             ),
             Err(e) => self.fail(s, "search_ad_library", &e),
         }
     }
 
     async fn page_posts(&mut self, page: &str) {
-        let s = "leituras";
+        let s = "reads";
         match self
             .call("get_page_posts", json!({ "page_id": page }))
             .await
@@ -826,9 +822,9 @@ impl Checklist {
                     .find(|x| x["can_promote"] != false)
                     .and_then(|x| x["object_story_id"].as_str().map(str::to_string));
                 let which = if self.post_id.is_some() {
-                    "usando um nos anúncios"
+                    "using one in the ads"
                 } else {
-                    "nenhum promovível"
+                    "none promotable"
                 };
                 self.ok(
                     s,
@@ -841,13 +837,13 @@ impl Checklist {
     }
 
     async fn validation(&mut self, adapter: &MetaAdapter, connection: &str) {
-        let s = "validacao";
+        let s = "validation";
         let Some(creative) = self.ad_creative() else {
-            self.skip(s, "create_campaign", "sem post ou imagem para o criativo");
+            self.skip(s, "create_campaign", "no post or image for the creative");
             return;
         };
-        let ad = json!({ "name": self.name("validação anúncio"), "creative": creative });
-        let mut input = self.campaign_input("validação", vec![ad]);
+        let ad = json!({ "name": self.name("validation ad"), "creative": creative });
+        let mut input = self.campaign_input("validation", vec![ad]);
         input["account_id"] = json!(self.account);
         let call = adsconsole_mcp::Call {
             connection_id: connection.to_string(),
@@ -859,17 +855,20 @@ impl Checklist {
         match adapter.validate(&call).await {
             Ok(v) => {
                 self.ok(s, "create_campaign", short(&v.summary));
-                self.note("V3", "validate_only da campanha sem orçamento de campanha aceitou is_adset_budget_sharing_enabled=false");
+                self.note("V3", "validate_only of the campaign without a campaign budget accepted is_adset_budget_sharing_enabled=false");
             }
             Err(e) => {
-                self.note("V3", format!("validate_only da campanha: {}", err_json(&e)));
+                self.note(
+                    "V3",
+                    format!("validate_only of the campaign: {}", err_json(&e)),
+                );
                 self.fail(s, "create_campaign", &e);
             }
         }
     }
 
     async fn image(&mut self, file: Option<&PathBuf>, dir: &std::path::Path) {
-        let s = "imagem";
+        let s = "image";
         let path = match file {
             Some(p) => p.clone(),
             None => {
@@ -877,11 +876,11 @@ impl Checklist {
                 let seed = Utc::now().timestamp_micros() as u64;
                 if let Err(e) = std::fs::write(&p, png(1200, 628, seed)) {
                     self.line(
-                        "FALHA",
+                        "FAIL",
                         s,
                         "upload_image",
                         "-",
-                        format!("não deu para gerar a imagem: {e}"),
+                        format!("could not generate the image: {e}"),
                     );
                     return;
                 }
@@ -898,55 +897,54 @@ impl Checklist {
             .await
         {
             self.image_hash = out["result"]["image_hash"].as_str().map(str::to_string);
-            // A imagem só sai depois dos criativos que a usam (a Meta recusa antes).
+            // The image is only deleted after the creatives that use it (Meta refuses before).
             if out["reversible"] == true {
                 self.image_undo = self.undo.pop();
             }
         }
     }
 
-    /// Tenta uma campanha com criativo novo (imagem + texto), para registrar se o modo do
-    /// app permite. Desfaz em seguida se der certo.
+    /// Tries a campaign with a new creative (image + text), to record whether the app's
+    /// mode allows it. Undoes it right after if it works.
     async fn new_creative(&mut self) {
-        let s = "criativo_novo";
+        let s = "new_creative";
         let (Some(_), Some(hash)) = (self.page_id.clone(), self.image_hash.clone()) else {
-            self.skip(s, "create_campaign", "sem Página ou imagem");
+            self.skip(s, "create_campaign", "no Page or image");
             return;
         };
-        let ad =
-            json!({ "name": self.name("criativo novo anúncio"), "creative": self.creative(&hash) });
+        let ad = json!({ "name": self.name("new creative ad"), "creative": self.creative(&hash) });
         let base = self.undo.len();
         match self
             .call(
                 "create_campaign",
-                self.campaign_input("criativo novo", vec![ad]),
+                self.campaign_input("new creative", vec![ad]),
             )
             .await
         {
             Ok(out) => {
                 self.undo.push((
                     out["change_id"].as_str().unwrap_or_default().into(),
-                    "create_campaign criativo novo".into(),
+                    "create_campaign new creative".into(),
                 ));
-                self.ok(s, "create_campaign", "criativo novo aceito");
+                self.ok(s, "create_campaign", "new creative accepted");
                 self.note(
                     "V9",
-                    "criativo novo (object_story_spec) aceito no modo atual do app",
+                    "new creative (object_story_spec) accepted in the app's current mode",
                 );
-                self.note("V4", "criativo de imagem com link_data e LEARN_MORE criado");
-                self.irreversible.push("criativo novo de teste".into());
+                self.note("V4", "image creative with link_data and LEARN_MORE created");
+                self.irreversible.push("new test creative".into());
                 while self.undo.len() > base {
                     self.undo_last(s).await;
                 }
             }
             Err(e) => {
                 let lower = e.message.to_lowercase();
-                self.note("V9", format!("criativo novo recusado: {}", err_json(&e)));
-                if lower.contains("desenvolvimento") || lower.contains("development") {
+                self.note("V9", format!("new creative rejected: {}", err_json(&e)));
+                if lower.contains("development") {
                     self.skip(
                         s,
                         "create_campaign",
-                        "a Meta recusa criativo novo com o app em modo de desenvolvimento",
+                        "Meta rejects a new creative with the app in development mode",
                     );
                 } else {
                     self.fail(s, "create_campaign", &e);
@@ -956,14 +954,14 @@ impl Checklist {
     }
 
     async fn creation(&mut self) {
-        let s = "criacao";
+        let s = "creation";
         let base = self.undo.len();
-        let Some((campaign, adset)) = self.simple_campaign(s, "criação").await else {
+        let Some((campaign, adset)) = self.simple_campaign(s, "creation").await else {
             if self.ad_creative().is_none() {
                 self.skip(
                     s,
                     "create_campaign",
-                    "sem post ou imagem (rode leituras e imagem)",
+                    "no post or image (run reads and image)",
                 );
             }
             self.unwind_to(base).await;
@@ -972,19 +970,19 @@ impl Checklist {
         if self.no_ads {
             self.note(
                 "V2",
-                "ad set de apoio (graph_post) criado com targeting_automation.advantage_audience=0",
+                "helper ad set (graph_post) created with targeting_automation.advantage_audience=0",
             );
         } else {
             self.note(
                 "V2",
-                "ad set criado com targeting_automation.advantage_audience=0",
+                "ad set created with targeting_automation.advantage_audience=0",
             );
-            self.note("V5", "anúncio criado com creative {creative_id}");
+            self.note("V5", "ad created with creative {creative_id}");
         }
         if self.post_id.is_some() && !self.no_ads {
             self.note(
                 "V10",
-                "campanha criada com criativo de post existente (object_story_id)",
+                "campaign created with a creative from an existing post (object_story_id)",
             );
         }
         let (ad, creative) = match self
@@ -995,7 +993,7 @@ impl Checklist {
                 self.ok(
                     s,
                     "get_campaign_details",
-                    format!("{} ad sets, {} anúncios", len(&d, "adsets"), len(&d, "ads")),
+                    format!("{} ad sets, {} ads", len(&d, "adsets"), len(&d, "ads")),
                 );
                 (
                     d["ads"][0]["ad_id"].as_str().map(str::to_string),
@@ -1007,37 +1005,37 @@ impl Checklist {
                 (None, None)
             }
         };
-        let input = json!({ "campaign_id": campaign, "name": self.name("criação editada") });
-        self.write(s, "update_campaign", "update_campaign nome", input)
+        let input = json!({ "campaign_id": campaign, "name": self.name("creation edited") });
+        self.write(s, "update_campaign", "update_campaign name", input)
             .await;
         let input = json!({
-            "adset_id": adset, "name": self.name("ad set editado"), "daily_budget": 25,
+            "adset_id": adset, "name": self.name("ad set edited"), "daily_budget": 25,
             "targeting": { "geo_locations": { "countries": ["BR"] }, "age_min": 21 },
         });
         self.write(
             s,
             "update_adset",
-            "update_adset nome+orçamento+público",
+            "update_adset name+budget+audience",
             input,
         )
         .await;
         if let Some(ad) = &ad {
-            let input = json!({ "ad_id": ad, "name": self.name("anúncio editado") });
-            self.write(s, "update_ad", "update_ad nome", input).await;
+            let input = json!({ "ad_id": ad, "name": self.name("ad edited") });
+            self.write(s, "update_ad", "update_ad name", input).await;
         }
         if let Some(creative) = &creative {
-            let input = json!({ "adset_id": adset, "name": self.name("anúncio extra"), "creative_id": creative });
-            self.write(s, "create_ad", "create_ad com criativo existente", input)
+            let input = json!({ "adset_id": adset, "name": self.name("extra ad"), "creative_id": creative });
+            self.write(s, "create_ad", "create_ad with existing creative", input)
                 .await;
         }
-        // Conflito: duas edições do nome; desfazer a primeira tem que dar UNDO_CONFLICT.
+        // Conflict: two edits of the name; undoing the first must give UNDO_CONFLICT.
         let input = json!({ "campaign_id": campaign, "name": self.name("A") });
         let a = self
-            .write(s, "update_campaign", "update_campaign conflito A", input)
+            .write(s, "update_campaign", "update_campaign conflict A", input)
             .await;
         let input = json!({ "campaign_id": campaign, "name": self.name("B") });
         let b = self
-            .write(s, "update_campaign", "update_campaign conflito B", input)
+            .write(s, "update_campaign", "update_campaign conflict B", input)
             .await;
         if let (Some(a), Some(_)) = (a, b) {
             match self
@@ -1045,10 +1043,10 @@ impl Checklist {
                 .await
             {
                 Err(e) if e.code == codes::UNDO_CONFLICT => {
-                    self.ok(s, "conflito", "UNDO_CONFLICT como esperado")
+                    self.ok(s, "conflict", "UNDO_CONFLICT as expected")
                 }
-                Err(e) => self.fail(s, "conflito", &e),
-                Ok(_) => self.line("FALHA", s, "conflito", "-", "desfazer A não deu conflito"),
+                Err(e) => self.fail(s, "conflict", &e),
+                Ok(_) => self.line("FAIL", s, "conflict", "-", "undoing A gave no conflict"),
             }
         }
         while self.undo.len() > base {
@@ -1062,40 +1060,43 @@ impl Checklist {
                 if d["campaign"]["status"] == "DELETED"
                     || d["campaign"]["effective_status"] == "DELETED" =>
             {
-                self.ok(s, "campanha apagada", "status DELETED");
-                self.note("V6", "depois do desfazer, a campanha lida está DELETED");
+                self.ok(s, "campaign deleted", "status DELETED");
+                self.note("V6", "after the undo, the campaign read is DELETED");
             }
             Err(e) if e.code == codes::NOT_FOUND || e.code == codes::API_ERROR => {
-                self.ok(s, "campanha apagada", format!("leitura devolve {}", e.code));
+                self.ok(s, "campaign deleted", format!("read returns {}", e.code));
                 self.note(
                     "V6",
-                    format!("depois do desfazer, ler a campanha dá {}", err_json(&e)),
+                    format!(
+                        "after the undo, reading the campaign gives {}",
+                        err_json(&e)
+                    ),
                 );
             }
             Ok(d) => self.line(
-                "FALHA",
+                "FAIL",
                 s,
-                "campanha apagada",
+                "campaign deleted",
                 "-",
                 format!("status {}", d["campaign"]["status"]),
             ),
-            Err(e) => self.fail(s, "campanha apagada", &e),
+            Err(e) => self.fail(s, "campaign deleted", &e),
         }
     }
 
     async fn rollback(&mut self) {
         let s = "rollback";
         let Some(creative) = self.ad_creative() else {
-            self.skip(s, "create_campaign", "sem post ou imagem");
+            self.skip(s, "create_campaign", "no post or image");
             return;
         };
-        let ad = |c: &Self, n: u8| json!({ "name": c.name(&format!("rollback anúncio {n}")), "creative": creative.clone() });
+        let ad = |c: &Self, n: u8| json!({ "name": c.name(&format!("rollback ad {n}")), "creative": creative.clone() });
         let mut input = self.campaign_input("rollback", vec![ad(self, 1)]);
-        // O 2º ad set depende da campanha, então a Meta só o valida na hora: falha depois
-        // de a campanha, o 1º ad set, o criativo e o anúncio já existirem.
+        // The 2nd ad set depends on the campaign, so Meta only validates it at that point:
+        // it fails after the campaign, the 1st ad set, the creative and the ad already exist.
         let mut bad = input["adsets"][0].clone();
-        bad["name"] = json!(self.name("rollback ad set inválido"));
-        bad["optimization_goal"] = json!("META_INVALIDO_ADSCONSOLE");
+        bad["name"] = json!(self.name("rollback invalid ad set"));
+        bad["optimization_goal"] = json!("META_INVALID_ADSCONSOLE");
         bad["ads"] = json!([ad(self, 2)]);
         if let Some(list) = input["adsets"].as_array_mut() {
             list.push(bad);
@@ -1109,11 +1110,11 @@ impl Checklist {
                     ));
                 }
                 self.line(
-                    "FALHA",
+                    "FAIL",
                     s,
                     "create_campaign",
                     "-",
-                    "o ad set inválido foi aceito",
+                    "the invalid ad set was accepted",
                 );
                 self.undo_last(s).await;
             }
@@ -1128,7 +1129,7 @@ impl Checklist {
                         s,
                         "create_campaign",
                         format!(
-                            "falhou em {} e apagou {}",
+                            "failed at {} and deleted {}",
                             d["failed_step"], d["rolled_back"]
                         ),
                     );
@@ -1136,24 +1137,24 @@ impl Checklist {
                 } else {
                     self.fail(s, "create_campaign", &e);
                 }
-                self.note("E1", format!("rollback: erro do passo: {}", err_json(&e)));
+                self.note("E1", format!("rollback: step error: {}", err_json(&e)));
             }
         }
     }
 
     async fn budget(&mut self) {
-        let s = "orcamento";
+        let s = "budget";
         let base = self.undo.len();
-        let Some((_, adset)) = self.simple_campaign(s, "orçamento").await else {
+        let Some((_, adset)) = self.simple_campaign(s, "budget").await else {
             if self.ad_creative().is_none() {
-                self.skip(s, "update_adset", "sem post ou imagem");
+                self.skip(s, "update_adset", "no post or image");
             }
             return;
         };
         for (i, v) in [21, 22, 23, 24].into_iter().enumerate() {
             let input = json!({ "adset_id": adset, "daily_budget": v });
             if self
-                .write(s, "update_adset", &format!("orçamento {}", i + 1), input)
+                .write(s, "update_adset", &format!("budget {}", i + 1), input)
                 .await
                 .is_none()
             {
@@ -1171,55 +1172,61 @@ impl Checklist {
                 self.ok(
                     s,
                     "update_adset",
-                    format!("5ª mudança recusada: {}", e.message),
+                    format!("5th change rejected: {}", e.message),
                 );
-                self.note("V7", "a 5ª mudança na mesma hora foi recusada localmente");
+                self.note("V7", "the 5th change in the same hour was rejected locally");
             }
             Err(e) => self.fail(s, "update_adset", &e),
             Ok(out) => {
                 self.undo.push((
                     out["change_id"].as_str().unwrap_or_default().into(),
-                    "orçamento 5".into(),
+                    "budget 5".into(),
                 ));
-                self.line("FALHA", s, "update_adset", "-", "a 5ª mudança passou");
+                self.line(
+                    "FAIL",
+                    s,
+                    "update_adset",
+                    "-",
+                    "the 5th change went through",
+                );
             }
         }
-        // Desfazer as mudanças de orçamento seria outra mudança: só apaga a campanha.
+        // Undoing the budget changes would be another change: just delete the campaign.
         self.undo.truncate(base + 1);
         self.undo_last(s).await;
     }
 
     async fn duplicate(&mut self) {
-        let s = "duplicar";
+        let s = "duplicate";
         let base = self.undo.len();
-        let Some((campaign, _)) = self.simple_campaign(s, "duplicação").await else {
+        let Some((campaign, _)) = self.simple_campaign(s, "duplication").await else {
             if self.ad_creative().is_none() {
-                self.skip(s, "duplicate", "sem post ou imagem");
+                self.skip(s, "duplicate", "no post or image");
             }
             return;
         };
         let input = json!({ "object_type": "campaign", "object_id": campaign });
         match self
-            .write(s, "duplicate", "duplicate campanha", input)
+            .write(s, "duplicate", "duplicate campaign", input)
             .await
         {
             Some(out) => self.note(
                 "V8",
-                format!("cópia síncrona: {}", short(&out["result"].to_string())),
+                format!("synchronous copy: {}", short(&out["result"].to_string())),
             ),
-            None => self.note("V8", "a cópia falhou (ver E1)"),
+            None => self.note("V8", "the copy failed (see E1)"),
         }
         while self.undo.len() > base {
             self.undo_last(s).await;
         }
     }
 
-    /// Preencher um campo que estava vazio (spend_cap) não tem desfazer: a mudança sai
-    /// irreversível, com aviso, e o desfazer recusa. Roda numa campanha de apoio.
+    /// Filling a field that was empty (spend_cap) has no undo: the change comes out
+    /// irreversible, with a warning, and undo refuses. Runs on a helper campaign.
     async fn empty_field(&mut self) {
-        let s = "campo_vazio";
+        let s = "empty_field";
         let base = self.undo.len();
-        let Some((campaign, _)) = self.fixture_campaign(s, "campo vazio").await else {
+        let Some((campaign, _)) = self.fixture_campaign(s, "empty field").await else {
             self.unwind_to(base).await;
             return;
         };
@@ -1233,18 +1240,18 @@ impl Checklist {
                     self.ok(
                         s,
                         "update_campaign",
-                        "spend_cap preenchido: sem desfazer, com aviso",
+                        "spend_cap filled: no undo, with a warning",
                     );
                 } else {
-                    self.line("FALHA", s, "update_campaign", "-", short(&out.to_string()));
+                    self.line("FAIL", s, "update_campaign", "-", short(&out.to_string()));
                 }
                 let id = out["change_id"].clone();
                 match self.call("undo_change", json!({ "change_id": id })).await {
                     Err(e) if e.code == codes::NOT_REVERSIBLE => {
-                        self.ok(s, "undo_change", "recusado com NOT_REVERSIBLE")
+                        self.ok(s, "undo_change", "rejected with NOT_REVERSIBLE")
                     }
                     Err(e) => self.fail(s, "undo_change", &e),
-                    Ok(_) => self.line("FALHA", s, "undo_change", "-", "o desfazer passou"),
+                    Ok(_) => self.line("FAIL", s, "undo_change", "-", "the undo went through"),
                 }
             }
             Err(e) => self.fail(s, "update_campaign", &e),
@@ -1255,20 +1262,20 @@ impl Checklist {
     async fn video(&mut self, file: Option<&PathBuf>) {
         let s = "video";
         let Some(file) = file else {
-            self.skip(s, "upload_video", "sem --video");
+            self.skip(s, "upload_video", "no --video");
             return;
         };
-        let input = json!({ "file_path": file.to_string_lossy(), "title": self.name("vídeo") });
+        let input = json!({ "file_path": file.to_string_lossy(), "title": self.name("video") });
         if let Some(out) = self.write(s, "upload_video", "upload_video", input).await {
-            // A Meta não deixa apagar o vídeo pela API: fica na biblioteca da conta.
+            // Meta does not allow deleting the video through the API: it stays in the account library.
             self.irreversible
-                .push(format!("vídeo {}", out["result"]["video_id"]));
+                .push(format!("video {}", out["result"]["video_id"]));
         }
     }
 
     fn report(&self) {
-        println!("\n## Resultados\n");
-        println!("| Resultado | Etapa | Ferramenta | Código | Detalhe |");
+        println!("\n## Results\n");
+        println!("| Result | Step | Tool | Code | Detail |");
         println!("|---|---|---|---|---|");
         for l in &self.lines {
             println!(
@@ -1280,35 +1287,35 @@ impl Checklist {
                 l.detail.replace('|', "/")
             );
         }
-        println!("\n## Evidências VERIFY(v26.0)\n");
+        println!("\n## VERIFY(v26.0) evidence\n");
         for (k, what) in VERIFY {
             println!("{k} {what}");
             match self.evidence.get(k) {
                 Some(list) => list.iter().for_each(|e| println!("  - {e}")),
-                None => println!("  - não exercitado nesta execução"),
+                None => println!("  - not exercised in this run"),
             }
         }
         if let Some(list) = self.evidence.get("E1") {
-            println!("E1 erros completos");
+            println!("E1 full errors");
             list.iter().for_each(|e| println!("  - {e}"));
         }
-        println!("\n## O que ficou na conta\n");
+        println!("\n## What was left in the account\n");
         if self.left_behind.is_empty() {
-            println!("Nada reversível ficou para trás.");
+            println!("Nothing reversible was left behind.");
         } else {
-            println!("Confira na conta:");
+            println!("Check the account:");
             self.left_behind.iter().for_each(|l| println!("  - {l}"));
         }
         if !self.irreversible.is_empty() {
-            println!("Irreversíveis (ficam na conta por natureza):");
+            println!("Irreversible (they stay in the account by nature):");
             self.irreversible.iter().for_each(|l| println!("  - {l}"));
         }
         let count = |o: &str| self.lines.iter().filter(|l| l.outcome == o).count();
         println!(
-            "\nTotal: {} OK, {} FALHA, {} PULADO.",
+            "\nTotal: {} OK, {} FAIL, {} SKIPPED.",
             count("OK"),
-            count("FALHA"),
-            count("PULADO")
+            count("FAIL"),
+            count("SKIPPED")
         );
     }
 }
@@ -1334,13 +1341,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         || !args.delete_images.is_empty()
         || !args.delete_videos.is_empty()
         || !args.delete_creatives.is_empty();
-    // graph_get/graph_post: listar e apagar mídia e os criativos que o desfazer deixa.
+    // graph_get/graph_post: list and delete media and the creatives that undo leaves behind.
     if let Some(s) = config.servers.get_mut(&Platform::MetaAds) {
         s.groups
             .insert(adsconsole_core::config::ToolGroup::Escape, true);
     }
     let engine = Engine::new(adapter.clone(), db.clone(), Arc::new(RwLock::new(config)))?;
-    // A Graph aceita `method=delete` num POST: assim a limpeza passa pelo graph_post.
+    // The Graph API accepts `method=delete` on a POST: this way the cleanup goes through graph_post.
     let mut deletes: Vec<(String, Value)> = args
         .delete_images
         .iter()
@@ -1365,8 +1372,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     for (path, params) in deletes {
         let input = json!({ "account_id": args.account, "path": path, "params": params });
         match engine.call_tool("graph_post", input, Some(BY.into())).await {
-            Ok(v) => println!("apagar {params}: {}", v["result"]),
-            Err(e) => println!("apagar {params}: {}: {}", e.code, e.message),
+            Ok(v) => println!("delete {params}: {}", v["result"]),
+            Err(e) => println!("delete {params}: {}: {}", e.code, e.message),
         }
     }
     if args.funding {
@@ -1378,15 +1385,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 "params": { "fields": "funding_source_details{type},disable_reason,account_status" },
             });
             match engine.call_tool("graph_get", input, Some(BY.into())).await {
-                // Só o tipo e se existe: os dados do cartão não saem daqui.
+                // Only the type and whether it exists: the card details never leave here.
                 Ok(v) => {
                     let f = &v["funding_source_details"];
                     let has = f.is_object() && !f["type"].is_null();
                     println!(
-                        "{} | {} | pagamento: {} (tipo {}) | status {} | disable_reason {}",
+                        "{} | {} | payment: {} (type {}) | status {} | disable_reason {}",
                         a.account_id,
                         a.name,
-                        if has { "sim" } else { "não" },
+                        if has { "yes" } else { "no" },
                         f["type"],
                         v["account_status"],
                         v["disable_reason"]
@@ -1432,7 +1439,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     if let Err(e) = engine.refresh_accounts().await {
         println!(
-            "Aviso: falha ao atualizar as contas: {}: {}",
+            "Warning: failed to refresh the accounts: {}: {}",
             e.code, e.message
         );
     }
@@ -1442,18 +1449,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .next()
     else {
         return Err(format!(
-            "a conta {} não está em nenhuma conexão da Meta (rode meta_connect)",
+            "account {} is not in any Meta connection (run meta_connect)",
             args.account
         )
         .into());
     };
     println!(
-        "Conta {} ({}, {}), conexão {connection}",
+        "Account {} ({}, {}), connection {connection}",
         account.account_id, account.name, account.currency
     );
     if account.status.as_deref() != Some("ACTIVE") {
         println!(
-            "Aviso: a conta está {:?}; as escritas serão recusadas.",
+            "Warning: the account is {:?}; writes will be rejected.",
             account.status
         );
     }
@@ -1467,12 +1474,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         true
     } else {
         println!(
-            "\nEscritas reais planejadas (tudo pausado e desfeito em seguida; só o vídeo fica):\n  {}",
+            "\nPlanned real writes (everything paused and undone right after; only the video stays):\n  {}",
             planned.join(", ")
         );
         if !args.yes {
             print!(
-                "Digite sim para fazer essas escritas (outra resposta roda só leituras e validação): "
+                "Type yes to make these writes (any other answer runs only reads and validation): "
             );
             use std::io::Write;
             std::io::stdout().flush()?;
@@ -1505,12 +1512,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     if interrupted {
         println!(
-            "\nInterrompido (Ctrl+C): desfazendo o que foi criado. Outro Ctrl+C sai sem limpar."
+            "\nInterrupted (Ctrl+C): undoing what was created. Another Ctrl+C exits without cleaning up."
         );
         tokio::spawn(async {
             if tokio::signal::ctrl_c().await.is_ok() {
                 println!(
-                    "\nSaindo sem terminar a limpeza: confira a conta no Gerenciador de Anúncios."
+                    "\nExiting without finishing the cleanup: check the account in Ads Manager."
                 );
                 std::process::exit(130);
             }
@@ -1539,29 +1546,29 @@ async fn run_steps(
 ) {
     c.note(
         "V1",
-        "a conexão usada foi criada pelo meta_connect (login no navegador, porta aleatória)",
+        "the connection used was created by meta_connect (browser login, random port)",
     );
     for step in STEPS.iter().filter(|s| args.runs(s)) {
         if WRITE_STEPS.contains(step) && !go {
-            c.skip(step, "-", "escritas reais não confirmadas");
+            c.skip(step, "-", "real writes not confirmed");
             continue;
         }
         println!("\n# {step}");
         match *step {
-            "leituras" => c.reads().await,
-            "imagem" => c.image(args.image.as_ref(), tmp).await,
-            "validacao" => c.validation(adapter, connection).await,
-            "criativo_novo" if args.image.is_none() => c.skip(
+            "reads" => c.reads().await,
+            "image" => c.image(args.image.as_ref(), tmp).await,
+            "validation" => c.validation(adapter, connection).await,
+            "new_creative" if args.image.is_none() => c.skip(
                 step,
                 "create_campaign",
-                "use --image com uma imagem do anunciante da Página",
+                "use --image with an image from the Page's advertiser",
             ),
-            "criativo_novo" => c.new_creative().await,
-            "criacao" => c.creation().await,
+            "new_creative" => c.new_creative().await,
+            "creation" => c.creation().await,
             "rollback" => c.rollback().await,
-            "orcamento" => c.budget().await,
-            "duplicar" => c.duplicate().await,
-            "campo_vazio" => c.empty_field().await,
+            "budget" => c.budget().await,
+            "duplicate" => c.duplicate().await,
+            "empty_field" => c.empty_field().await,
             "video" => c.video(args.video.as_ref()).await,
             _ => {}
         }
@@ -1581,7 +1588,7 @@ mod tests {
         let a = args(&[
             "123",
             "--only",
-            "leituras,criacao",
+            "reads,creation",
             "--yes",
             "--image",
             "x.png",
@@ -1589,21 +1596,21 @@ mod tests {
         .unwrap();
         assert_eq!(a.account, "act_123");
         assert!(a.yes);
-        assert!(a.runs("criacao") && !a.runs("video"));
+        assert!(a.runs("creation") && !a.runs("video"));
         assert_eq!(a.image, Some(PathBuf::from("x.png")));
-        assert!(args(&["act_1", "--only", "nada"]).is_err());
+        assert!(args(&["act_1", "--only", "nothing"]).is_err());
         assert!(args(&[]).is_err());
         assert!(args(&["act_1", "--zzz"]).is_err());
-        // Vídeo (irreversível) e criativo novo (cria post na Página) só rodam pedidos.
+        // Video (irreversible) and new creative (creates a post on the Page) only run when requested.
         let all = args(&["act_1"]).unwrap();
-        assert!(all.runs("criacao") && !all.runs("video") && !all.runs("criativo_novo"));
+        assert!(all.runs("creation") && !all.runs("video") && !all.runs("new_creative"));
         assert!(args(&["act_1", "--only", "video"]).unwrap().runs("video"));
         assert_eq!(
             args(&["act_1", "--page", "101"]).unwrap().page.as_deref(),
             Some("101")
         );
         assert!(all.page.is_none() && !all.no_ads);
-        assert!(args(&["act_1", "--sem-anuncio"]).unwrap().no_ads);
+        assert!(args(&["act_1", "--no-ads"]).unwrap().no_ads);
         assert_eq!(
             args(&["act_1", "--undo", "chg_1", "--undo", "chg_2"])
                 .unwrap()
@@ -1613,11 +1620,11 @@ mod tests {
     }
 
     #[test]
-    fn writes_need_sim_unless_yes() {
-        let ask = |input: &str, yes: bool| confirmed(&["criacao"], yes, &mut input.as_bytes());
-        assert!(ask("sim\n", false));
-        assert!(ask("SIM\n", false));
-        assert!(!ask("não\n", false));
+    fn writes_need_yes_unless_flag() {
+        let ask = |input: &str, yes: bool| confirmed(&["creation"], yes, &mut input.as_bytes());
+        assert!(ask("yes\n", false));
+        assert!(ask("YES\n", false));
+        assert!(!ask("no\n", false));
         assert!(!ask("", false));
         assert!(ask("", true));
         assert!(confirmed(&[], false, &mut "".as_bytes()));

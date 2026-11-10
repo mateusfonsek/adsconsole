@@ -1,4 +1,4 @@
-//! Ponta a ponta: servidor HTTP real em porta 0, cliente `rmcp` e `reqwest`.
+//! End to end: real HTTP server on port 0, `rmcp` and `reqwest` clients.
 
 use std::sync::{Arc, RwLock};
 
@@ -31,8 +31,8 @@ impl Harness {
     }
 }
 
-/// Uma fake por plataforma, cada uma com o próprio banco (as duas usam conn_a/conn_b);
-/// a configuração é compartilhada.
+/// One fake per platform, each with its own database (both use conn_a/conn_b);
+/// the configuration is shared.
 async fn spawn(mode: WriteMode) -> Harness {
     let mut config = Config::default();
     for p in Platform::ALL {
@@ -314,7 +314,7 @@ async fn port_in_use_is_reported() {
     )
     .await
     .err()
-    .expect("a porta está ocupada");
+    .expect("the port is taken");
     assert!(
         matches!(err, StartError::PortInUse(p) if p == port),
         "{err:?}"
@@ -332,7 +332,7 @@ async fn shutdown_stops_listening() {
     let h = spawn(WriteMode::Direct).await;
     let addr = h.server.addr;
     assert!(tokio::net::TcpStream::connect(addr).await.is_ok());
-    // Uma sessão MCP aberta não pode segurar o desligamento.
+    // An open MCP session must not block the shutdown.
     let g = client(h.url(Platform::GoogleAds)).await;
     assert!(!tool_names(&g).await.is_empty());
     tokio::time::timeout(std::time::Duration::from_secs(5), h.server.shutdown())

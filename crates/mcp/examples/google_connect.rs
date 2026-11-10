@@ -1,11 +1,11 @@
-//! Conecta uma conta Google (OAuth no navegador) ao diretório de dados do AdsConsole.
+//! Connects a Google account (OAuth in the browser) to the AdsConsole data directory.
 //!
-//! `cargo run -p adsconsole-mcp --example google_connect -- <client.json> <nome>
+//! `cargo run -p adsconsole-mcp --example google_connect -- <client.json> <name>
 //!     [--login-customer-id N] [--access-level test|explorer|basic|standard]`
 //!
-//! Diretório de dados: `ADSCONSOLE_DATA_DIR` ou o padrão. Abre `adsconsole.db` e o
-//! armazenamento de segredos, faz o login no navegador e lista as contas. Nunca imprime
-//! segredos (client secret, tokens).
+//! Data directory: `ADSCONSOLE_DATA_DIR` or the default. Opens `adsconsole.db` and the
+//! secret store, logs in through the browser and lists the accounts. Never prints
+//! secrets (client secret, tokens).
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,7 +20,7 @@ use adsconsole_mcp::google::connections::{
     AccessLevel, AddGoogleConnection, add_google_connection,
 };
 
-const USAGE: &str = "uso: google_connect <client.json> <nome> [--login-customer-id N] \
+const USAGE: &str = "usage: google_connect <client.json> <name> [--login-customer-id N] \
                      [--access-level test|explorer|basic|standard]";
 
 struct Args {
@@ -36,7 +36,7 @@ fn access_level(s: &str) -> Result<AccessLevel, String> {
         "explorer" => Ok(AccessLevel::Explorer),
         "basic" => Ok(AccessLevel::Basic),
         "standard" => Ok(AccessLevel::Standard),
-        other => Err(format!("nível de acesso desconhecido: {other}\n{USAGE}")),
+        other => Err(format!("unknown access level: {other}\n{USAGE}")),
     }
 }
 
@@ -51,7 +51,7 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
                 login_customer_id = Some(it.next().ok_or(USAGE)?);
             }
             "--access-level" => level = access_level(&it.next().ok_or(USAGE)?)?,
-            s if s.starts_with("--") => return Err(format!("opção desconhecida: {s}\n{USAGE}")),
+            s if s.starts_with("--") => return Err(format!("unknown option: {s}\n{USAGE}")),
             _ => positional.push(a),
         }
     }
@@ -68,16 +68,16 @@ fn parse_args(raw: impl IntoIterator<Item = String>) -> Result<Args, String> {
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args = parse_args(std::env::args().skip(1))?;
     let client_json = std::fs::read(&args.client_json)
-        .map_err(|e| format!("não foi possível ler {}: {e}", args.client_json.display()))?;
+        .map_err(|e| format!("could not read {}: {e}", args.client_json.display()))?;
 
     let env = EnvOverrides::from_env()?;
     let dir = data_dir(&env)?;
     let db = Arc::new(Db::open(&dir.join("adsconsole.db"))?);
     let (secrets, backend) = open_secret_store(&dir);
-    println!("Diretório de dados: {}", dir.display());
+    println!("Data directory: {}", dir.display());
     if backend == SecretBackend::File {
         println!(
-            "Aviso: keychain indisponível; segredos em {}",
+            "Warning: keychain unavailable; secrets in {}",
             dir.join("secrets.json").display()
         );
     }
@@ -89,21 +89,21 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         login_customer_id: args.login_customer_id,
         access_level: args.access_level,
     };
-    println!("Abrindo o navegador para o login do Google (espera até 5 min)...");
+    println!("Opening the browser for the Google login (waits up to 5 min)...");
     let open = |url: &str| open::that(url);
     let meta = add_google_connection(&adapter, req, &open)
         .await
         .map_err(|e| format!("{}: {}", e.code, e.message))?;
 
     println!(
-        "Conexão criada: {} ({}), nível {}",
+        "Connection created: {} ({}), level {}",
         meta.connection_id,
         meta.name,
         args.access_level.label()
     );
     let accounts = db.list_accounts(Platform::GoogleAds, Some(&meta.connection_id))?;
-    println!("Contas ({}):", accounts.len());
-    println!("  id | nome | moeda | status | manager_id");
+    println!("Accounts ({}):", accounts.len());
+    println!("  id | name | currency | status | manager_id");
     for (_, a) in accounts {
         println!(
             "  {} | {} | {} | {} | {}",
