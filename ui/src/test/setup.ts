@@ -3,7 +3,7 @@ import { afterEach } from "vitest";
 import { cleanup } from "@testing-library/react";
 import { clearMocks } from "./ipc-mock";
 
-// O jsdom não tem matchMedia; o tema do sistema conta como claro nos testes.
+// jsdom has no matchMedia; the system theme counts as light in tests.
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>
     ({

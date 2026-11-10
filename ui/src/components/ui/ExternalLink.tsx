@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { ArrowUpRight } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
-/** Link que abre no navegador do sistema (a janela do app nunca navega para fora). */
+/** Link that opens in the system browser (the app window never navigates away). */
 export function ExternalLink({ href, children }: { href: string; children: ReactNode }) {
   return (
     <a

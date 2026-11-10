@@ -1,11 +1,11 @@
 import { expect, test } from "@playwright/test";
 import { mockTauri } from "./mock";
 
-test("JSON do Google do tipo web mostra o erro e bloqueia o login", async ({ page }) => {
+test("a web-type Google JSON shows the error and blocks the login", async ({ page }) => {
   await mockTauri(page);
   await page.goto("/#/connections");
-  await page.getByRole("button", { name: "Conectar Google Ads" }).click();
-  await page.getByRole("button", { name: "Escolher arquivo" }).click();
-  await expect(page.getByRole("alert")).toContainText("App para computador");
-  await expect(page.getByRole("button", { name: "Entrar com Google" })).toBeDisabled();
+  await page.getByRole("button", { name: "Connect Google Ads" }).click();
+  await page.getByRole("button", { name: "Choose file" }).click();
+  await expect(page.getByRole("alert")).toContainText("Desktop app");
+  await expect(page.getByRole("button", { name: "Sign in with Google" })).toBeDisabled();
 });

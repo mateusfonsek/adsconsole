@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { Approvals } from "./Approvals";
 import { renderWithApp, pendingFixture, changeFixture } from "../test/render";
 
-test("aprovar chama o comando com o id selecionado", async () => {
+test("approving calls the command with the selected id", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Approvals />, {
     list_pending: [pendingFixture("c1")],
@@ -12,58 +12,58 @@ test("aprovar chama o comando com o id selecionado", async () => {
       return changeFixture("c1", { status: "applied" });
     },
   });
-  expect(await screen.findByRole("heading", { name: "Aumentar orçamento do conjunto" })).toBeInTheDocument();
-  await userEvent.click(screen.getByRole("button", { name: "Aprovar" }));
+  expect(await screen.findByRole("heading", { name: "Increase ad set budget" })).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Approve" }));
   await waitFor(() => expect(calls).toEqual(["c1"]));
 });
 
-test("só leitura bloqueia o aprovar e mantém o recusar", async () => {
+test("read-only blocks approve and keeps reject", async () => {
   renderWithApp(<Approvals />, { list_pending: [pendingFixture("c1", { blocked_reason: "read_only" })] });
-  expect(await screen.findByRole("button", { name: "Aprovar" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Recusar" })).toBeEnabled();
-  expect(screen.getByText(/O modo atual desta plataforma é só leitura/)).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Approve" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Reject" })).toBeEnabled();
+  expect(screen.getByText(/This platform is in read-only mode/)).toBeInTheDocument();
 });
 
-test("mudança irreversível mostra o aviso", async () => {
+test("an irreversible change shows the warning", async () => {
   renderWithApp(<Approvals />, {
     list_pending: [pendingFixture("c1", { change: changeFixture("c1", { reversible: false }) })],
   });
-  expect(await screen.findByText("Esta mudança não pode ser desfeita.")).toBeInTheDocument();
+  expect(await screen.findByText("This change cannot be undone.")).toBeInTheDocument();
 });
 
-test("o detalhe desativa os botões quando o pedido expira", async () => {
+test("the detail disables the buttons when the request expires", async () => {
   const soon = new Date(Date.now() + 1200).toISOString();
   renderWithApp(<Approvals />, { list_pending: [pendingFixture("c1", { expires_at: soon })] });
-  expect(await screen.findByRole("button", { name: "Aprovar" })).toBeEnabled();
-  expect(await screen.findByText("Expirou: a IA recebeu \"não aprovado\".", {}, { timeout: 3000 })).toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Aprovar" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Recusar" })).toBeDisabled();
+  expect(await screen.findByRole("button", { name: "Approve" })).toBeEnabled();
+  expect(await screen.findByText("Expired: the AI got \"not approved\".", {}, { timeout: 3000 })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Reject" })).toBeDisabled();
 });
 
-test("fila vazia mostra o estado vazio", async () => {
+test("empty queue shows the empty state", async () => {
   renderWithApp(<Approvals />, { list_pending: [] });
-  expect(await screen.findByText("Nada esperando aprovação.")).toBeInTheDocument();
+  expect(await screen.findByText("Nothing waiting for approval.")).toBeInTheDocument();
 });
 
-test("o pedido aberto que sai da fila continua na tela, sem trocar por outro", async () => {
+test("the open request that leaves the queue stays on screen, without switching to another", async () => {
   let call = 0;
   window.location.hash = "#/approvals/c1";
-  const a = pendingFixture("c1", { change: changeFixture("c1", { summary: "Pedido A" }) });
-  const b = pendingFixture("c2", { change: changeFixture("c2", { summary: "Pedido B" }) });
+  const a = pendingFixture("c1", { change: changeFixture("c1", { summary: "Request A" }) });
+  const b = pendingFixture("c2", { change: changeFixture("c2", { summary: "Request B" }) });
   const { qc } = renderWithApp(<Approvals />, {
     list_pending: () => (call++ === 0 ? [a, b] : [b]),
-    get_change: changeFixture("c1", { summary: "Pedido A", status: "expired" }),
+    get_change: changeFixture("c1", { summary: "Request A", status: "expired" }),
   });
-  expect(await screen.findByRole("heading", { name: "Pedido A" })).toBeInTheDocument();
+  expect(await screen.findByRole("heading", { name: "Request A" })).toBeInTheDocument();
   await qc.invalidateQueries({ queryKey: ["list_pending"] });
   await waitFor(() => expect(call).toBeGreaterThan(1));
-  expect(await screen.findByText("Expirou: a IA recebeu \"não aprovado\".")).toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Pedido A" })).toBeInTheDocument();
-  expect(screen.queryByRole("heading", { name: "Pedido B" })).not.toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Aprovar" })).not.toBeInTheDocument();
+  expect(await screen.findByText("Expired: the AI got \"not approved\".")).toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Request A" })).toBeInTheDocument();
+  expect(screen.queryByRole("heading", { name: "Request B" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
 });
 
-test("sem pedido na URL, fixa o primeiro na URL", async () => {
+test("with no request in the URL, pins the first one in the URL", async () => {
   window.location.hash = "#/approvals";
   renderWithApp(<Approvals />, { list_pending: [pendingFixture("c1"), pendingFixture("c2")] });
   await waitFor(() => expect(window.location.hash).toBe("#/approvals/c1"));

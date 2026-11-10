@@ -47,7 +47,7 @@ pre {
   user-select: text;
 }
 
-/* Rótulo em mono maiúsculo, assinatura do visual. */
+/* Uppercase mono label, the visual signature. */
 .label-mono {
   font-family: var(--font-mono);
   font-size: 10.5px;

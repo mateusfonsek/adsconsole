@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../components/ui/Button";
 
-/** Passo numerado de um assistente, com links opcionais. */
+/** Numbered step of a wizard, with optional links. */
 export function WizardStep({ n, title, children }: { n: number; title: string; children?: ReactNode }) {
   return (
     <li className="flex gap-3 border-b border-line py-3 last:border-b-0">
@@ -17,7 +17,7 @@ export function WizardStep({ n, title, children }: { n: number; title: string; c
   );
 }
 
-/** Estado do login no navegador, com o botão de cancelar. */
+/** Browser login state, with the cancel button. */
 export function WaitingLogin({ onCancel }: { onCancel: () => void }) {
   const { t } = useTranslation();
   return (

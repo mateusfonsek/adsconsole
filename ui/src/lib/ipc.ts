@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient, type QueryKey } from "@tanstack/react-query";
 import { events, type AppEvent } from "../bindings";
 
-/** Erro que os comandos devolvem (o `AppError` do Rust). */
+/** Error the commands return (Rust's `AppError`). */
 export type AppErr = { code: string; message: string; field: string | null; details?: unknown };
 
 export function asAppError(e: unknown): AppErr {
@@ -10,7 +10,7 @@ export function asAppError(e: unknown): AppErr {
   return { code: "UNKNOWN", message: e instanceof Error ? e.message : String(e), field: null };
 }
 
-/** Consulta um comando; a chave é o nome do comando mais os argumentos. */
+/** Queries a command; the key is the command name plus the arguments. */
 export function useCmd<T>(key: QueryKey, fn: () => Promise<T>, enabled = true) {
   return useQuery<T, AppErr>({
     queryKey: key,
@@ -25,7 +25,7 @@ export function useCmd<T>(key: QueryKey, fn: () => Promise<T>, enabled = true) {
   });
 }
 
-/** Executa um comando que muda estado e invalida as chaves dadas no fim. */
+/** Runs a command that changes state and invalidates the given keys at the end. */
 export function useAction<A, T>(fn: (args: A) => Promise<T>, invalidate: string[] = []) {
   const qc = useQueryClient();
   return useMutation<T, AppErr, A>({
@@ -40,7 +40,7 @@ export function useAction<A, T>(fn: (args: A) => Promise<T>, invalidate: string[
   });
 }
 
-/** Chaves invalidadas por cada evento do app. */
+/** Keys invalidated by each app event. */
 export function keysFor(ev: AppEvent): string[] {
   switch (ev.kind) {
     case "approval_requested":
@@ -57,7 +57,7 @@ export function keysFor(ev: AppEvent): string[] {
   }
 }
 
-/** Ouve os eventos do app: invalida o cache e repassa o evento a `onEvent`. */
+/** Listens to app events: invalidates the cache and forwards the event to `onEvent`. */
 export function useAppEvents(onEvent?: (ev: AppEvent) => void) {
   const qc = useQueryClient();
   useEffect(() => {

@@ -1,4 +1,4 @@
-/** Escolha única em linha (tema, idioma, modo de escrita). */
+/** Single choice in a row (theme, language, write mode). */
 export function Segmented<T extends string>({
   value,
   options,

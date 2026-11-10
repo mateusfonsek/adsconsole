@@ -12,14 +12,14 @@ const running = {
   meta_write_mode: "read_only",
 };
 
-test("mostra os primeiros passos enquanto não terminou", async () => {
+test("shows the getting-started steps until they are done", async () => {
   renderWithApp(<Home />, {
     onboarding_state: { has_connection: true, client_seen: false },
     server_status: running,
     list_connections: [],
     list_pending: [],
   });
-  const list = await screen.findByRole("list", { name: "Primeiros passos" });
+  const list = await screen.findByRole("list", { name: "Getting started" });
   const items = within(list).getAllByRole("listitem");
   expect(items).toHaveLength(3);
   expect(items[0]).toHaveAttribute("data-done", "true");
@@ -27,7 +27,7 @@ test("mostra os primeiros passos enquanto não terminou", async () => {
   expect(within(items[1]).getByRole("link")).toHaveAttribute("href", "#/mcps");
 });
 
-test("com tudo pronto mostra o status no lugar dos passos", async () => {
+test("with everything ready shows the status in place of the steps", async () => {
   renderWithApp(<Home />, {
     onboarding_state: { has_connection: true, client_seen: true },
     server_status: running,
@@ -35,7 +35,7 @@ test("com tudo pronto mostra o status no lugar dos passos", async () => {
       {
         id: "m1",
         platform: "meta_ads",
-        name: "Portfólio",
+        name: "Portfolio",
         is_default: true,
         status: { kind: "needs_reconnect" },
         expires_at: null,
@@ -46,7 +46,7 @@ test("com tudo pronto mostra o status no lugar dos passos", async () => {
     list_pending: [pendingFixture("c1")],
   });
   expect(await screen.findByText("127.0.0.1:7458")).toBeInTheDocument();
-  expect(screen.queryByRole("list", { name: "Primeiros passos" })).not.toBeInTheDocument();
-  expect(await screen.findByText("1 conexão precisa reconectar")).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /1 aprovação pendente/ })).toHaveAttribute("href", "#/approvals");
+  expect(screen.queryByRole("list", { name: "Getting started" })).not.toBeInTheDocument();
+  expect(await screen.findByText("1 connection needs to reconnect")).toBeInTheDocument();
+  expect(screen.getByRole("link", { name: /1 pending approval/ })).toHaveAttribute("href", "#/approvals");
 });

@@ -46,7 +46,7 @@ export function MetaWizard({ templatesUrl, onDone }: { templatesUrl: string; onD
   if (login.isPending) return <WaitingLogin onCancel={() => void commands.cancelLogin()} />;
 
   const id = appId.trim();
-  // O App Secret nunca fica no formulário depois de uma tentativa.
+  // The App Secret never stays in the form after an attempt.
   const clearSecret = () => setSecret("");
   const error = [login.error, byToken.error].find((e) => e && e.code !== "LOGIN_CANCELLED");
   const loginReady = !!name.trim() && !!id && !!configId.trim() && !!secret;

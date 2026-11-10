@@ -3,7 +3,7 @@ import { useId, type InputHTMLAttributes, type ReactNode } from "react";
 export const inputClass =
   "h-8 w-full rounded-console border border-line-strong bg-surface px-2.5 text-[13px] text-fg placeholder:text-muted/70 focus:border-fg focus:outline-none aria-[invalid=true]:border-err";
 
-/** Rótulo + campo + ajuda ou erro. O erro tem prioridade sobre a ajuda. */
+/** Label + field + help or error. The error takes priority over the help. */
 export function Field({
   label,
   hint,

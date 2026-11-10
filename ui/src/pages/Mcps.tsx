@@ -61,7 +61,7 @@ export function Mcps() {
     ["server_status"],
   );
   const savePort = useAction((port: number) => commands.setPort(port), ["server_status", "get_app_settings"]);
-  // `set_port` devolve Ok com o estado de erro quando a porta nova falha (a antiga volta).
+  // `set_port` returns Ok with the error state when the new port fails (the old one comes back).
   const [portFailure, setPortFailure] = useState<string | null>(null);
 
   const s = status.data;

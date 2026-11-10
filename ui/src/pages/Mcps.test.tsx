@@ -20,15 +20,15 @@ const preview = (a: Record<string, unknown>) => ({
   where_to_paste: "clients.where.terminal",
 });
 
-test("a prévia do trecho nunca mostra o token", async () => {
+test("the snippet preview never shows the token", async () => {
   renderWithApp(<Mcps />, { server_status: status, client_snippet_preview: preview, reveal_token: TOKEN });
   expect(await screen.findByText(/adsconsole-google url/)).toBeInTheDocument();
   expect(document.body.textContent).not.toContain(TOKEN);
-  await userEvent.click(screen.getByRole("button", { name: "Mostrar token" }));
+  await userEvent.click(screen.getByRole("button", { name: "Show token" }));
   expect(await screen.findByText(TOKEN)).toBeInTheDocument();
 });
 
-test("copiar o trecho chama o comando com cliente e plataforma", async () => {
+test("copying the snippet calls the command with client and platform", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Mcps />, {
     server_status: status,
@@ -39,12 +39,12 @@ test("copiar o trecho chama o comando com cliente e plataforma", async () => {
     },
   });
   await userEvent.click(await screen.findByRole("tab", { name: "Codex" }));
-  await userEvent.click(screen.getByRole("button", { name: "Copiar trecho" }));
+  await userEvent.click(screen.getByRole("button", { name: "Copy snippet" }));
   await waitFor(() => expect(calls).toEqual([["codex", "google_ads"]]));
-  expect(await screen.findByText("Copiado com o token")).toBeInTheDocument();
+  expect(await screen.findByText("Copied with the token")).toBeInTheDocument();
 });
 
-test("pausar um MCP chama o comando", async () => {
+test("pausing an MCP calls the command", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Mcps />, {
     server_status: status,
@@ -58,38 +58,38 @@ test("pausar um MCP chama o comando", async () => {
   await waitFor(() => expect(calls).toEqual([["meta_ads", false]]));
 });
 
-test("erro do servidor mostra a mensagem e o campo de porta", async () => {
+test("a server error shows the message and the port field", async () => {
   renderWithApp(<Mcps />, {
     server_status: {
       ...status,
-      state: { kind: "error", port: 7458, error: { code: "PORT_IN_USE", message: "A porta 7458 já está em uso.", field: null } },
+      state: { kind: "error", port: 7458, error: { code: "PORT_IN_USE", message: "Port 7458 is already in use.", field: null } },
     },
     client_snippet_preview: preview,
   });
-  expect(await screen.findByText("A porta 7458 já está em uso.")).toBeInTheDocument();
-  expect(screen.getByLabelText("Porta")).toHaveValue("7458");
+  expect(await screen.findByText("Port 7458 is already in use.")).toBeInTheDocument();
+  expect(screen.getByLabelText("Port")).toHaveValue("7458");
 });
 
-test("porta ocupada ao salvar mostra a mensagem", async () => {
+test("a port in use on save shows the message", async () => {
   renderWithApp(<Mcps />, {
     server_status: status,
     client_snippet_preview: preview,
-    set_port: () => ({ kind: "error", port: 8080, error: { code: "PORT_IN_USE", message: "A porta 8080 já está em uso.", field: null } }),
+    set_port: () => ({ kind: "error", port: 8080, error: { code: "PORT_IN_USE", message: "Port 8080 is already in use.", field: null } }),
   });
-  const input = await screen.findByLabelText("Porta");
+  const input = await screen.findByLabelText("Port");
   await userEvent.clear(input);
   await userEvent.type(input, "8080");
-  await userEvent.click(screen.getByRole("button", { name: "Salvar porta" }));
-  expect(await screen.findByText("A porta 8080 já está em uso.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Save port" }));
+  expect(await screen.findByText("Port 8080 is already in use.")).toBeInTheDocument();
 });
 
-test("com o servidor em erro dá para tentar de novo a mesma porta", async () => {
+test("with the server in error, the same port can be retried", async () => {
   renderWithApp(<Mcps />, {
     server_status: {
       ...status,
-      state: { kind: "error", port: 7458, error: { code: "PORT_IN_USE", message: "A porta 7458 já está em uso.", field: null } },
+      state: { kind: "error", port: 7458, error: { code: "PORT_IN_USE", message: "Port 7458 is already in use.", field: null } },
     },
     client_snippet_preview: preview,
   });
-  expect(await screen.findByRole("button", { name: "Salvar porta" })).toBeEnabled();
+  expect(await screen.findByRole("button", { name: "Save port" })).toBeEnabled();
 });

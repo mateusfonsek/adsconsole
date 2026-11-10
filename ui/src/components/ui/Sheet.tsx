@@ -2,7 +2,7 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import type { ReactNode } from "react";
 
-/** Painel lateral à direita (assistentes de conexão). */
+/** Side panel on the right (connection wizards). */
 export function Sheet({
   open,
   onOpenChange,
@@ -41,7 +41,7 @@ export function Sheet({
   );
 }
 
-/** Diálogo central de confirmação. */
+/** Centered confirmation dialog. */
 export function ConfirmDialog({
   open,
   onOpenChange,

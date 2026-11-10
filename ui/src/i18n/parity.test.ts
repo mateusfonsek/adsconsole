@@ -9,6 +9,6 @@ function keys(obj: Record<string, unknown>, prefix = ""): string[] {
     .sort();
 }
 
-test("pt e en têm as mesmas chaves", () => {
+test("pt and en have the same keys", () => {
   expect(keys(en)).toEqual(keys(pt));
 });

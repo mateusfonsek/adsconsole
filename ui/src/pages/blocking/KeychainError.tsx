@@ -5,7 +5,7 @@ import { useAction } from "../../lib/ipc";
 import { Button } from "../../components/ui/Button";
 import { ErrorNote } from "../../components/ui/Card";
 
-/** Tela que substitui o app quando o boot falhou (keychain ou erro de E/S). */
+/** Screen that replaces the app when boot failed (keychain or I/O error). */
 export function KeychainError({ issue, onBoot }: { issue: BootStateView["issue"]; onBoot: (b: BootStateView) => void }) {
   const { t } = useTranslation();
   const retry = useAction(() => commands.retryKeychain());
@@ -41,7 +41,7 @@ export function KeychainError({ issue, onBoot }: { issue: BootStateView["issue"]
   );
 }
 
-/** Faixa dispensável com avisos do boot (config restaurada). */
+/** Dismissible banner with boot notices (config reset). */
 export function ConfigNotice({ message, onDismiss }: { message: string; onDismiss: () => void }) {
   const { t } = useTranslation();
   return (

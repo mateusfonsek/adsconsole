@@ -8,7 +8,7 @@ function flatten(v: unknown, prefix: string, out: Map<string, unknown>) {
   }
 }
 
-/** Campos que mudaram entre `before` e `after`, achatados como `a.b.c`, em ordem alfabética. */
+/** Fields that changed between `before` and `after`, flattened as `a.b.c`, in alphabetical order. */
 export function diffRows(before: unknown, after: unknown): DiffRow[] {
   const b = new Map<string, unknown>();
   const a = new Map<string, unknown>();

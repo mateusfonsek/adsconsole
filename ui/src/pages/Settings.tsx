@@ -26,7 +26,7 @@ function Row({ label, hint, children }: { label: ReactNode; hint?: ReactNode; ch
 export function Settings() {
   const { t, i18n } = useTranslation();
   const app = useCmd(["get_app_settings"], () => commands.getAppSettings());
-  // `null` enquanto o usuário não editou: o campo mostra a porta salva.
+  // `null` until the user edits: the field shows the saved port.
   const [portDraft, setPortDraft] = useState<string | null>(null);
   const [updateMsg, setUpdateMsg] = useState<string | null>(null);
 

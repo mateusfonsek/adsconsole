@@ -1,16 +1,18 @@
 import type { Page } from "@playwright/test";
 
 export type Scenario = {
-  /** Começa sem conexões e sem cliente visto (primeiros passos abertos). */
+  /** Starts with no connections and no client seen (getting-started steps open). */
   fresh?: boolean;
-  /** Quantas aprovações pendentes existem no começo. */
+  /** How many pending approvals exist at the start. */
   pending?: number;
+  /** App language at the start (default `en`). */
+  language?: "pt" | "en";
 };
 
 /**
- * Instala um `__TAURI_INTERNALS__` falso antes da página carregar. O estado vive na
- * página: aprovar tira da fila e põe no histórico, desfazer marca como desfeita.
- * `window.__emit(kind, extra)` dispara um evento do app para a UI.
+ * Installs a fake `__TAURI_INTERNALS__` before the page loads. The state lives in
+ * the page: approving removes from the queue and adds to the history, undoing marks as undone.
+ * `window.__emit(kind, extra)` fires an app event to the UI.
  */
 export async function mockTauri(page: Page, scenario: Scenario = {}) {
   await page.addInitScript((sc: Scenario) => {
@@ -19,7 +21,7 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
       id,
       platform: "meta_ads",
       account_id: "act_100200300400",
-      connection_name: "Portfólio",
+      connection_name: "Portfolio",
       tool: "update_adset",
       summary,
       status,
@@ -33,23 +35,23 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
     });
     const state = {
       settings: {
-        language: "pt",
+        language: (sc.language ?? "en") as string,
         theme: "light",
         autostart: false,
         port: 7458,
         secret_backend: "keychain",
-        data_dir: "/dados",
+        data_dir: "/data",
         version: "0.1.0",
-        repo_url: "https://github.com/exemplo/adsconsole",
+        repo_url: "https://github.com/example/adsconsole",
         demo: false,
       },
       connections: sc.fresh
         ? []
         : [
-            { id: "g1", platform: "google_ads", name: "Agência", is_default: true, status: { kind: "ok" }, expires_at: null, accounts: 3, detail: "explorer" },
+            { id: "g1", platform: "google_ads", name: "Agency", is_default: true, status: { kind: "ok" }, expires_at: null, accounts: 3, detail: "explorer" },
           ],
       clientSeen: !sc.fresh,
-      pending: Array.from({ length: sc.pending ?? 0 }, (_, i) => change(`chg_${i + 1}`, `Aumentar orçamento ${i + 1}`)),
+      pending: Array.from({ length: sc.pending ?? 0 }, (_, i) => change(`chg_${i + 1}`, `Increase budget ${i + 1}`)),
       history: [] as Change[],
       listeners: [] as number[],
       callbacks: new Map<number, (v: unknown) => void>(),
@@ -73,7 +75,7 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
       set_theme: (a) => ((state.settings.theme = a.theme as string), null),
       onboarding_state: () => ({ has_connection: state.connections.length > 0, client_seen: state.clientSeen }),
       list_connections: () => state.connections,
-      google_console_links: () => fail("INVALID_INPUT", "Este JSON é de um client do tipo Aplicativo da Web. Crie um client do tipo App para computador.", "client_json"),
+      google_console_links: () => fail("INVALID_INPUT", "This JSON is for a Web application client. Create a Desktop app client instead.", "client_json"),
       "plugin:dialog|open": () => "/tmp/client.json",
       server_status: () => ({
         state: { kind: "running", port: 7458 },
@@ -88,7 +90,7 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
       copy_client_snippet: () => null,
       list_pending: () => state.pending.map(pendingView),
       approve: (a) => {
-        const c = state.pending.find((p) => p.id === a.id) ?? fail("CHANGE_NOT_FOUND", "não encontrada");
+        const c = state.pending.find((p) => p.id === a.id) ?? fail("CHANGE_NOT_FOUND", "Change not found.");
         state.pending = state.pending.filter((p) => p.id !== a.id);
         const done = { ...(c as Change), status: "applied" };
         state.history.unshift(done);
@@ -114,7 +116,7 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
       },
       "plugin:event|unlisten": () => null,
     };
-    // A ponte mínima que o @tauri-apps/api espera.
+    // The minimal bridge that @tauri-apps/api expects.
     (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {
       metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
       transformCallback: (cb: (v: unknown) => void) => {
@@ -125,7 +127,7 @@ export async function mockTauri(page: Page, scenario: Scenario = {}) {
       unregisterCallback: (id: number) => state.callbacks.delete(id),
       invoke: async (cmd: string, args: Record<string, unknown> = {}) => {
         const h = handlers[cmd];
-        if (!h) throw new Error(`sem mock: ${cmd}`);
+        if (!h) throw new Error(`no mock: ${cmd}`);
         return h(args);
       },
     };

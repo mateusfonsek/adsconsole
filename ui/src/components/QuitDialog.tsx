@@ -5,7 +5,7 @@ import { useAction } from "../lib/ipc";
 import { Button } from "./ui/Button";
 import { ConfirmDialog } from "./ui/Sheet";
 
-/** Pedido de saída com aprovações pendentes (vem da barra de menu). */
+/** Quit request with pending approvals (comes from the menu bar). */
 export function QuitDialog({ pending, onClose }: { pending: number; onClose: () => void }) {
   const { t } = useTranslation();
   const quit = useAction(() => commands.quitApp(true));

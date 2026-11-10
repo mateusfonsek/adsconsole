@@ -12,7 +12,7 @@ export function PageHeader({ title, subtitle, actions }: { title: string; subtit
   );
 }
 
-/** Rótulo de seção em mono maiúsculo. */
+/** Section label in uppercase mono. */
 export function SectionLabel({ children }: { children: ReactNode }) {
   return <h2 className="label-mono mb-2 mt-6 first:mt-0">{children}</h2>;
 }

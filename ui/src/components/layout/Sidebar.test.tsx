@@ -2,17 +2,17 @@ import { screen } from "@testing-library/react";
 import { Sidebar } from "./Sidebar";
 import { renderWithApp, pendingFixture } from "../../test/render";
 
-test("sidebar mostra os itens e o contador de pendências", async () => {
+test("sidebar shows the items and the pending counter", async () => {
   renderWithApp(<Sidebar route="home" />, {
     list_pending: [pendingFixture("c1"), pendingFixture("c2")],
   });
-  expect(screen.getByText("Início")).toBeInTheDocument();
-  expect(screen.getByText("Conexões")).toBeInTheDocument();
-  expect(screen.getByText("Configurações")).toBeInTheDocument();
-  expect(await screen.findByLabelText("2 aprovações pendentes")).toHaveTextContent("2");
+  expect(screen.getByText("Home")).toBeInTheDocument();
+  expect(screen.getByText("Connections")).toBeInTheDocument();
+  expect(screen.getByText("Settings")).toBeInTheDocument();
+  expect(await screen.findByLabelText("2 pending approvals")).toHaveTextContent("2");
 });
 
-test("item ativo fica marcado", () => {
+test("active item is marked", () => {
   renderWithApp(<Sidebar route="mcps" />, { list_pending: [] });
   expect(screen.getByRole("link", { name: /MCPs/ })).toHaveAttribute("aria-current", "page");
 });

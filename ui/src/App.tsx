@@ -55,7 +55,7 @@ function Root({ notices }: { notices: string[] }) {
   );
 }
 
-/** Consulta o boot antes de tudo: com o keychain fora, o app mostra só a tela de erro. */
+/** Queries the boot state first: with the keychain down, the app shows only the error screen. */
 function Gate() {
   const qc = useQueryClient();
   const boot = useCmd(["boot_state"], () => commands.bootState());

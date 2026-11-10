@@ -3,41 +3,41 @@ import userEvent from "@testing-library/user-event";
 import { History } from "./History";
 import { renderWithApp, changeFixture } from "../test/render";
 
-test("desfazer com conflito mostra a mensagem", async () => {
+test("undo with a conflict shows the message", async () => {
   renderWithApp(<History />, {
     list_changes: [changeFixture("c1", { status: "applied" })],
     undo: () => {
-      throw { code: "UNDO_CONFLICT", message: "O objeto mudou depois desta alteração.", field: null };
+      throw { code: "UNDO_CONFLICT", message: "The object changed after this change.", field: null };
     },
   });
-  await userEvent.click(await screen.findByRole("button", { name: "Desfazer" }));
-  expect(await screen.findByText("O objeto mudou depois desta alteração.")).toBeInTheDocument();
+  await userEvent.click(await screen.findByRole("button", { name: "Undo" }));
+  expect(await screen.findByText("The object changed after this change.")).toBeInTheDocument();
 });
 
-test("irreversível e já desfeita não mostram o botão", async () => {
+test("irreversible and already undone changes do not show the button", async () => {
   renderWithApp(<History />, {
     list_changes: [
-      changeFixture("c1", { status: "applied", reversible: false, summary: "Upload de vídeo" }),
-      changeFixture("c2", { status: "applied", undone_by: "c9", summary: "Pausar campanha" }),
+      changeFixture("c1", { status: "applied", reversible: false, summary: "Video upload" }),
+      changeFixture("c2", { status: "applied", undone_by: "c9", summary: "Pause campaign" }),
     ],
   });
-  expect(await screen.findByText("Upload de vídeo")).toBeInTheDocument();
-  expect(screen.queryByRole("button", { name: "Desfazer" })).not.toBeInTheDocument();
-  expect(screen.getByText("Irreversível")).toBeInTheDocument();
-  expect(screen.getByText("Desfeita")).toBeInTheDocument();
+  expect(await screen.findByText("Video upload")).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: "Undo" })).not.toBeInTheDocument();
+  expect(screen.getByText("Irreversible")).toBeInTheDocument();
+  expect(screen.getByText("Undone")).toBeInTheDocument();
 });
 
-test("o detalhe lista os objetos que sobraram", async () => {
+test("the detail lists the leftover objects", async () => {
   renderWithApp(<History />, {
     list_changes: [changeFixture("c1", { status: "failed", orphaned_ids: ["c1_obj", "s1_obj"] })],
     get_change: changeFixture("c1", { status: "failed", orphaned_ids: ["c1_obj", "s1_obj"] }),
   });
-  await userEvent.click(await screen.findByText("Aumentar orçamento do conjunto"));
+  await userEvent.click(await screen.findByText("Increase ad set budget"));
   expect(await screen.findByText("c1_obj")).toBeInTheDocument();
   expect(screen.getByText("s1_obj")).toBeInTheDocument();
 });
 
-test("filtro de status vai para o comando", async () => {
+test("status filter goes to the command", async () => {
   const filters: unknown[] = [];
   renderWithApp(<History />, {
     list_changes: (a: Record<string, unknown>) => {
@@ -45,6 +45,6 @@ test("filtro de status vai para o comando", async () => {
       return [];
     },
   });
-  await userEvent.click(await screen.findByRole("radio", { name: "Falharam" }));
+  await userEvent.click(await screen.findByRole("radio", { name: "Failed" }));
   await waitFor(() => expect(filters).toContain("failed"));
 });

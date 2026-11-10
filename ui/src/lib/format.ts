@@ -30,7 +30,7 @@ export function formatDateTime(date: Date, lang: Lang | string): string {
   return new Intl.DateTimeFormat(locale(lang), { dateStyle: "short", timeStyle: "short" }).format(date);
 }
 
-/** Ids longos ficam com o começo e o fim: `act_1234…123456`. */
+/** Long ids keep the start and the end: `act_1234…123456`. */
 export function formatId(id: string): string {
   return id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-6)}` : id;
 }

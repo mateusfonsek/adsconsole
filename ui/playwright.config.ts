@@ -1,12 +1,12 @@
 import { defineConfig, devices } from "@playwright/test";
 
-// A UI roda no navegador com o IPC do Tauri simulado (e2e/mock.ts).
+// The UI runs in the browser with the Tauri IPC mocked (e2e/mock.ts).
 export default defineConfig({
   testDir: "e2e",
   fullyParallel: true,
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? "github" : "list",
-  use: { baseURL: "http://localhost:4173", locale: "pt-BR" },
+  use: { baseURL: "http://localhost:4173", locale: "en-US" },
   webServer: {
     command: "npm run preview",
     url: "http://localhost:4173",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-/** Relógio que atualiza a cada `ms` (contadores de expiração). */
+/** Clock that updates every `ms` (expiration counters). */
 export function useNow(ms = 1000): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {

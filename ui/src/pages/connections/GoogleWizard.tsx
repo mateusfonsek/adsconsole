@@ -46,7 +46,7 @@ export function GoogleWizard({ templatesUrl, onDone }: { templatesUrl: string; o
     }
   }
 
-  // Arrastar o arquivo para a janela entrega o caminho (o conteúdo é lido pelo Rust).
+  // Dragging the file onto the window delivers its path (Rust reads the contents).
   useEffect(() => {
     let stop: (() => void) | undefined;
     try {
@@ -60,7 +60,7 @@ export function GoogleWizard({ templatesUrl, onDone }: { templatesUrl: string; o
         .then((un) => (stop = un))
         .catch(() => {});
     } catch {
-      // Fora do Tauri (testes): sem arrastar.
+      // Outside Tauri (tests): no dragging.
     }
     return () => stop?.();
   }, []);

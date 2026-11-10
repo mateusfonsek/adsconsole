@@ -14,7 +14,7 @@ const server = {
 };
 
 const app = {
-  language: "pt",
+  language: "en",
   theme: "system",
   autostart: false,
   port: 7458,
@@ -25,39 +25,40 @@ const app = {
   demo: false,
 };
 
-test("trocar o idioma chama set_language e traduz a tela", async () => {
+test("changing the language calls set_language and translates the screen", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Settings />, {
-    get_app_settings: app,
+    get_app_settings: { ...app, language: "pt" },
     server_status: server,
     set_language: (a: Record<string, unknown>) => {
       calls.push(a.language);
       return null;
     },
-  });
+  }, "pt");
+  expect(await screen.findByRole("heading", { name: "Configurações" })).toBeInTheDocument();
   await userEvent.click(await screen.findByRole("radio", { name: "English" }));
   await waitFor(() => expect(calls).toEqual(["en"]));
   expect(await screen.findByRole("heading", { name: "Settings" })).toBeInTheDocument();
 });
 
-test("erro de porta aparece no campo", async () => {
+test("a port error shows in the field", async () => {
   renderWithApp(<Settings />, {
     get_app_settings: app,
     server_status: server,
     set_port: () => {
-      throw { code: "PORT_IN_USE", message: "A porta 7459 já está em uso.", field: null };
+      throw { code: "PORT_IN_USE", message: "Port 7459 is already in use.", field: null };
     },
   });
-  const input = await screen.findByLabelText("Porta");
+  const input = await screen.findByLabelText("Port");
   await userEvent.clear(input);
   await userEvent.type(input, "7459");
-  await userEvent.click(screen.getByRole("button", { name: "Salvar porta" }));
-  expect(await screen.findByText("A porta 7459 já está em uso.")).toBeInTheDocument();
+  await userEvent.click(screen.getByRole("button", { name: "Save port" }));
+  expect(await screen.findByText("Port 7459 is already in use.")).toBeInTheDocument();
   expect(input).toHaveAttribute("aria-invalid", "true");
 });
 
-test("mostra o backend de segredos e a pasta de dados", async () => {
+test("shows the secrets backend and the data folder", async () => {
   renderWithApp(<Settings />, { get_app_settings: app, server_status: server });
-  expect(await screen.findByText(/Keychain do sistema/)).toBeInTheDocument();
+  expect(await screen.findByText(/System keychain/)).toBeInTheDocument();
   expect(screen.getByText(app.data_dir)).toBeInTheDocument();
 });

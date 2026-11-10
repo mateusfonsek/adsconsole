@@ -94,7 +94,7 @@ function Detail({ p }: { p: PendingView }) {
   );
 }
 
-/** Pedido que saiu da fila com o detalhe aberto: continua na tela, só para leitura. */
+/** Request that left the queue while its detail was open: stays on screen, read-only. */
 function ClosedDetail({ id }: { id: string }) {
   const { t } = useTranslation();
   const c = useCmd(["get_change", id], () => commands.getChange(id)).data;
@@ -124,12 +124,12 @@ export function Approvals() {
   const route = useRoute();
   const pending = useCmd(["list_pending"], () => commands.listPending());
   const list = pending.data ?? [];
-  // O pedido aberto fica na URL: se ele sair da fila, a tela não troca sozinha por outro.
+  // The open request lives in the URL: if it leaves the queue, the screen does not switch to another one by itself.
   const selectedId = route.param ?? list[0]?.change.id;
   const selected = list.find((p) => p.change.id === selectedId);
   const firstId = list[0]?.change.id;
   useEffect(() => {
-    // Só enquanto a tela é esta: ao sair para outra rota, não puxa o usuário de volta.
+    // Only while this screen is active: when navigating to another route, it does not pull the user back.
     if (route.name === "approvals" && !route.param && firstId) navigate("approvals", firstId);
   }, [route.name, route.param, firstId]);
 

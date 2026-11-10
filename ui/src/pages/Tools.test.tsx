@@ -12,17 +12,17 @@ const view = (platform: string) => ({
     {
       group: "read",
       enabled: true,
-      tools: [{ name: "list_accounts", description: "Lista as contas", enabled: true, destructive: false, reversible: false }],
+      tools: [{ name: "list_accounts", description: "Lists the accounts", enabled: true, destructive: false, reversible: false }],
     },
     {
       group: "escape",
       enabled: false,
-      tools: [{ name: "graph_post", description: "Chamada livre", enabled: false, destructive: true, reversible: false }],
+      tools: [{ name: "graph_post", description: "Free-form call", enabled: false, destructive: true, reversible: false }],
     },
   ],
 });
 
-test("trocar o modo de escrita chama o comando da plataforma escolhida", async () => {
+test("changing the write mode calls the command of the chosen platform", async () => {
   const calls: unknown[] = [];
   renderWithApp(<Tools />, {
     get_tool_settings: (a: Record<string, unknown>) => view(a.platform as string),
@@ -32,28 +32,28 @@ test("trocar o modo de escrita chama o comando da plataforma escolhida", async (
     },
   });
   await userEvent.click(await screen.findByRole("radio", { name: "Meta Ads" }));
-  await userEvent.click(await screen.findByRole("radio", { name: "Só leitura" }));
+  await userEvent.click(await screen.findByRole("radio", { name: "Read only" }));
   await waitFor(() => expect(calls).toEqual([["meta_ads", "read_only"]]));
 });
 
-test("o grupo Escape aparece desligado e com a ferramenta marcada como destrutiva", async () => {
+test("the Escape group appears off, with the tool marked as destructive", async () => {
   renderWithApp(<Tools />, { get_tool_settings: (a: Record<string, unknown>) => view(a.platform as string) });
-  expect(await screen.findByRole("switch", { name: "Chamadas livres à API" })).toHaveAttribute("aria-checked", "false");
-  await userEvent.click(screen.getByRole("button", { name: /Chamadas livres à API/ }));
+  expect(await screen.findByRole("switch", { name: "Raw API calls" })).toHaveAttribute("aria-checked", "false");
+  await userEvent.click(screen.getByRole("button", { name: /Raw API calls/ }));
   expect(await screen.findByText("graph_post")).toBeInTheDocument();
-  expect(screen.getByText("Destrutiva")).toBeInTheDocument();
+  expect(screen.getByText("Destructive")).toBeInTheDocument();
 });
 
-test("espera da aprovação fora do intervalo mostra erro", async () => {
+test("an approval wait outside the range shows an error", async () => {
   renderWithApp(<Tools />, {
     get_tool_settings: (a: Record<string, unknown>) => view(a.platform as string),
     set_approval_wait: () => {
-      throw { code: "INVALID_INPUT", message: "Use de 30 a 900 segundos.", field: "approval_wait_secs" };
+      throw { code: "INVALID_INPUT", message: "Use 30 to 900 seconds.", field: "approval_wait_secs" };
     },
   });
-  const input = await screen.findByLabelText("Quanto tempo a IA espera a aprovação (segundos)");
+  const input = await screen.findByLabelText("How long the AI waits for approval (seconds)");
   await userEvent.clear(input);
   await userEvent.type(input, "5");
   await userEvent.tab();
-  expect(await screen.findByText("Use de 30 a 900 segundos.")).toBeInTheDocument();
+  expect(await screen.findByText("Use 30 to 900 seconds.")).toBeInTheDocument();
 });

@@ -6,8 +6,8 @@ import { createI18n, type Lang } from "../i18n";
 import { installIpcMock, type IpcHandlers } from "./ipc-mock";
 import type { ChangeView, PendingView } from "../bindings";
 
-/** Renderiza com React Query (sem novas tentativas), i18n e o IPC simulado. */
-export function renderWithApp(ui: ReactElement, handlers: IpcHandlers = {}, lang: Lang = "pt") {
+/** Renders with React Query (no retries), i18n and the mocked IPC. */
+export function renderWithApp(ui: ReactElement, handlers: IpcHandlers = {}, lang: Lang = "en") {
   installIpcMock(handlers);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const i18n = createI18n(lang);
@@ -24,9 +24,9 @@ export function changeFixture(id: string, over: Partial<ChangeView> = {}): Chang
     id,
     platform: "meta_ads",
     account_id: "act_1234567890123456",
-    connection_name: "Portfólio",
+    connection_name: "Portfolio",
     tool: "update_adset",
-    summary: "Aumentar orçamento do conjunto",
+    summary: "Increase ad set budget",
     status: "pending",
     reversible: true,
     created_at: "2026-10-31T12:00:00Z",

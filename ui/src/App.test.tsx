@@ -10,7 +10,7 @@ const home = {
 };
 
 const settings = {
-  language: "pt",
+  language: "en",
   theme: "dark",
   autostart: false,
   port: 7458,
@@ -21,16 +21,16 @@ const settings = {
   demo: false,
 };
 
-test("mostra o nome, a versão e aplica o tema salvo", async () => {
+test("shows the name, the version and applies the saved theme", async () => {
   installIpcMock({ app_version: "0.1.0", get_app_settings: settings, list_pending: [], ...home });
-  render(<App lang="pt" />);
+  render(<App lang="en" />);
   expect(await screen.findByText("AdsConsole")).toBeInTheDocument();
   expect(await screen.findByText("v0.1.0")).toBeInTheDocument();
-  await screen.findByRole("heading", { name: "Início" });
+  await screen.findByRole("heading", { name: "Home" });
   expect(document.documentElement.classList.contains("dark")).toBe(true);
 });
 
-test("troca para o inglês quando as configurações pedem", async () => {
+test("switches to English when the settings ask for it", async () => {
   installIpcMock({ app_version: "0.1.0", get_app_settings: { ...settings, language: "en" }, list_pending: [], ...home });
   render(<App lang="pt" />);
   expect(await screen.findByRole("heading", { name: "Home" })).toBeInTheDocument();

@@ -21,7 +21,7 @@ export function StatusSquare({ tone }: { tone: Tone }) {
   return <span aria-hidden className={`inline-block h-[7px] w-[7px] shrink-0 ${square[tone]}`} />;
 }
 
-/** Rótulo de status: quadrado + texto em mono maiúsculo. */
+/** Status label: square + text in uppercase mono. */
 export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNode }) {
   return (
     <span className={`label-mono inline-flex items-center gap-1.5 ${text[tone]}`}>
@@ -31,7 +31,7 @@ export function StatusLabel({ tone, children }: { tone: Tone; children: ReactNod
   );
 }
 
-/** Contador mono em pastilha (ex.: aprovações). */
+/** Mono counter in a pill (e.g. approvals). */
 export function CountBadge({ count, label }: { count: number; label: string }) {
   return (
     <span

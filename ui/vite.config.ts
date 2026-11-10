@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
-// O Tauri serve a UI do `dist` em produção e de http://localhost:5173 no dev.
+// Tauri serves the UI from `dist` in production and from http://localhost:5173 in dev.
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   clearScreen: false,

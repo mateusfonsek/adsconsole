@@ -5,7 +5,7 @@ import en from "./en.json";
 
 export type Lang = "pt" | "en";
 
-/** Idioma do sistema: qualquer português vira `pt`; o resto, `en`. */
+/** System language: any Portuguese becomes `pt`; everything else, `en`. */
 export function systemLang(): Lang {
   return navigator.language.toLowerCase().startsWith("pt") ? "pt" : "en";
 }

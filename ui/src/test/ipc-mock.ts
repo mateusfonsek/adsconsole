@@ -4,14 +4,14 @@ type Handler = (args: Record<string, unknown>) => unknown;
 export type IpcHandlers = Record<string, Handler | unknown>;
 
 /**
- * Simula os comandos do app. Cada chave é o nome do comando; o valor é a resposta
- * ou uma função que recebe os argumentos. Uma função que lança vira erro do comando.
- * Comando sem handler falha com "sem mock: <nome>", para o teste mostrar o que falta.
+ * Mocks the app commands. Each key is a command name; the value is the response
+ * or a function that receives the arguments. A function that throws becomes a command error.
+ * A command without a handler fails with "no mock: <name>", so the test shows what is missing.
  */
 export function installIpcMock(handlers: IpcHandlers): void {
   mockIPC(
     (cmd, payload) => {
-      if (!(cmd in handlers)) throw new Error(`sem mock: ${cmd}`);
+      if (!(cmd in handlers)) throw new Error(`no mock: ${cmd}`);
       const h = handlers[cmd];
       return typeof h === "function" ? (h as Handler)((payload ?? {}) as Record<string, unknown>) : h;
     },

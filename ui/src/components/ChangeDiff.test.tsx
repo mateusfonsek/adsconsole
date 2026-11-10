@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { diffRows, ChangeDiff } from "./ChangeDiff";
 
-test("achata objetos aninhados e omite campos iguais", () => {
+test("flattens nested objects and omits equal fields", () => {
   const rows = diffRows(
     { budget: { daily: 50 }, name: "a", status: "PAUSED" },
     { budget: { daily: 80 }, name: "a", status: "ACTIVE", bid: 2 },
@@ -13,13 +13,13 @@ test("achata objetos aninhados e omite campos iguais", () => {
   ]);
 });
 
-test("sem antes (criação) mostra só o depois", () => {
+test("with no before (creation) shows only the after", () => {
   expect(diffRows(null, { campaign_id: "c1" })).toEqual([{ path: "campaign_id", before: undefined, after: "c1" }]);
 });
 
-test("renderiza a tabela com o valor antigo riscado", () => {
-  render(<ChangeDiff before={{ daily_budget: 50 }} after={{ daily_budget: 80 }} labels={{ field: "Campo", before: "Antes", after: "Depois" }} />);
-  expect(screen.getByRole("columnheader", { name: "Campo" })).toBeInTheDocument();
+test("renders the table with the old value struck through", () => {
+  render(<ChangeDiff before={{ daily_budget: 50 }} after={{ daily_budget: 80 }} labels={{ field: "Field", before: "Before", after: "After" }} />);
+  expect(screen.getByRole("columnheader", { name: "Field" })).toBeInTheDocument();
   expect(screen.getByText("50")).toHaveClass("line-through");
   expect(screen.getByText("80")).toBeInTheDocument();
 });
