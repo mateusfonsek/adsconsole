@@ -1,5 +1,5 @@
-//! Adapter da Meta Ads: conexões BYO, cache de clientes, contexto por conta,
-//! pré-checagem da conta e tradução de erros. As ferramentas ficam em [`tools`].
+//! Meta Ads adapter: BYO connections, client cache, per-account context, account
+//! precheck and error translation. The tools live in [`tools`].
 
 pub mod connections;
 pub mod ctx;
@@ -37,14 +37,14 @@ use errors::translate_in;
 use plan::MetaPlan;
 use tools::{MTool, WriteTool, accounts};
 
-/// Teto de contas lidas por conexão.
+/// Maximum number of accounts read per connection.
 const MAX_ACCOUNTS: usize = 10_000;
-/// Validade do `account_status` lido no `precheck` (que roda duas vezes por escrita).
+/// How long the `account_status` read in `precheck` stays valid (precheck runs twice per write).
 const STATUS_TTL: Duration = Duration::from_secs(10);
 const ACCOUNT_FIELDS: &str =
     "id,account_id,name,currency,timezone_name,account_status,business{id,name}";
 
-/// Nome do `account_status` da Meta.
+/// Name of Meta's `account_status`.
 pub fn status_label(code: i64) -> String {
     match code {
         1 => "ACTIVE".into(),
@@ -61,18 +61,18 @@ pub fn status_label(code: i64) -> String {
     }
 }
 
-/// O status em palavras, para as mensagens.
+/// The status in words, for messages.
 pub fn status_words(label: &str) -> &'static str {
     match label {
-        "ACTIVE" => "ativa",
-        "DISABLED" => "desativada",
-        "UNSETTLED" => "com pagamento pendente",
-        "PENDING_RISK_REVIEW" => "em análise de risco",
-        "PENDING_SETTLEMENT" => "com acerto de pagamento pendente",
-        "IN_GRACE_PERIOD" => "no período de carência",
-        "PENDING_CLOSURE" => "em encerramento",
-        "CLOSED" | "ANY_CLOSED" => "fechada",
-        _ => "inativa",
+        "ACTIVE" => "active",
+        "DISABLED" => "disabled",
+        "UNSETTLED" => "unsettled (payment pending)",
+        "PENDING_RISK_REVIEW" => "pending risk review",
+        "PENDING_SETTLEMENT" => "pending settlement",
+        "IN_GRACE_PERIOD" => "in the grace period",
+        "PENDING_CLOSURE" => "pending closure",
+        "CLOSED" | "ANY_CLOSED" => "closed",
+        _ => "inactive",
     }
 }
 
@@ -83,7 +83,7 @@ fn account_from(v: &Value) -> Option<AccountInfo> {
             .as_str()
             .filter(|n| !n.is_empty())
             .map(str::to_string)
-            .unwrap_or_else(|| format!("Conta {id}")),
+            .unwrap_or_else(|| format!("Account {id}")),
         currency: v["currency"].as_str().unwrap_or_default().to_string(),
         timezone: v["timezone_name"].as_str().map(str::to_string),
         status: v["account_status"].as_i64().map(status_label),
@@ -92,7 +92,7 @@ fn account_from(v: &Value) -> Option<AccountInfo> {
     })
 }
 
-/// Clientes por conexão; a geração sobe a cada `forget_client` (ver o adapter do Google).
+/// Clients per connection; the generation goes up on every `forget_client` (see the Google adapter).
 #[derive(Default)]
 struct ClientCache {
     clients: HashMap<String, MetaClient>,
@@ -108,7 +108,7 @@ pub struct MetaAdapter {
     limiter: Arc<AccountLimiter>,
     tools: Vec<(ToolSpec, MTool)>,
     poll: Mutex<UploadPoll>,
-    /// `account_status` lido no `precheck`, por (conexão, conta).
+    /// `account_status` read in `precheck`, per (connection, account).
     statuses: Mutex<HashMap<(String, String), (Instant, i64)>>,
 }
 
@@ -121,7 +121,7 @@ impl MetaAdapter {
         Self::with_retry(db, secrets, endpoints, RetryPolicy::default())
     }
 
-    /// Como [`MetaAdapter::new`], com outro backoff (os testes usam milissegundos).
+    /// Like [`MetaAdapter::new`], with a different backoff (tests use milliseconds).
     pub fn with_retry(
         db: Arc<Db>,
         secrets: Arc<dyn SecretStore>,
@@ -151,7 +151,7 @@ impl MetaAdapter {
         })
     }
 
-    /// Só para testes: espera de uploads e cópias assíncronas (no lugar de 10 s e 10 min).
+    /// Tests only: polling for uploads and async copies (instead of 10 s and 10 min).
     #[doc(hidden)]
     pub fn set_poll(&self, every: Duration, max: Duration) {
         *self.poll.lock().unwrap_or_else(|e| e.into_inner()) = UploadPoll { every, max };
@@ -173,7 +173,7 @@ impl MetaAdapter {
         self.clients.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    /// Descarta o cliente em cache (token trocado ou conexão removida).
+    /// Drops the cached client (token replaced or connection removed).
     pub(crate) fn forget_client(&self, connection_id: &str) {
         let mut cache = self.lock_clients();
         cache.clients.remove(connection_id);
@@ -183,7 +183,7 @@ impl MetaAdapter {
             .or_default() += 1;
     }
 
-    /// Conexão da Meta com o `extra` já lido; senão `UNKNOWN_CONNECTION`.
+    /// Meta connection with its `extra` already parsed; otherwise `UNKNOWN_CONNECTION`.
     pub(crate) fn connection(
         &self,
         connection_id: &str,
@@ -208,10 +208,10 @@ impl MetaAdapter {
                 ToolError::new(
                     codes::CONNECTION_NEEDS_RECONNECT,
                     format!(
-                        "As credenciais da conexão {connection_id} não estão no armazenamento de segredos."
+                        "The credentials of connection {connection_id} are not in the secret store."
                     ),
                 )
-                .with_suggestion("Remova e adicione a conexão de novo no AdsConsole → Conexões.")
+                .with_suggestion("Remove and add the connection again in AdsConsole → Connections.")
             })
     }
 
@@ -261,7 +261,7 @@ impl MetaAdapter {
             })
     }
 
-    /// Contexto da conta da chamada, a partir do cache de contas e da conexão.
+    /// Context of the call's account, from the account cache and the connection.
     pub fn ctx(&self, call: &Call) -> Result<Ctx, ToolError> {
         let (meta, _) = self.connection(&call.connection_id)?;
         if meta.status == ConnectionStatus::NeedsReconnect {
@@ -283,7 +283,7 @@ impl MetaAdapter {
         })
     }
 
-    /// Atualiza o cache de contas de `connection` (ou de todas as conexões `Ok`).
+    /// Refreshes the account cache of `connection` (or of every `Ok` connection).
     pub(crate) async fn refresh_accounts(&self, connection: Option<&str>) -> Result<(), ToolError> {
         let targets = match connection {
             Some(c) => vec![c.to_string()],
@@ -308,7 +308,7 @@ impl MetaAdapter {
         }
     }
 
-    /// Contexto e plano de uma escrita (refeito em cada etapa; ver [`WriteTool`]).
+    /// Context and plan of a write (rebuilt at every step; see [`WriteTool`]).
     async fn plan(&self, call: &Call) -> Result<(Ctx, MetaPlan), ToolError> {
         let tool = self.write_tool(&call.tool)?;
         let ctx = self.ctx(call)?;
@@ -316,7 +316,7 @@ impl MetaAdapter {
         Ok((ctx, plan))
     }
 
-    /// `account_status` da conta, do cache de 10 s ou lido da Meta.
+    /// The account's `account_status`, from the 10 s cache or read from Meta.
     async fn account_status(&self, ctx: &Ctx) -> Result<i64, ToolError> {
         let key = (ctx.connection_id.clone(), ctx.account_id.clone());
         if let Some((at, status)) = self
@@ -335,7 +335,7 @@ impl MetaAdapter {
             .map_err(|e| errors::translate(e, Some(ctx), "precheck"))?;
         let status = v["account_status"]
             .as_i64()
-            .ok_or_else(|| internal("a Meta não devolveu account_status"))?;
+            .ok_or_else(|| internal("Meta did not return account_status"))?;
         self.statuses
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -343,7 +343,7 @@ impl MetaAdapter {
         Ok(status)
     }
 
-    /// Grava o status lido no cache de contas, se mudou.
+    /// Stores the status read in the account cache, if it changed.
     fn update_cached_status(&self, ctx: &Ctx, label: &str) -> Result<(), ToolError> {
         let mut accounts: Vec<AccountInfo> = self
             .db
@@ -372,10 +372,7 @@ impl MetaAdapter {
 }
 
 fn not_implemented(tool: &str) -> ToolError {
-    ToolError::new(
-        codes::UNKNOWN_TOOL,
-        format!("Ferramenta desconhecida: {tool}"),
-    )
+    ToolError::new(codes::UNKNOWN_TOOL, format!("Unknown tool: {tool}"))
 }
 
 #[async_trait::async_trait]
@@ -421,7 +418,7 @@ impl PlatformAdapter for MetaAdapter {
         if let Some(warning) = &ctx.token_warning
             && let Some(obj) = out.as_object_mut()
         {
-            obj.insert("aviso_token".into(), Value::String(warning.clone()));
+            obj.insert("token_warning".into(), Value::String(warning.clone()));
         }
         Ok(out)
     }
@@ -437,7 +434,7 @@ impl PlatformAdapter for MetaAdapter {
         Err(ToolError::new(
             codes::ACCOUNT_NOT_ACTIVE,
             format!(
-                "A conta {} está {}; a Meta não deixa editar nem apagar objetos nela.",
+                "Account {} is {}; Meta does not allow editing or deleting objects in it.",
                 ctx.account_id,
                 status_words(&label)
             ),
@@ -497,7 +494,7 @@ impl PlatformAdapter for MetaAdapter {
                 .map(|c| c.connection_id)
                 .collect(),
             Err(e) => {
-                tracing::warn!(error = %e, "falha ao listar as conexões da Meta");
+                tracing::warn!(error = %e, "failed to list the meta connections");
                 Vec::new()
             }
         }

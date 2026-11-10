@@ -1,5 +1,5 @@
-//! Mídia: `upload_image` (desfeito apagando a imagem pelo hash, se ela não estava na
-//! biblioteca antes) e `upload_video` (irreversível: a Meta não deixa apagar o vídeo pela API).
+//! Media: `upload_image` (undone by deleting the image by hash, if it was not in the
+//! library before) and `upload_video` (irreversible: Meta does not allow deleting the video via the API).
 
 use std::path::PathBuf;
 
@@ -26,24 +26,24 @@ fn invalid(field: &str, message: impl Into<String>) -> ToolError {
     ToolError::new(codes::INVALID_INPUT, message).with_field(field)
 }
 
-/// Arquivo existe e cabe no limite.
+/// The file exists and fits within the limit.
 fn check_file(path: &str, max: u64, label: &str) -> Result<PathBuf, ToolError> {
     let p = PathBuf::from(path);
     let meta = std::fs::metadata(&p)
-        .map_err(|_| invalid("file_path", format!("Arquivo não encontrado: {path}")))?;
+        .map_err(|_| invalid("file_path", format!("File not found: {path}")))?;
     if !meta.is_file() {
-        return Err(invalid("file_path", format!("{path} não é um arquivo.")));
+        return Err(invalid("file_path", format!("{path} is not a file.")));
     }
     if meta.len() > max {
         return Err(invalid(
             "file_path",
-            format!("O arquivo passa do limite de {label}."),
+            format!("The file exceeds the {label} limit."),
         ));
     }
     Ok(p)
 }
 
-/// Nome do arquivo local, para a imagem não aparecer na biblioteca como "bytes".
+/// Local file name, so the image does not show up in the library as "bytes".
 fn file_name(source: &ImageSource) -> Option<String> {
     match source {
         ImageSource::File(p) => p.file_name().map(|n| n.to_string_lossy().into_owned()),
@@ -56,10 +56,10 @@ struct ImageInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Caminho de um arquivo local.
+    /// Path of a local file.
     #[serde(default)]
     file_path: Option<String>,
-    /// URL https da imagem (no lugar de file_path).
+    /// https URL of the image (instead of file_path).
     #[serde(default)]
     url: Option<String>,
     #[serde(default)]
@@ -73,8 +73,8 @@ impl WriteTool for UploadImage {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<ImageInput>(
             "upload_image",
-            "Sobe uma imagem (arquivo ou URL https, até 30 MB) para a biblioteca da conta e \
-             devolve o image_hash para usar nos criativos.",
+            "Uploads an image (file or https URL, up to 30 MB) to the account library and \
+             returns the image_hash to use in creatives.",
             ToolGroup::Media,
             true,
         )
@@ -91,7 +91,7 @@ impl WriteTool for UploadImage {
             _ => {
                 return Err(invalid(
                     "file_path",
-                    "Informe file_path ou url (um dos dois).",
+                    "Provide file_path or url (exactly one).",
                 ));
             }
         };
@@ -100,7 +100,7 @@ impl WriteTool for UploadImage {
             ImageSource::Url(u) => u.clone(),
         };
         Ok(MetaPlan {
-            summary: format!("Subir a imagem {what}"),
+            summary: format!("Upload image {what}"),
             direct: Some(DirectExec::ImageUpload {
                 name: i.name.or_else(|| file_name(&source)),
                 source,
@@ -115,10 +115,10 @@ struct VideoInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Caminho do arquivo de vídeo (até 4 GB).
+    /// Path of the video file (up to 4 GB).
     file_path: String,
     title: String,
-    /// Espera a Meta terminar de processar (padrão true, até 10 min).
+    /// Waits for Meta to finish processing (default true, up to 10 min).
     #[serde(default)]
     wait_ready: Option<bool>,
 }
@@ -130,9 +130,9 @@ impl WriteTool for UploadVideo {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<VideoInput>(
             "upload_video",
-            "Sobe um vídeo para a conta (em partes) e espera a Meta processar; devolve o \
-             video_id para usar nos criativos. Para apagar o vídeo depois, use a biblioteca de \
-             mídia do Gerenciador de Anúncios.",
+            "Uploads a video to the account (in chunks) and waits for Meta to process it; returns \
+             the video_id to use in creatives. To delete the video later, use the Ads Manager \
+             media library.",
             ToolGroup::Media,
             false,
         )
@@ -142,11 +142,11 @@ impl WriteTool for UploadVideo {
         let i: VideoInput = parse_input(input)?;
         let path = check_file(&i.file_path, MAX_VIDEO_BYTES, "4 GB")?;
         if i.title.trim().is_empty() {
-            return Err(invalid("title", "Dê um título ao vídeo."));
+            return Err(invalid("title", "Give the video a title."));
         }
         Ok(MetaPlan {
-            summary: format!("Subir o vídeo {} ('{}')", path.display(), i.title.trim()),
-            warning: Some("Outras escritas nesta conta esperam o envio terminar.".into()),
+            summary: format!("Upload video {} ('{}')", path.display(), i.title.trim()),
+            warning: Some("Other writes on this account wait for the upload to finish.".into()),
             direct: Some(DirectExec::VideoUpload {
                 path,
                 title: i.title.trim().to_string(),

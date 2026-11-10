@@ -34,7 +34,7 @@ fn engine(h: &MetaHarness) -> Engine {
     .unwrap()
 }
 
-/// Objeto "vivo" no wiremock: GET devolve o estado; POST sem validate_only aplica os campos.
+/// A "live" object in wiremock: GET returns the state; POST without validate_only applies the fields.
 async fn live_object(h: &MetaHarness, id: &str, initial: Value) -> Arc<Mutex<Map<String, Value>>> {
     let state = Arc::new(Mutex::new(initial.as_object().unwrap().clone()));
     let read = state.clone();
@@ -95,12 +95,12 @@ async fn posts(h: &MetaHarness) -> Vec<BTreeMap<String, String>> {
 async fn update_campaign_fields() {
     let h = meta_harness().await;
     active_account(&h, "act_111").await;
-    let c = live_object(&h, "c1", json!({"id": "c1", "account_id": "111", "name": "Velha", "status": "PAUSED", "daily_budget": "5000"})).await;
+    let c = live_object(&h, "c1", json!({"id": "c1", "account_id": "111", "name": "Old", "status": "PAUSED", "daily_budget": "5000"})).await;
     let e = engine(&h);
     let out = e
         .call_tool(
             "update_campaign",
-            json!({"account_id": "act_111", "campaign_id": "c1", "name": "Nova", "status": "ACTIVE"}),
+            json!({"account_id": "act_111", "campaign_id": "c1", "name": "New", "status": "ACTIVE"}),
             None,
         )
         .await
@@ -108,17 +108,17 @@ async fn update_campaign_fields() {
     assert_eq!(out["status"], "applied");
     assert_eq!(
         out["result"],
-        json!({"c1": {"name": "Nova", "status": "ACTIVE"}})
+        json!({"c1": {"name": "New", "status": "ACTIVE"}})
     );
     let p = posts(&h).await;
-    assert_eq!(p.len(), 1, "um POST só, com os dois campos");
-    assert_eq!(p[0]["name"], "Nova");
+    assert_eq!(p.len(), 1, "a single POST, with both fields");
+    assert_eq!(p[0]["name"], "New");
     assert_eq!(p[0]["status"], "ACTIVE");
     e.call_tool("undo_change", json!({"change_id": out["change_id"]}), None)
         .await
         .unwrap();
     let s = c.lock().unwrap();
-    assert_eq!(s["name"], "Velha");
+    assert_eq!(s["name"], "Old");
     assert_eq!(s["status"], "PAUSED");
 }
 
@@ -250,18 +250,22 @@ async fn fifth_budget_change_refused() {
         .with_timezone(&chrono::Local)
         .format("%H:%M")
         .to_string();
-    assert!(err.message.contains(&at), "{} não cita {at}", err.message);
+    assert!(
+        err.message.contains(&at),
+        "{} does not mention {at}",
+        err.message
+    );
     assert!(posts(&h).await.is_empty());
     let all = h.server.received_requests().await.unwrap();
     assert!(
         all.iter().all(|r| r.method.as_str() == "GET"),
-        "nenhum POST, nem validate_only"
+        "no POST, not even validate_only"
     );
-    // Mudar só o nome continua permitido.
+    // Changing only the name is still allowed.
     engine(&h)
         .call_tool(
             "update_adset",
-            json!({"account_id": "act_111", "adset_id": "s1", "name": "Novo"}),
+            json!({"account_id": "act_111", "adset_id": "s1", "name": "New"}),
             None,
         )
         .await
@@ -356,7 +360,11 @@ async fn campaign_budget_without_cbo_refused() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
-    assert!(err.message.contains("ad sets"), "{}", err.message);
+    assert!(
+        err.message.contains("change the budget on its ad sets"),
+        "{}",
+        err.message
+    );
 }
 
 #[tokio::test]
@@ -382,7 +390,10 @@ async fn targeting_replaced_whole() {
         .await
         .unwrap();
     assert!(
-        out["summary"].as_str().unwrap().contains("substitui"),
+        out["summary"]
+            .as_str()
+            .unwrap()
+            .contains("replaces the whole previous one"),
         "{}",
         out["summary"]
     );
@@ -456,7 +467,7 @@ async fn archive_warns() {
     .await
     .unwrap();
     let w = e.pending().unwrap()[0].warning.clone().unwrap();
-    assert!(w.contains("arquivados"), "{w}");
+    assert!(w.contains("Archived objects do not deliver"), "{w}");
 }
 
 #[tokio::test]
@@ -511,7 +522,7 @@ async fn approval_mode_rechecks_budget_limit() {
         Arc::new(RwLock::new(config)),
     )
     .unwrap();
-    // As duas passam na validação (3 registradas) e vão para a fila.
+    // Both pass validation (3 recorded) and go to the queue.
     let mut ids = Vec::new();
     for budget in [30, 40] {
         let out = e
@@ -530,7 +541,11 @@ async fn approval_mode_rechecks_budget_limit() {
     let second = e.approve(&ids[1]).await.unwrap();
     assert_eq!(second.status, adsconsole_core::db::ChangeStatus::Failed);
     assert_eq!(second.error.unwrap()["code"], codes::BUDGET_CHANGE_LIMIT);
-    assert_eq!(posts(&h).await.len(), 1, "a 2ª não chega à API");
+    assert_eq!(
+        posts(&h).await.len(),
+        1,
+        "the 2nd one does not reach the API"
+    );
 }
 
 #[tokio::test]
@@ -547,7 +562,7 @@ async fn direct_write_carries_warnings() {
     live_object(
         &h,
         "c5",
-        json!({"id": "c5", "account_id": "5", "name": "Velha", "status": "PAUSED"}),
+        json!({"id": "c5", "account_id": "5", "name": "Old", "status": "PAUSED"}),
     )
     .await;
     let out = engine(&h)
@@ -560,10 +575,13 @@ async fn direct_write_carries_warnings() {
         .unwrap();
     assert_eq!(out["status"], "applied");
     let warning = out["warning"].as_str().unwrap_or_default();
-    assert!(warning.contains("5 dias"), "sem o aviso do token: {out}");
     assert!(
-        warning.contains("rquiv"),
-        "sem o aviso do arquivamento: {out}"
+        warning.contains("5 days"),
+        "missing the token warning: {out}"
+    );
+    assert!(
+        warning.contains("Archived objects"),
+        "missing the archive warning: {out}"
     );
 }
 
@@ -574,14 +592,14 @@ async fn filling_empty_field_is_not_undoable() {
     let c = live_object(
         &h,
         "c1",
-        json!({"id": "c1", "account_id": "111", "name": "Velha"}),
+        json!({"id": "c1", "account_id": "111", "name": "Old"}),
     )
     .await;
     let e = engine(&h);
     let out = e
         .call_tool(
             "update_campaign",
-            json!({"account_id": "act_111", "campaign_id": "c1", "name": "Nova", "spend_cap": 500}),
+            json!({"account_id": "act_111", "campaign_id": "c1", "name": "New", "spend_cap": 500}),
             None,
         )
         .await
@@ -596,13 +614,13 @@ async fn filling_empty_field_is_not_undoable() {
         .unwrap_err();
     assert_eq!(err.code, codes::NOT_REVERSIBLE);
 
-    // Mudança antiga, gravada com o desfazer: o desfazer recusa em vez de fingir.
+    // Old change, stored with an undo: undo refuses instead of pretending.
     let id = out["change_id"].as_str().unwrap();
     let mut rec = h.db.get_change(id).unwrap().unwrap();
     rec.reversible = true;
     rec.inverse = Some(adsconsole_core::db::InverseOp {
         tool: "restore_fields".into(),
-        input: json!({"updates": {"c1": {"name": "Velha", "spend_cap": null}}, "kinds": {"c1": "campaign"}}),
+        input: json!({"updates": {"c1": {"name": "Old", "spend_cap": null}}, "kinds": {"c1": "campaign"}}),
         target: json!({"watch": [{"object_id": "c1", "kind": "campaign", "fields": ["name", "spend_cap"]}]}),
     });
     h.db.update_change(&rec).unwrap();
@@ -611,7 +629,7 @@ async fn filling_empty_field_is_not_undoable() {
         .await
         .unwrap_err();
     assert!(err.message.contains("spend_cap"), "{}", err.message);
-    assert_eq!(c.lock().unwrap()["name"], "Nova", "nada foi aplicado");
+    assert_eq!(c.lock().unwrap()["name"], "New", "nothing was applied");
     let rec = h.db.get_change(id).unwrap().unwrap();
     assert_eq!(rec.status, adsconsole_core::db::ChangeStatus::Applied);
 }

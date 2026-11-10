@@ -23,7 +23,7 @@ async fn read(
 
 fn campaign(id: &str, spend: &str) -> Value {
     json!({
-        "id": id, "name": format!("Campanha {id}"), "status": "PAUSED", "effective_status": "PAUSED",
+        "id": id, "name": format!("Campaign {id}"), "status": "PAUSED", "effective_status": "PAUSED",
         "objective": "OUTCOME_TRAFFIC", "daily_budget": "2540", "bid_strategy": "LOWEST_COST_WITHOUT_CAP",
         "insights": {"data": [{
             "spend": spend, "impressions": "1000", "reach": "800", "clicks": "50", "ctr": "5.0",
@@ -134,9 +134,14 @@ async fn invalid_period_refused() {
     .await
     .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
-    let err = read(&h, "act_111", "get_campaigns", json!({"period": "ontem"}))
-        .await
-        .unwrap_err();
+    let err = read(
+        &h,
+        "act_111",
+        "get_campaigns",
+        json!({"period": "the_day_before"}),
+    )
+    .await
+    .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
 }
 
@@ -144,7 +149,7 @@ async fn mock_details(h: &MetaHarness, account_id: &str, ads: usize) {
     Mock::given(method("GET"))
         .and(path("/c1"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "id": "c1", "name": "Campanha", "account_id": account_id, "status": "PAUSED",
+            "id": "c1", "name": "Campaign", "account_id": account_id, "status": "PAUSED",
             "objective": "OUTCOME_TRAFFIC", "daily_budget": "5000"
         })))
         .mount(&h.server)
@@ -159,7 +164,7 @@ async fn mock_details(h: &MetaHarness, account_id: &str, ads: usize) {
         .await;
     let big = "x".repeat(1_000);
     let list: Vec<Value> = (0..ads)
-        .map(|i| json!({"id": format!("a{i}"), "name": format!("Anúncio {i}"), "status": "PAUSED",
+        .map(|i| json!({"id": format!("a{i}"), "name": format!("Ad {i}"), "status": "PAUSED",
                         "adset_id": "s1", "creative": {"id": "k1", "object_story_spec": {"link_data": {"message": big}}}}))
         .collect();
     Mock::given(method("GET"))
@@ -264,7 +269,7 @@ async fn insights_breakdowns_and_period() {
         &h,
         "act_111",
         "get_insights",
-        json!({"level": "campaign", "breakdowns": ["cor"]}),
+        json!({"level": "campaign", "breakdowns": ["color"]}),
     )
     .await
     .unwrap_err();
@@ -274,7 +279,7 @@ async fn insights_breakdowns_and_period() {
         &h,
         "act_111",
         "get_insights",
-        json!({"level": "ad", "fields": ["senha"]}),
+        json!({"level": "ad", "fields": ["password"]}),
     )
     .await
     .unwrap_err();
@@ -357,9 +362,9 @@ async fn pages_without_tokens() {
     Mock::given(method("GET"))
         .and(path("/me/accounts"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "p1", "name": "Loja", "category": "Varejo", "access_token": "EAAPAGE",
-             "instagram_business_account": {"id": "ig1", "username": "loja"}, "tasks": ["ADVERTISE", "ANALYZE"]},
-            {"id": "p2", "name": "Outra", "access_token": "EAAP2", "tasks": ["ANALYZE"]}
+            {"id": "p1", "name": "Shop", "category": "Retail", "access_token": "EAAPAGE",
+             "instagram_business_account": {"id": "ig1", "username": "shop"}, "tasks": ["ADVERTISE", "ANALYZE"]},
+            {"id": "p2", "name": "Other", "access_token": "EAAP2", "tasks": ["ANALYZE"]}
         ]})))
         .mount(&h.server)
         .await;
@@ -367,7 +372,7 @@ async fn pages_without_tokens() {
     assert!(!out.to_string().contains("EAAP"), "{out}");
     let p = &out["pages"][0];
     assert_eq!(p["page_id"], "p1");
-    assert_eq!(p["instagram"]["username"], "loja");
+    assert_eq!(p["instagram"]["username"], "shop");
     assert_eq!(p["can_advertise"], true);
     assert_eq!(out["pages"][1]["can_advertise"], false);
     assert!(out["pages"][1]["instagram"].is_null());
@@ -379,9 +384,9 @@ async fn targeting_types_map_to_endpoints() {
     Mock::given(method("GET"))
         .and(path("/search"))
         .and(query_param("type", "adinterest"))
-        .and(query_param("q", "futebol"))
+        .and(query_param("q", "soccer"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "6003", "name": "Futebol", "audience_size_lower_bound": 1000, "audience_size_upper_bound": 2000, "path": ["Esportes", "Futebol"]}
+            {"id": "6003", "name": "Soccer", "audience_size_lower_bound": 1000, "audience_size_upper_bound": 2000, "path": ["Sports", "Soccer"]}
         ]})))
         .mount(&h.server)
         .await;
@@ -390,8 +395,8 @@ async fn targeting_types_map_to_endpoints() {
         .and(query_param("type", "adTargetingCategory"))
         .and(query_param("class", "behaviors"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "b1", "name": "Viajantes frequentes", "type": "behaviors"},
-            {"id": "b2", "name": "Compradores online", "type": "behaviors"}
+            {"id": "b1", "name": "Frequent travelers", "type": "behaviors"},
+            {"id": "b2", "name": "Online shoppers", "type": "behaviors"}
         ]})))
         .mount(&h.server)
         .await;
@@ -401,7 +406,7 @@ async fn targeting_types_map_to_endpoints() {
         .and(query_param("class", "demographics"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(json!({"data": [{"id": "d1", "name": "Pais"}]})),
+                .set_body_json(json!({"data": [{"id": "d1", "name": "Parents"}]})),
         )
         .mount(&h.server)
         .await;
@@ -410,7 +415,7 @@ async fn targeting_types_map_to_endpoints() {
         .and(query_param("type", "adgeolocation"))
         .and(query_param("location_types", r#"["city"]"#))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"key": "269969", "name": "Campinas", "type": "city", "country_code": "BR", "region": "São Paulo"}
+            {"key": "2421836", "name": "Austin", "type": "city", "country_code": "US", "region": "Texas"}
         ]})))
         .mount(&h.server)
         .await;
@@ -418,25 +423,25 @@ async fn targeting_types_map_to_endpoints() {
         &h,
         "act_111",
         "search_targeting",
-        json!({"type": "interest", "query": "futebol"}),
+        json!({"type": "interest", "query": "soccer"}),
     )
     .await
     .unwrap();
     assert_eq!(out["results"][0]["id"], "6003");
     assert_eq!(out["results"][0]["audience_size_upper"], 2000);
-    assert_eq!(out["results"][0]["path"], json!(["Esportes", "Futebol"]));
+    assert_eq!(out["results"][0]["path"], json!(["Sports", "Soccer"]));
     let out = read(
         &h,
         "act_111",
         "search_targeting",
-        json!({"type": "behavior", "query": "viaj"}),
+        json!({"type": "behavior", "query": "trav"}),
     )
     .await
     .unwrap();
     assert_eq!(
         out["results"].as_array().unwrap().len(),
         1,
-        "filtra localmente"
+        "filters locally"
     );
     let out = read(
         &h,
@@ -446,17 +451,17 @@ async fn targeting_types_map_to_endpoints() {
     )
     .await
     .unwrap();
-    assert_eq!(out["results"][0]["name"], "Pais");
+    assert_eq!(out["results"][0]["name"], "Parents");
     let out = read(
         &h,
         "act_111",
         "search_targeting",
-        json!({"type": "geo", "query": "campinas", "geo_types": ["city"]}),
+        json!({"type": "geo", "query": "austin", "geo_types": ["city"]}),
     )
     .await
     .unwrap();
-    assert_eq!(out["results"][0]["key"], "269969");
-    assert_eq!(out["results"][0]["country_code"], "BR");
+    assert_eq!(out["results"][0]["key"], "2421836");
+    assert_eq!(out["results"][0]["country_code"], "US");
     let err = read(
         &h,
         "act_111",
@@ -521,13 +526,13 @@ async fn ad_library_access_message() {
         &h,
         "act_111",
         "search_ad_library",
-        json!({"query": "tênis", "countries": ["BR"]}),
+        json!({"query": "sneakers", "countries": ["BR"]}),
     )
     .await
     .unwrap_err();
     assert_eq!(err.code, codes::ACCESS_DENIED);
     assert!(
-        err.message.contains("Biblioteca de Anúncios"),
+        err.message.contains("The Ad Library requires"),
         "{}",
         err.message
     );
@@ -553,9 +558,9 @@ async fn ad_library_results() {
     Mock::given(method("GET"))
         .and(path("/ads_archive"))
         .and(query_param("ad_reached_countries", r#"["BR"]"#))
-        .and(query_param("search_terms", "tênis"))
+        .and(query_param("search_terms", "sneakers"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "lib1", "page_name": "Marca", "ad_snapshot_url": "https://www.facebook.com/ads/archive/render_ad/?id=1&access_token=SEGREDO"}
+            {"id": "lib1", "page_name": "Brand", "ad_snapshot_url": "https://www.facebook.com/ads/archive/render_ad/?id=1&access_token=SECRET"}
         ]})))
         .mount(&h.server)
         .await;
@@ -563,14 +568,14 @@ async fn ad_library_results() {
         &h,
         "act_111",
         "search_ad_library",
-        json!({"query": "tênis", "countries": ["br"]}),
+        json!({"query": "sneakers", "countries": ["br"]}),
     )
     .await
     .unwrap();
-    assert_eq!(out["ads"][0]["page_name"], "Marca");
+    assert_eq!(out["ads"][0]["page_name"], "Brand");
     assert!(
-        !out.to_string().contains("SEGREDO"),
-        "a URL não leva o token"
+        !out.to_string().contains("SECRET"),
+        "the URL does not carry the token"
     );
 }
 
@@ -580,7 +585,7 @@ async fn page_posts_use_page_token_without_returning_it() {
     Mock::given(method("GET"))
         .and(path("/me/accounts"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "p1", "name": "Loja", "access_token": "PAGETOKEN"}
+            {"id": "p1", "name": "Shop", "access_token": "PAGETOKEN"}
         ]})))
         .mount(&h.server)
         .await;
@@ -590,7 +595,7 @@ async fn page_posts_use_page_token_without_returning_it() {
             r.headers.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer PAGETOKEN")
         })
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "p1_777", "message": "Promoção", "created_time": "2026-10-01T10:00:00+0000",
+            {"id": "p1_777", "message": "Promotion", "created_time": "2026-10-01T10:00:00+0000",
              "permalink_url": "https://www.facebook.com/p1/posts/777", "access_token": "x"}
         ]})))
         .mount(&h.server)
@@ -599,7 +604,7 @@ async fn page_posts_use_page_token_without_returning_it() {
         .await
         .unwrap();
     assert_eq!(out["posts"][0]["object_story_id"], "p1_777");
-    assert_eq!(out["posts"][0]["message"], "Promoção");
+    assert_eq!(out["posts"][0]["message"], "Promotion");
     assert!(!out.to_string().contains("PAGETOKEN"));
     let err = read(&h, "act_111", "get_page_posts", json!({"page_id": "p9"}))
         .await

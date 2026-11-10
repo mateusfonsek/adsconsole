@@ -1,6 +1,6 @@
-//! Inversas: `restore_fields` (volta campos ao "antes"), `delete_objects` (apaga o que
-//! uma criação fez) e `delete_image` (apaga uma imagem enviada). Ocultas: só o desfazer
-//! as chama.
+//! Inverses: `restore_fields` (sets fields back to "before"), `delete_objects` (deletes
+//! what a creation made) and `delete_image` (deletes an uploaded image). Hidden: only undo
+//! calls them.
 
 use std::collections::BTreeMap;
 
@@ -29,7 +29,7 @@ pub(crate) fn hidden() -> Vec<MTool> {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct RestoreInput {
-    /// `{id: {campo: valor}}`, no formato das ferramentas.
+    /// `{id: {field: value}}`, in the tool format.
     updates: BTreeMap<String, BTreeMap<String, Value>>,
     /// `{id: "campaign" | "adset" | "ad"}`.
     #[serde(default)]
@@ -43,7 +43,7 @@ impl WriteTool for RestoreFields {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<RestoreInput>(
             RESTORE_FIELDS,
-            "Volta campos de campanhas, ad sets e anúncios aos valores anteriores.",
+            "Sets fields of campaigns, ad sets and ads back to their previous values.",
             ToolGroup::Edit,
             true,
         )
@@ -55,7 +55,7 @@ impl WriteTool for RestoreFields {
         let i: RestoreInput = parse_input(input)?;
         let mut plan = MetaPlan {
             summary: format!(
-                "Restaurar os valores anteriores de {} objeto(s)",
+                "Restore the previous values of {} object(s)",
                 i.updates.len()
             ),
             inverse: InverseSpec::RestoreFields,
@@ -65,27 +65,29 @@ impl WriteTool for RestoreFields {
             let kind = i.kinds.get(id).and_then(|k| parse_kind(k)).ok_or_else(|| {
                 ToolError::new(
                     codes::INVALID_INPUT,
-                    format!("Tipo do objeto {id} ausente."),
+                    format!("Object type of {id} is missing."),
                 )
             })?;
             let mut params = Map::new();
             let mut watched = Vec::new();
             for (name, value) in values {
                 let def = fields::find(name, kind).ok_or_else(|| {
-                    ToolError::new(codes::INVALID_INPUT, format!("Campo {name} não editável."))
+                    ToolError::new(
+                        codes::INVALID_INPUT,
+                        format!("Field {name} is not editable."),
+                    )
                 })?;
                 let param = fields::to_param(def, value, ctx.exponent)
                     .map_err(|e| ToolError::new(codes::INVALID_INPUT, e))?;
-                // Campo vazio no "antes" (mudança gravada antes de a escrita marcar esses
-                // casos como sem desfazer): não há como voltar a vazio, então recusa em vez
-                // de dizer que desfez.
+                // Empty field in "before" (a change stored before writes marked these cases
+                // as not undoable): there is no way back to empty, so refuse instead of
+                // claiming it was undone.
                 if param.is_null() {
                     return Err(ToolError::new(
                         codes::NOT_REVERSIBLE,
                         format!(
-                            "Não dá para desfazer: {name} de {id} não tinha valor antes, e não \
-                             há como voltar a vazio pelo AdsConsole. Mude pelo Gerenciador de \
-                             Anúncios."
+                            "Cannot undo: {name} of {id} had no value before, and AdsConsole \
+                             cannot set it back to empty. Change it in Ads Manager."
                         ),
                     )
                     .with_field(name.clone()));
@@ -125,7 +127,7 @@ impl WriteTool for RestoreFields {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct DeleteInput {
-    /// Ids a apagar, na ordem.
+    /// Ids to delete, in order.
     ids: Vec<String>,
 }
 
@@ -136,7 +138,7 @@ impl WriteTool for DeleteObjects {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<DeleteInput>(
             DELETE_OBJECTS,
-            "Apaga objetos criados por uma mudança do AdsConsole.",
+            "Deletes objects created by an AdsConsole change.",
             ToolGroup::Edit,
             false,
         )
@@ -147,12 +149,10 @@ impl WriteTool for DeleteObjects {
     async fn plan(&self, _ctx: &Ctx, input: &Value) -> Result<MetaPlan, ToolError> {
         let i: DeleteInput = parse_input(input)?;
         if i.ids.is_empty() {
-            return Err(
-                ToolError::new(codes::INVALID_INPUT, "Nenhum id para apagar.").with_field("ids"),
-            );
+            return Err(ToolError::new(codes::INVALID_INPUT, "No ids to delete.").with_field("ids"));
         }
         Ok(MetaPlan {
-            summary: format!("Apagar {}", i.ids.join(", ")),
+            summary: format!("Delete {}", i.ids.join(", ")),
             steps: i.ids.into_iter().map(|id| Step::Delete { id }).collect(),
             ..MetaPlan::default()
         })
@@ -161,7 +161,7 @@ impl WriteTool for DeleteObjects {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct DeleteImageInput {
-    /// image_hash de `upload_image`.
+    /// image_hash from `upload_image`.
     hash: String,
 }
 
@@ -172,7 +172,7 @@ impl WriteTool for DeleteImage {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<DeleteImageInput>(
             DELETE_IMAGE,
-            "Apaga uma imagem enviada por upload_image.",
+            "Deletes an image uploaded by upload_image.",
             ToolGroup::Media,
             false,
         )
@@ -184,16 +184,15 @@ impl WriteTool for DeleteImage {
         let i: DeleteImageInput = parse_input(input)?;
         if i.hash.trim().is_empty() {
             return Err(
-                ToolError::new(codes::INVALID_INPUT, "Informe o hash da imagem.")
-                    .with_field("hash"),
+                ToolError::new(codes::INVALID_INPUT, "Provide the image hash.").with_field("hash"),
             );
         }
-        // O POST com method=delete foi o que funcionou na conta real.
+        // POST with method=delete is what worked on the real account.
         let mut params = Map::new();
         params.insert("hash".into(), Value::String(i.hash.clone()));
         params.insert("method".into(), Value::String("delete".into()));
         Ok(MetaPlan {
-            summary: format!("Apagar a imagem {}", i.hash),
+            summary: format!("Delete image {}", i.hash),
             direct: Some(DirectExec::GraphPost {
                 path: format!("{}/adimages", ctx.account_id),
                 params,

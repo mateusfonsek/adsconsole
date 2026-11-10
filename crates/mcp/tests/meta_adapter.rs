@@ -33,13 +33,13 @@ const SCOPES: [&str; 6] = [
 fn app() -> AppCreds {
     AppCreds {
         app_id: "123".into(),
-        app_secret: Secret::new("segredo"),
+        app_secret: Secret::new("secret"),
         config_id: "cfg9".into(),
         relay_url: None,
     }
 }
 
-/// O corpo (form) do request tem `key=value`.
+/// The request body (form) has `key=value`.
 fn body_has(key: &'static str, value: &'static str) -> impl wiremock::Match {
     move |r: &Request| url::form_urlencoded::parse(&r.body).any(|(k, v)| k == key && v == value)
 }
@@ -73,7 +73,7 @@ async fn mock_accounts(server: &MockServer) {
         .and(path("/me/adaccounts"))
         .and(query_param("after", "C2"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "act_222", "account_id": "222", "name": "Fechada", "currency": "BRL",
+            {"id": "act_222", "account_id": "222", "name": "Closed", "currency": "BRL",
              "timezone_name": "America/Sao_Paulo", "account_status": 101}
         ]})))
         .mount(server)
@@ -82,9 +82,9 @@ async fn mock_accounts(server: &MockServer) {
         .and(path("/me/adaccounts"))
         .and(|r: &Request| !r.url.query().unwrap_or("").contains("after="))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
-            "data": [{"id": "act_111", "account_id": "111", "name": "Minha", "currency": "BRL",
+            "data": [{"id": "act_111", "account_id": "111", "name": "Mine", "currency": "BRL",
                       "timezone_name": "America/Sao_Paulo", "account_status": 1,
-                      "business": {"id": "b1", "name": "Portfólio"}}],
+                      "business": {"id": "b1", "name": "Portfolio"}}],
             "paging": {"cursors": {"after": "C2"}, "next": "https://graph/next"}
         })))
         .mount(server)
@@ -100,7 +100,7 @@ async fn add_login_connection_end_to_end() {
     let meta = add_meta_login_connection(
         &h.adapter,
         AddMetaLogin {
-            name: "Minha Meta".into(),
+            name: "My Meta".into(),
             app: app(),
             port: 0,
         },
@@ -134,7 +134,7 @@ async fn relay_url_is_kept_for_reconnect() {
     let meta = add_meta_login_connection(
         &h.adapter,
         AddMetaLogin {
-            name: "Publicado".into(),
+            name: "Published".into(),
             app,
             port: 0,
         },
@@ -143,7 +143,7 @@ async fn relay_url_is_kept_for_reconnect() {
     .await
     .unwrap();
     assert_eq!(meta.extra["relay_url"], "https://relay.test/oauth/meta/");
-    // O reconectar usa a mesma página de retorno.
+    // Reconnect uses the same return page.
     let seen = std::sync::Arc::new(std::sync::Mutex::new(String::new()));
     let s2 = seen.clone();
     let inner = meta_browser();
@@ -192,7 +192,7 @@ async fn system_user_token_connection() {
     Mock::given(method("GET"))
         .and(path("/debug_token"))
         .and(query_param("input_token", "SYS"))
-        .and(header("authorization", "Bearer 123|segredo"))
+        .and(header("authorization", "Bearer 123|secret"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": {
             "type": "SYSTEM_USER", "is_valid": true, "expires_at": 0, "scopes": SCOPES, "user_id": "77"
         }})))
@@ -202,10 +202,10 @@ async fn system_user_token_connection() {
     let meta = add_meta_token_connection(
         &h.adapter,
         AddMetaToken {
-            name: "Sistema".into(),
+            name: "System".into(),
             access_token: Secret::new("SYS"),
             app_id: Some("123".into()),
-            app_secret: Some(Secret::new("segredo")),
+            app_secret: Some(Secret::new("secret")),
         },
     )
     .await
@@ -219,7 +219,7 @@ async fn system_user_token_connection() {
     assert_eq!(err.code, codes::INVALID_STATE);
     let _ = MetaConnKind::SystemUser;
 
-    // Token inválido é recusado.
+    // An invalid token is refused.
     Mock::given(method("GET"))
         .and(path("/debug_token"))
         .and(query_param("input_token", "BAD"))
@@ -231,7 +231,7 @@ async fn system_user_token_connection() {
     let err = add_meta_token_connection(
         &h.adapter,
         AddMetaToken {
-            name: "Ruim".into(),
+            name: "Bad".into(),
             access_token: Secret::new("BAD"),
             app_id: None,
             app_secret: None,
@@ -268,7 +268,7 @@ async fn closed_account_refused_before_any_write() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::ACCOUNT_NOT_ACTIVE);
-    assert!(err.message.contains("fechada"), "{}", err.message);
+    assert!(err.message.contains("is closed;"), "{}", err.message);
     let posts = h
         .server
         .received_requests()
@@ -300,7 +300,7 @@ async fn precheck_updates_cached_status() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::ACCOUNT_NOT_ACTIVE);
-    assert!(err.message.contains("desativada"), "{}", err.message);
+    assert!(err.message.contains("is disabled;"), "{}", err.message);
     let cached = h.db.accounts_for(Platform::MetaAds, "act_111").unwrap();
     assert_eq!(cached[0].1.status.as_deref(), Some("DISABLED"));
 }
@@ -331,7 +331,7 @@ async fn code_190_marks_needs_reconnect() {
             r.headers.get("authorization").and_then(|v| v.to_str().ok()) == Some("Bearer TOK2")
         })
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"data": [
-            {"id": "act_222", "name": "Outra", "currency": "BRL", "account_status": 1}
+            {"id": "act_222", "name": "Other", "currency": "BRL", "account_status": 1}
         ]})))
         .mount(&h.server)
         .await;
@@ -367,14 +367,14 @@ async fn token_expiry_warning() {
     let mut call = meta_call("", "list_ad_accounts", json!({"connection": "m_soon"}));
     call.connection_id = "m_soon".into();
     let out = h.adapter.read(&call).await.unwrap();
-    let warning = out["aviso_token"].as_str().unwrap();
-    assert!(warning.contains("5 dias"), "{warning}");
+    let warning = out["token_warning"].as_str().unwrap();
+    assert!(warning.contains("5 days"), "{warning}");
     assert_eq!(out["accounts"][0]["account_id"], "act_5");
 
     let mut call = meta_call("", "list_ad_accounts", json!({"connection": "m_later"}));
     call.connection_id = "m_later".into();
     let out = h.adapter.read(&call).await.unwrap();
-    assert!(out.get("aviso_token").is_none());
+    assert!(out.get("token_warning").is_none());
 
     let expiring = expiring_connections(&h.db, Utc::now()).unwrap();
     let ids: Vec<&str> = expiring.iter().map(|c| c.connection_id.as_str()).collect();
@@ -386,7 +386,7 @@ fn api(code: i64, subcode: Option<i64>) -> MetaError {
         http_status: 400,
         code,
         subcode,
-        message: "msg da meta".into(),
+        message: "meta message".into(),
         user_title: None,
         user_msg: None,
         is_transient: false,
@@ -399,7 +399,7 @@ fn api(code: i64, subcode: Option<i64>) -> MetaError {
 
 #[tokio::test]
 async fn translations_table() {
-    let t = |e: MetaError| translate(e, None, "teste");
+    let t = |e: MetaError| translate(e, None, "test");
     assert_eq!(
         t(MetaError::ReauthRequired).code,
         codes::CONNECTION_NEEDS_RECONNECT
@@ -430,12 +430,12 @@ async fn translations_table() {
     } = &mut blamed
     {
         *blame_fields = vec!["targeting.geo_locations".into()];
-        *user_msg = Some("Escolha um local.".into());
+        *user_msg = Some("Pick a location.".into());
     }
     let e = t(blamed);
     assert_eq!(e.code, codes::INVALID_INPUT);
     assert_eq!(e.field.as_deref(), Some("targeting.geo_locations"));
-    assert_eq!(e.message, "Escolha um local.");
+    assert_eq!(e.message, "Pick a location.");
     let mut maybe = api(1, None);
     if let MetaError::Api { maybe_applied, .. } = &mut maybe {
         *maybe_applied = true;
@@ -443,7 +443,7 @@ async fn translations_table() {
     assert_eq!(t(maybe).code, codes::EXECUTION_FAILED);
     assert_eq!(
         t(MetaError::MaybeApplied {
-            cause: "tempo esgotado".into()
+            cause: "timed out".into()
         })
         .code,
         codes::EXECUTION_FAILED
@@ -476,7 +476,7 @@ fn tokens_in_urls_removed() {
             "next": "https://graph.facebook.com/v26.0/act_1/campaigns?access_token=EAAB&limit=25&after=QVF&appsecret_proof=abc",
             "previous": "https://graph.facebook.com/v26.0/act_1/campaigns?access_token=EAAB"
         },
-        "list": ["http://x.test/a?appsecret_proof=p&k=1", "texto com access_token=EAAB solto"],
+        "list": ["http://x.test/a?appsecret_proof=p&k=1", "text with a loose access_token=EAAB"],
         "keep": "https://www.facebook.com/ads/library/?id=1"
     });
     let clean = scrub(v);
@@ -494,6 +494,6 @@ fn tokens_in_urls_removed() {
         "https://graph.facebook.com/v26.0/act_1/campaigns"
     );
     assert_eq!(clean["list"][0], "http://x.test/a?k=1");
-    assert_eq!(clean["list"][1], "texto com access_token=EAAB solto");
+    assert_eq!(clean["list"][1], "text with a loose access_token=EAAB");
     assert_eq!(clean["keep"], "https://www.facebook.com/ads/library/?id=1");
 }

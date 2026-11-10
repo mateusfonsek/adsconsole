@@ -1,5 +1,5 @@
-//! Criativos: imagem, vídeo e carrossel (montados como `object_story_spec`) ou um post
-//! que já existe na Página (`object_story_id`).
+//! Creatives: image, video and carousel (built as `object_story_spec`) or a post that
+//! already exists on the Page (`object_story_id`).
 
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -7,7 +7,7 @@ use serde_json::{Map, Value, json};
 
 use crate::error::{ToolError, codes};
 
-/// Tipos de botão aceitos.
+/// Accepted button types.
 pub(crate) const CALLS_TO_ACTION: [&str; 13] = [
     "LEARN_MORE",
     "SHOP_NOW",
@@ -39,7 +39,7 @@ pub(crate) struct Card {
     pub call_to_action: Option<String>,
 }
 
-/// O criativo de um anúncio. `type`: image, video ou carousel.
+/// The creative of an ad. `type`: image, video, existing_post or carousel.
 #[derive(Debug, Clone, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub(crate) enum CreativeInput {
@@ -47,15 +47,15 @@ pub(crate) enum CreativeInput {
         page_id: String,
         #[serde(default)]
         instagram_user_id: Option<String>,
-        /// Destino (https).
+        /// Destination (https).
         link: String,
-        /// Texto principal (até 2 200 caracteres).
+        /// Primary text (up to 2,200 characters).
         message: String,
         #[serde(default)]
         headline: Option<String>,
         #[serde(default)]
         description: Option<String>,
-        /// De `upload_image`.
+        /// From `upload_image`.
         image_hash: String,
         /// LEARN_MORE, SHOP_NOW, SIGN_UP, CONTACT_US...
         #[serde(default)]
@@ -69,9 +69,9 @@ pub(crate) enum CreativeInput {
         message: String,
         #[serde(default)]
         headline: Option<String>,
-        /// De `upload_video`.
+        /// From `upload_video`.
         video_id: String,
-        /// Capa: image_hash de `upload_image` ou uma URL https (um dos dois).
+        /// Thumbnail: image_hash from `upload_image` or an https URL (exactly one).
         #[serde(default)]
         thumbnail_image_hash: Option<String>,
         #[serde(default)]
@@ -79,10 +79,10 @@ pub(crate) enum CreativeInput {
         #[serde(default)]
         call_to_action: Option<String>,
     },
-    /// Post já publicado na Página. Funciona com o app em modo de desenvolvimento, que
-    /// não pode anunciar posts criados por ele mesmo.
+    /// Post already published on the Page. Works with the app in development mode, which
+    /// cannot advertise posts it created itself.
     ExistingPost {
-        /// `<page_id>_<post_id>`, de `get_page_posts`.
+        /// `<page_id>_<post_id>`, from `get_page_posts`.
         object_story_id: String,
     },
     Carousel {
@@ -91,7 +91,7 @@ pub(crate) enum CreativeInput {
         instagram_user_id: Option<String>,
         link: String,
         message: String,
-        /// 2 a 10 cards.
+        /// 2 to 10 cards.
         cards: Vec<Card>,
     },
 }
@@ -103,13 +103,13 @@ fn invalid(field: String, message: impl Into<String>) -> ToolError {
 fn check_link(field: String, link: &str) -> Result<(), ToolError> {
     match url::Url::parse(link) {
         Ok(u) if u.scheme() == "https" => Ok(()),
-        _ => Err(invalid(field, format!("O link precisa ser https: {link}"))),
+        _ => Err(invalid(field, format!("The link must be https: {link}"))),
     }
 }
 
 fn check_len(field: String, text: &str, max: usize) -> Result<(), ToolError> {
     if text.chars().count() > max {
-        return Err(invalid(field, format!("Passa de {max} caracteres.")));
+        return Err(invalid(field, format!("Exceeds {max} characters.")));
     }
     Ok(())
 }
@@ -127,10 +127,7 @@ fn cta(
     if !CALLS_TO_ACTION.contains(&t.as_str()) {
         return Err(invalid(
             field,
-            format!(
-                "Botão desconhecido: {t}. Use: {}.",
-                CALLS_TO_ACTION.join(", ")
-            ),
+            format!("Unknown button: {t}. Use: {}.", CALLS_TO_ACTION.join(", ")),
         ));
     }
     Ok(Some(json!({ "type": t, "value": { "link": link } })))
@@ -142,7 +139,7 @@ fn put(m: &mut Map<String, Value>, k: &str, v: Option<Value>) {
     }
 }
 
-/// Parâmetros do POST em `adcreatives` (`object_story_spec` ou `object_story_id`).
+/// Parameters of the POST to `adcreatives` (`object_story_spec` or `object_story_id`).
 pub(crate) fn creative_params(
     c: &CreativeInput,
     at: &str,
@@ -154,7 +151,7 @@ pub(crate) fn creative_params(
         if !ok {
             return Err(invalid(
                 format!("{at}.object_story_id"),
-                "Use o id do post no formato <page_id>_<post_id> (veja get_page_posts).",
+                "Use the post id in the <page_id>_<post_id> format (see get_page_posts).",
             ));
         }
         let mut m = Map::new();
@@ -166,12 +163,12 @@ pub(crate) fn creative_params(
     Ok(m)
 }
 
-/// `object_story_spec` do criativo; `at` é o caminho do campo na entrada, para os erros.
+/// The creative's `object_story_spec`; `at` is the field path in the input, for errors.
 fn story_spec(c: &CreativeInput, at: &str) -> Result<Value, ToolError> {
     let f = |k: &str| format!("{at}.{k}");
     let mut spec = Map::new();
     match c {
-        CreativeInput::ExistingPost { .. } => unreachable!("tratado em creative_params"),
+        CreativeInput::ExistingPost { .. } => unreachable!("handled in creative_params"),
         CreativeInput::Image {
             page_id,
             instagram_user_id,
@@ -191,7 +188,7 @@ fn story_spec(c: &CreativeInput, at: &str) -> Result<Value, ToolError> {
                 TITLE_MAX,
             )?;
             spec.insert("page_id".into(), json!(page_id));
-            // VERIFY(v26.0): identidade do Instagram como instagram_user_id (não instagram_actor_id).
+            // VERIFY(v26.0): Instagram identity as instagram_user_id (not instagram_actor_id).
             put(
                 &mut spec,
                 "instagram_user_id",
@@ -238,7 +235,7 @@ fn story_spec(c: &CreativeInput, at: &str) -> Result<Value, ToolError> {
             data.insert("video_id".into(), json!(video_id));
             data.insert("message".into(), json!(message));
             put(&mut data, "title", headline.as_ref().map(|v| json!(v)));
-            // VERIFY(v26.0): a capa é obrigatória (image_hash ou image_url).
+            // VERIFY(v26.0): the thumbnail is required (image_hash or image_url).
             match (thumbnail_image_hash, thumbnail_url) {
                 (Some(h), None) => {
                     data.insert("image_hash".into(), json!(h));
@@ -250,7 +247,7 @@ fn story_spec(c: &CreativeInput, at: &str) -> Result<Value, ToolError> {
                 _ => {
                     return Err(invalid(
                         f("thumbnail_image_hash"),
-                        "Informe a capa do vídeo: thumbnail_image_hash ou thumbnail_url (um dos dois).",
+                        "Provide the video thumbnail: thumbnail_image_hash or thumbnail_url (exactly one).",
                     ));
                 }
             }
@@ -276,7 +273,7 @@ fn story_spec(c: &CreativeInput, at: &str) -> Result<Value, ToolError> {
             check_link(f("link"), link)?;
             check_len(f("message"), message, MESSAGE_MAX)?;
             if !(2..=10).contains(&cards.len()) {
-                return Err(invalid(f("cards"), "O carrossel precisa de 2 a 10 cards."));
+                return Err(invalid(f("cards"), "The carousel needs 2 to 10 cards."));
             }
             let mut children = Vec::new();
             for (i, card) in cards.iter().enumerate() {

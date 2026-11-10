@@ -1,5 +1,5 @@
-//! Leituras de apoio: `get_pages`, `search_targeting`, `estimate_audience`,
-//! `search_ad_library`.
+//! Supporting reads: `get_pages`, `get_page_posts`, `search_targeting`,
+//! `estimate_audience`, `search_ad_library`.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::secrets::Secret;
@@ -42,8 +42,8 @@ impl ReadTool for GetPages {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<PagesInput>(
             "get_pages",
-            "Lista as Páginas do Facebook (e as contas do Instagram ligadas a elas) que a \
-             conexão pode usar nos criativos.",
+            "Lists the Facebook Pages (and the Instagram accounts linked to them) that the \
+             connection can use in creatives.",
             ToolGroup::Read,
         )
     }
@@ -91,9 +91,9 @@ struct PagePostsInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Página (de get_pages).
+    /// Page (from get_pages).
     page_id: String,
-    /// Máximo de posts (padrão 25).
+    /// Maximum number of posts (default 25).
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -105,8 +105,8 @@ impl ReadTool for GetPagePosts {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<PagePostsInput>(
             "get_page_posts",
-            "Lista os posts publicados de uma Página, com o object_story_id para anunciar um \
-             post existente (criativo existing_post).",
+            "Lists the published posts of a Page, with the object_story_id needed to advertise \
+             an existing post (existing_post creative).",
             ToolGroup::Read,
         )
     }
@@ -126,7 +126,7 @@ impl ReadTool for GetPagePosts {
             )
             .await
             .map_err(|e| translate(e, Some(ctx), tool))?;
-        // O token da Página só é usado aqui; nunca sai no resultado.
+        // The Page token is used only here; it never appears in the result.
         let token = pages
             .data
             .iter()
@@ -135,10 +135,7 @@ impl ReadTool for GetPagePosts {
             .ok_or_else(|| {
                 ToolError::new(
                     codes::NOT_FOUND,
-                    format!(
-                        "A Página {} não está entre as Páginas desta conexão.",
-                        i.page_id
-                    ),
+                    format!("Page {} is not among this connection's Pages.", i.page_id),
                 )
                 .with_field("page_id")
             })?;
@@ -199,16 +196,16 @@ struct TargetingInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// interest, behavior, demographic ou geo.
+    /// interest, behavior, demographic or geo.
     #[serde(rename = "type")]
     kind: TargetingType,
-    /// Texto da busca (obrigatório em interest e geo; filtra behavior e demographic).
+    /// Search text (required for interest and geo; filters behavior and demographic).
     #[serde(default)]
     query: Option<String>,
-    /// Só em geo: country, region, city, zip (padrão: os quatro).
+    /// geo only: country, region, city, zip (default: all four).
     #[serde(default)]
     geo_types: Vec<GeoType>,
-    /// Máximo de resultados (padrão 25).
+    /// Maximum number of results (default 25).
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -220,8 +217,8 @@ impl ReadTool for SearchTargeting {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<TargetingInput>(
             "search_targeting",
-            "Busca opções de segmentação: interesses, comportamentos, dados demográficos ou \
-             locais (ids para usar em targeting).",
+            "Searches targeting options: interests, behaviors, demographics or locations \
+             (ids to use in targeting).",
             ToolGroup::Read,
         )
     }
@@ -234,7 +231,7 @@ impl ReadTool for SearchTargeting {
         match i.kind {
             TargetingType::Interest | TargetingType::Geo => {
                 let Some(q) = q else {
-                    return Err(invalid("query", "Informe o texto da busca."));
+                    return Err(invalid("query", "Provide the search text."));
                 };
                 query.push(("q", q.to_string()));
                 if i.kind == TargetingType::Interest {
@@ -311,9 +308,9 @@ struct AudienceInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// targeting_spec da Meta (geo_locations, idade, gênero, interesses...).
+    /// Meta targeting_spec (geo_locations, age, gender, interests...).
     targeting: Value,
-    /// Meta de otimização da estimativa (padrão REACH).
+    /// Optimization goal of the estimate (default REACH).
     #[serde(default)]
     optimization_goal: Option<String>,
 }
@@ -325,7 +322,7 @@ impl ReadTool for EstimateAudience {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<AudienceInput>(
             "estimate_audience",
-            "Estima quantas pessoas um público alcança (faixa de usuários por mês).",
+            "Estimates how many people an audience reaches (range of monthly users).",
             ToolGroup::Read,
         )
     }
@@ -335,7 +332,7 @@ impl ReadTool for EstimateAudience {
         if !i.targeting["geo_locations"].is_object() {
             return Err(invalid(
                 "targeting",
-                "Informe ao menos um local em targeting.geo_locations.",
+                "Provide at least one location in targeting.geo_locations.",
             ));
         }
         let body = ctx
@@ -366,17 +363,17 @@ struct LibraryInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Termos da busca.
+    /// Search terms.
     query: String,
-    /// Países onde os anúncios foram veiculados (ISO-2, 1 a 10).
+    /// Countries where the ads ran (ISO-2, 1 to 10).
     countries: Vec<String>,
-    /// ALL (padrão), POLITICAL_AND_ISSUE_ADS...
+    /// ALL (default), POLITICAL_AND_ISSUE_ADS...
     #[serde(default)]
     ad_type: Option<String>,
-    /// ALL (padrão), ACTIVE ou INACTIVE.
+    /// ALL (default), ACTIVE or INACTIVE.
     #[serde(default)]
     active_status: Option<String>,
-    /// Máximo de anúncios (padrão 25).
+    /// Maximum number of ads (default 25).
     #[serde(default)]
     limit: Option<usize>,
 }
@@ -391,7 +388,7 @@ impl ReadTool for SearchAdLibrary {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<LibraryInput>(
             "search_ad_library",
-            "Busca anúncios públicos na Biblioteca de Anúncios da Meta, por termo e país.",
+            "Searches public ads in the Meta Ad Library, by term and country.",
             ToolGroup::Read,
         )
     }
@@ -411,11 +408,11 @@ impl ReadTool for SearchAdLibrary {
         {
             return Err(invalid(
                 "countries",
-                "Informe de 1 a 10 países com o código de 2 letras (ex.: BR).",
+                "Provide 1 to 10 countries as 2-letter codes (e.g. BR).",
             ));
         }
         if i.query.trim().is_empty() {
-            return Err(invalid("query", "Informe os termos da busca."));
+            return Err(invalid("query", "Provide the search terms."));
         }
         let limit = i.limit.unwrap_or(25).clamp(1, 500);
         let page = ctx
@@ -446,11 +443,11 @@ impl ReadTool for SearchAdLibrary {
                     ..
                 } => ToolError::new(
                     codes::ACCESS_DENIED,
-                    "A Biblioteca de Anúncios exige confirmar a identidade da pessoa no Facebook \
-                     e aceitar os termos da API da biblioteca.",
+                    "The Ad Library requires the person to confirm their identity on Facebook \
+                     and accept the Ad Library API terms.",
                 )
                 .with_suggestion(
-                    "Siga os passos em https://www.facebook.com/ads/library/api e tente de novo.",
+                    "Follow the steps at https://www.facebook.com/ads/library/api and try again.",
                 ),
                 other => translate(other, Some(ctx), "search_ad_library"),
             })?;

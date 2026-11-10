@@ -1,5 +1,5 @@
-//! Edição: `update_campaign`, `update_adset`, `update_ad`. Cada campo vira um
-//! `FieldChange`; o desfazer volta ao "antes" com `restore_fields`.
+//! Editing: `update_campaign`, `update_adset`, `update_ad`. Each field becomes a
+//! `FieldChange`; undo goes back to "before" with `restore_fields`.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::{Decimal, Status};
@@ -24,7 +24,7 @@ pub(crate) fn tools() -> Vec<MTool> {
     ]
 }
 
-const ARCHIVE_WARNING: &str = "Objetos arquivados não voltam a veicular sem serem reativados.";
+const ARCHIVE_WARNING: &str = "Archived objects do not deliver again unless reactivated.";
 
 fn invalid(field: &str, message: impl Into<String>) -> ToolError {
     ToolError::new(codes::INVALID_INPUT, message).with_field(field)
@@ -35,7 +35,7 @@ fn status_value(field: &str, s: Status) -> Result<Value, ToolError> {
         Status::Active | Status::Paused | Status::Archived => Ok(json!(s.to_meta())),
         Status::Removed => Err(invalid(
             field,
-            "Apagar não é permitido por aqui (é irreversível na Meta); use ARCHIVED.",
+            "Deleting is not allowed here (it is irreversible on Meta); use ARCHIVED.",
         )),
     }
 }
@@ -49,10 +49,10 @@ fn money(field: &str, d: Decimal) -> Result<Value, ToolError> {
                 json!(f)
             }
         })
-        .ok_or_else(|| invalid(field, "Valor inválido."))
+        .ok_or_else(|| invalid(field, "Invalid value."))
 }
 
-/// Tem orçamento desse tipo? (A Meta devolve ausente ou `"0"` quando não tem.)
+/// Does it have a budget of this type? (Meta returns it missing or `"0"` when it does not.)
 fn has_budget(obj: &Value, field: &str) -> bool {
     match &obj[field] {
         Value::String(s) => s.parse::<i64>().is_ok_and(|n| n > 0),
@@ -61,7 +61,7 @@ fn has_budget(obj: &Value, field: &str) -> bool {
     }
 }
 
-/// Campos que a Meta pode deixar sem valor (sem limite de gasto, sem data de término...).
+/// Fields Meta may leave without a value (no spend cap, no end date...).
 fn may_be_empty(kind: FieldKind) -> bool {
     matches!(
         kind,
@@ -69,8 +69,8 @@ fn may_be_empty(kind: FieldKind) -> bool {
     )
 }
 
-/// `fields=` da leitura do objeto antes de editar: id, conta e os campos que podem
-/// estar vazios (para avisar que preencher um deles não tem desfazer).
+/// `fields=` of the object read before editing: id, account and the fields that may be
+/// empty (to warn that filling one of them has no undo).
 fn object_fields(kind: ObjectKind) -> String {
     let mut out = vec!["id", "account_id"];
     out.extend(
@@ -82,8 +82,8 @@ fn object_fields(kind: ObjectKind) -> String {
     out.join(",")
 }
 
-/// Monta o plano de edição de um objeto a partir dos campos `(nome, valor normalizado)`.
-/// `obj` é o objeto lido com [`object_fields`].
+/// Builds the edit plan of an object from the `(name, normalized value)` fields.
+/// `obj` is the object read with [`object_fields`].
 fn edit_plan(
     ctx: &Ctx,
     obj: &Value,
@@ -95,7 +95,7 @@ fn edit_plan(
     if changes.is_empty() {
         return Err(ToolError::new(
             codes::INVALID_INPUT,
-            "Informe pelo menos um campo para alterar.",
+            "Provide at least one field to change.",
         ));
     }
     let mut params = Map::new();
@@ -108,7 +108,7 @@ fn edit_plan(
     let mut empty = Vec::new();
     for (name, value) in changes {
         let def = find(name, kind)
-            .ok_or_else(|| invalid(name, format!("{name} não é editável aqui.")))?;
+            .ok_or_else(|| invalid(name, format!("{name} is not editable here.")))?;
         let param = to_param(def, &value, ctx.exponent).map_err(|e| invalid(name, e))?;
         if may_be_empty(def.value) && normalize(def, obj, ctx.exponent).is_null() {
             empty.push(def.name);
@@ -128,16 +128,16 @@ fn edit_plan(
             value,
         });
     }
-    let mut summary = format!("Alterar {what} {id}: {}", names.join(", "));
+    let mut summary = format!("Change {what} {id}: {}", names.join(", "));
     if names.contains(&"targeting") {
-        summary.push_str(" (o novo público substitui o anterior inteiro)");
+        summary.push_str(" (the new audience replaces the whole previous one)");
     }
     plan.summary = summary;
-    // A execução confere de novo com o "antes" e, nesse caso, grava sem desfazer.
+    // Execution checks again against "before" and, in that case, stores no undo.
     if !empty.is_empty() {
         warnings.push(format!(
-            "Não vai dar para desfazer: {} não tinha valor antes, e não há como voltar a \
-             vazio pelo AdsConsole.",
+            "Undo will not be possible: {} had no value before, and AdsConsole cannot set \
+             it back to empty.",
             empty.join(", ")
         ));
     }
@@ -155,7 +155,7 @@ fn edit_plan(
     Ok(plan)
 }
 
-/// Orçamento: só um dos dois por vez, e do mesmo tipo que o objeto já usa.
+/// Budget: only one of the two at a time, and of the same type the object already uses.
 fn budget_changes(
     obj: &Value,
     daily: Option<Decimal>,
@@ -166,14 +166,14 @@ fn budget_changes(
         (Some(_), Some(_)) => {
             return Err(invalid(
                 "daily_budget",
-                "Informe daily_budget ou lifetime_budget, não os dois.",
+                "Provide daily_budget or lifetime_budget, not both.",
             ));
         }
         (Some(d), None) => {
             if has_budget(obj, "lifetime_budget") {
                 return Err(invalid(
                     "daily_budget",
-                    "Este objeto usa orçamento total (lifetime_budget); a Meta não troca o tipo depois de criado.",
+                    "This object uses a lifetime budget (lifetime_budget); Meta does not change the type after creation.",
                 ));
             }
             changes.push(("daily_budget", money("daily_budget", d)?));
@@ -182,7 +182,7 @@ fn budget_changes(
             if has_budget(obj, "daily_budget") {
                 return Err(invalid(
                     "lifetime_budget",
-                    "Este objeto usa orçamento diário (daily_budget); a Meta não troca o tipo depois de criado.",
+                    "This object uses a daily budget (daily_budget); Meta does not change the type after creation.",
                 ));
             }
             changes.push(("lifetime_budget", money("lifetime_budget", l)?));
@@ -200,10 +200,10 @@ struct UpdateCampaignInput {
     campaign_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// ACTIVE, PAUSED ou ARCHIVED.
+    /// ACTIVE, PAUSED or ARCHIVED.
     #[serde(default)]
     status: Option<Status>,
-    /// Orçamento diário da campanha (só com orçamento de campanha), na moeda da conta.
+    /// Campaign daily budget (only with a campaign budget), in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     daily_budget: Option<Decimal>,
@@ -213,7 +213,7 @@ struct UpdateCampaignInput {
     /// LOWEST_COST_WITHOUT_CAP, LOWEST_COST_WITH_BID_CAP, COST_CAP...
     #[serde(default)]
     bid_strategy: Option<String>,
-    /// Limite de gasto da campanha, na moeda da conta.
+    /// Campaign spend cap, in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     spend_cap: Option<Decimal>,
@@ -226,8 +226,8 @@ impl WriteTool for UpdateCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateCampaignInput>(
             "update_campaign",
-            "Altera nome, status, orçamento (de campanha), estratégia de lance ou limite de \
-             gasto de uma campanha.",
+            "Changes the name, status, (campaign) budget, bid strategy or spend cap of a \
+             campaign.",
             ToolGroup::Edit,
             true,
         )
@@ -239,7 +239,7 @@ impl WriteTool for UpdateCampaign {
         let obj = get_object(
             ctx,
             "update_campaign",
-            "Campanha",
+            "Campaign",
             &i.campaign_id,
             &object_fields(ObjectKind::Campaign),
         )
@@ -262,7 +262,7 @@ impl WriteTool for UpdateCampaign {
             };
             return Err(invalid(
                 field,
-                "Esta campanha não usa orçamento de campanha; mude o orçamento nos ad sets.",
+                "This campaign does not use a campaign budget; change the budget on its ad sets.",
             ));
         }
         budget_changes(&obj, i.daily_budget, i.lifetime_budget, &mut changes)?;
@@ -277,7 +277,7 @@ impl WriteTool for UpdateCampaign {
             &obj,
             &i.campaign_id,
             ObjectKind::Campaign,
-            "a campanha",
+            "campaign",
             changes,
         )
     }
@@ -291,10 +291,10 @@ struct UpdateAdsetInput {
     adset_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// ACTIVE, PAUSED ou ARCHIVED.
+    /// ACTIVE, PAUSED or ARCHIVED.
     #[serde(default)]
     status: Option<Status>,
-    /// Na moeda da conta. A Meta só permite 4 mudanças de orçamento por hora por ad set.
+    /// In the account currency. Meta allows only 4 budget changes per hour per ad set.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     daily_budget: Option<Decimal>,
@@ -303,11 +303,11 @@ struct UpdateAdsetInput {
     lifetime_budget: Option<Decimal>,
     #[serde(default)]
     bid_strategy: Option<String>,
-    /// Lance máximo/alvo, na moeda da conta.
+    /// Maximum/target bid, in the account currency.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     bid_amount: Option<Decimal>,
-    /// targeting_spec completo: substitui o público inteiro.
+    /// Full targeting_spec: replaces the whole audience.
     #[serde(default)]
     targeting: Option<Value>,
     /// ISO 8601.
@@ -324,8 +324,8 @@ impl WriteTool for UpdateAdset {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateAdsetInput>(
             "update_adset",
-            "Altera nome, status, orçamento, lance, público ou agenda de um ad set. O \
-             orçamento só pode mudar 4 vezes por hora.",
+            "Changes the name, status, budget, bid, audience or schedule of an ad set. The \
+             budget can change only 4 times per hour.",
             ToolGroup::Edit,
             true,
         )
@@ -360,7 +360,7 @@ impl WriteTool for UpdateAdset {
             if !t["geo_locations"].is_object() {
                 return Err(invalid(
                     "targeting",
-                    "Informe ao menos um local em targeting.geo_locations.",
+                    "Provide at least one location in targeting.geo_locations.",
                 ));
             }
             changes.push(("targeting", t));
@@ -371,14 +371,7 @@ impl WriteTool for UpdateAdset {
         if let Some(t) = i.end_time {
             changes.push(("end_time", json!(t)));
         }
-        edit_plan(
-            ctx,
-            &obj,
-            &i.adset_id,
-            ObjectKind::AdSet,
-            "o ad set",
-            changes,
-        )
+        edit_plan(ctx, &obj, &i.adset_id, ObjectKind::AdSet, "ad set", changes)
     }
 }
 
@@ -390,10 +383,10 @@ struct UpdateAdInput {
     ad_id: String,
     #[serde(default)]
     name: Option<String>,
-    /// ACTIVE, PAUSED ou ARCHIVED.
+    /// ACTIVE, PAUSED or ARCHIVED.
     #[serde(default)]
     status: Option<Status>,
-    /// Troca o criativo do anúncio.
+    /// Replaces the ad's creative.
     #[serde(default)]
     creative_id: Option<String>,
 }
@@ -405,7 +398,7 @@ impl WriteTool for UpdateAd {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<UpdateAdInput>(
             "update_ad",
-            "Altera nome ou status de um anúncio, ou troca o criativo dele.",
+            "Changes the name or status of an ad, or replaces its creative.",
             ToolGroup::Edit,
             true,
         )
@@ -417,7 +410,7 @@ impl WriteTool for UpdateAd {
         let obj = get_object(
             ctx,
             "update_ad",
-            "Anúncio",
+            "Ad",
             &i.ad_id,
             &object_fields(ObjectKind::Ad),
         )
@@ -432,6 +425,6 @@ impl WriteTool for UpdateAd {
         if let Some(c) = i.creative_id {
             changes.push(("creative", json!(c)));
         }
-        edit_plan(ctx, &obj, &i.ad_id, ObjectKind::Ad, "o anúncio", changes)
+        edit_plan(ctx, &obj, &i.ad_id, ObjectKind::Ad, "ad", changes)
     }
 }

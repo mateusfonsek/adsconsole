@@ -1,5 +1,5 @@
-//! Conexões da Meta: login no navegador (app em modo de desenvolvimento) ou token
-//! colado (System User). As funções aqui são as que a UI chama.
+//! Meta connections: browser login (app in development mode) or a pasted token
+//! (System User). The functions here are the ones the UI calls.
 
 use std::io;
 use std::time::Duration;
@@ -21,19 +21,19 @@ use crate::error::{ToolError, codes};
 pub(crate) const APP_SECRET: &str = "app_secret";
 pub(crate) const ACCESS_TOKEN: &str = "access_token";
 const LOGIN_WAIT: Duration = Duration::from_secs(300);
-/// Aviso de vencimento a partir de quantos dias antes.
+/// How many days before expiry the warning starts.
 pub const EXPIRY_WARNING_DAYS: i64 = 7;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MetaConnKind {
-    /// Token de usuário obtido pelo login no navegador (ou colado).
+    /// User token obtained through the browser login (or pasted).
     Login,
-    /// Token de System User colado.
+    /// Pasted System User token.
     SystemUser,
 }
 
-/// O `extra` de uma conexão da Meta em `connections_meta`.
+/// The `extra` of a Meta connection in `connections_meta`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectionExtra {
     pub kind: MetaConnKind,
@@ -43,7 +43,7 @@ pub struct ConnectionExtra {
     pub config_id: Option<String>,
     #[serde(default)]
     pub user_id: Option<String>,
-    /// Página de retorno do login (app publicado); reusada ao reconectar.
+    /// Login return page (published app); reused on reconnect.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub relay_url: Option<String>,
 }
@@ -51,19 +51,19 @@ pub struct ConnectionExtra {
 impl ConnectionExtra {
     pub fn from_meta(meta: &ConnectionMeta) -> Result<ConnectionExtra, ToolError> {
         serde_json::from_value(meta.extra.clone())
-            .map_err(|e| internal(format!("extra da conexão {}: {e}", meta.connection_id)))
+            .map_err(|e| internal(format!("extra of connection {}: {e}", meta.connection_id)))
     }
 }
 
-/// Pedido de conexão por login no navegador.
+/// Connection request through the browser login.
 pub struct AddMetaLogin {
     pub name: String,
     pub app: AppCreds,
-    /// Porta do loopback; `0` escolhe uma livre.
+    /// Loopback port; `0` picks a free one.
     pub port: u16,
 }
 
-/// Pedido de conexão por token colado (System User ou usuário).
+/// Connection request through a pasted token (System User or user).
 pub struct AddMetaToken {
     pub name: String,
     pub access_token: Secret,
@@ -74,17 +74,17 @@ pub struct AddMetaToken {
 fn check_name(name: &str) -> Result<(), ToolError> {
     if name.trim().is_empty() {
         return Err(
-            ToolError::new(codes::INVALID_INPUT, "Dê um nome para a conexão.").with_field("name"),
+            ToolError::new(codes::INVALID_INPUT, "Give the connection a name.").with_field("name"),
         );
     }
     Ok(())
 }
 
-/// Recusa token inválido ou sem as permissões necessárias.
+/// Rejects a token that is invalid or lacks the required permissions.
 fn check_token(info: &TokenInfo) -> Result<(), ToolError> {
     if !info.is_valid {
         return Err(
-            ToolError::new(codes::INVALID_INPUT, "O token informado não é válido.")
+            ToolError::new(codes::INVALID_INPUT, "The provided token is not valid.")
                 .with_field("access_token"),
         );
     }
@@ -92,18 +92,18 @@ fn check_token(info: &TokenInfo) -> Result<(), ToolError> {
     if !missing.is_empty() {
         return Err(ToolError::new(
             codes::ACCESS_DENIED,
-            format!("Faltam permissões no token: {}.", missing.join(", ")),
+            format!("The token is missing permissions: {}.", missing.join(", ")),
         )
         .with_suggestion(
-            "Inclua essas permissões na configuração do Login do Facebook para Empresas \
-             (ou no token do System User) e conecte de novo.",
+            "Add these permissions to the Facebook Login for Business configuration \
+             (or to the System User token) and connect again.",
         ));
     }
     Ok(())
 }
 
-/// Grava os segredos e a linha de `connections_meta` (status `Ok`). Em erro, apaga os
-/// segredos já gravados.
+/// Stores the secrets and the `connections_meta` row (status `Ok`). On error, deletes the
+/// secrets already stored.
 pub fn save_connection(
     adapter: &MetaAdapter,
     connection_id: &str,
@@ -161,7 +161,7 @@ fn delete_secrets(adapter: &MetaAdapter, connection_id: &str) {
             .secrets()
             .delete(&connection_secret_key(connection_id, name))
         {
-            tracing::warn!(connection_id, error = %e, "falha ao apagar segredo");
+            tracing::warn!(connection_id, error = %e, "failed to delete secret");
         }
     }
 }
@@ -170,7 +170,7 @@ fn new_connection_id() -> String {
     format!("m_{}", uuid::Uuid::now_v7().simple())
 }
 
-/// Lista as contas da conexão recém-gravada e preenche o cache; em falha, desfaz a conexão.
+/// Lists the accounts of the newly stored connection and fills the cache; on failure, undoes the connection.
 async fn finish_add(
     adapter: &MetaAdapter,
     meta: ConnectionMeta,
@@ -185,14 +185,14 @@ async fn finish_add(
         }
         Err(e) => {
             if let Err(cleanup) = remove_meta_connection(adapter, &meta.connection_id) {
-                tracing::warn!(error = %cleanup.message, "falha ao desfazer a conexão");
+                tracing::warn!(error = %cleanup.message, "failed to undo the connection");
             }
             Err(e)
         }
     }
 }
 
-/// Login no navegador → token de longa duração → `debug_token` → grava → lista as contas.
+/// Browser login → long-lived token → `debug_token` → store → list the accounts.
 pub async fn add_meta_login_connection(
     adapter: &MetaAdapter,
     req: AddMetaLogin,
@@ -202,14 +202,14 @@ pub async fn add_meta_login_connection(
     let endpoints = adapter.endpoints();
     let token = login(endpoints, &req.app, req.port, open, LOGIN_WAIT)
         .await
-        .map_err(|e| translate_in(e, None, "conectar"))?;
+        .map_err(|e| translate_in(e, None, "connect"))?;
     let info = debug_token(
         endpoints,
         &token,
         Some((&req.app.app_id, &req.app.app_secret)),
     )
     .await
-    .map_err(|e| translate_in(e, None, "conectar"))?;
+    .map_err(|e| translate_in(e, None, "connect"))?;
     check_token(&info)?;
     let extra = ConnectionExtra {
         kind: MetaConnKind::Login,
@@ -231,7 +231,7 @@ pub async fn add_meta_login_connection(
     finish_add(adapter, meta).await
 }
 
-/// Token colado: `debug_token` → grava → lista as contas.
+/// Pasted token: `debug_token` → store → list the accounts.
 pub async fn add_meta_token_connection(
     adapter: &MetaAdapter,
     req: AddMetaToken,
@@ -243,7 +243,7 @@ pub async fn add_meta_token_connection(
     };
     let info = debug_token(adapter.endpoints(), &req.access_token, app)
         .await
-        .map_err(|e| translate_in(e, None, "conectar"))?;
+        .map_err(|e| translate_in(e, None, "connect"))?;
     check_token(&info)?;
     let extra = ConnectionExtra {
         kind: if info.kind == TokenKind::SystemUser {
@@ -269,7 +269,7 @@ pub async fn add_meta_token_connection(
     finish_add(adapter, meta).await
 }
 
-/// Refaz o login de uma conexão por login no navegador e troca o token.
+/// Repeats the browser login of a login connection and replaces the token.
 pub async fn reconnect_meta_connection(
     adapter: &MetaAdapter,
     connection_id: &str,
@@ -282,9 +282,9 @@ pub async fn reconnect_meta_connection(
     else {
         return Err(ToolError::new(
             codes::INVALID_STATE,
-            "Conexões por token de System User são renovadas colando um token novo.",
+            "System User token connections are renewed by pasting a new token.",
         )
-        .with_suggestion("Use a opção de trocar o token da conexão."));
+        .with_suggestion("Use the option to replace the connection's token."));
     };
     let app = AppCreds {
         app_id,
@@ -295,10 +295,10 @@ pub async fn reconnect_meta_connection(
     let endpoints = adapter.endpoints();
     let token = login(endpoints, &app, port, open, LOGIN_WAIT)
         .await
-        .map_err(|e| translate_in(e, None, "reconectar"))?;
+        .map_err(|e| translate_in(e, None, "reconnect"))?;
     let info = debug_token(endpoints, &token, Some((&app.app_id, &app.app_secret)))
         .await
-        .map_err(|e| translate_in(e, None, "reconectar"))?;
+        .map_err(|e| translate_in(e, None, "reconnect"))?;
     check_token(&info)?;
     let meta = save_connection(
         adapter,
@@ -313,12 +313,12 @@ pub async fn reconnect_meta_connection(
         info.expires_at,
     )?;
     if let Err(e) = adapter.refresh_accounts(Some(connection_id)).await {
-        tracing::warn!(connection_id, error = %e.message, "falha ao atualizar as contas");
+        tracing::warn!(connection_id, error = %e.message, "failed to refresh the accounts");
     }
     Ok(meta)
 }
 
-/// Troca o token de qualquer conexão por um colado, depois de validá-lo.
+/// Replaces the token of any connection with a pasted one, after validating it.
 pub async fn replace_meta_token(
     adapter: &MetaAdapter,
     connection_id: &str,
@@ -332,7 +332,7 @@ pub async fn replace_meta_token(
     };
     let info = debug_token(adapter.endpoints(), &token, app)
         .await
-        .map_err(|e| translate_in(e, None, "trocar o token"))?;
+        .map_err(|e| translate_in(e, None, "replace the token"))?;
     check_token(&info)?;
     let meta = save_connection(
         adapter,
@@ -344,7 +344,7 @@ pub async fn replace_meta_token(
         info.expires_at,
     )?;
     if let Err(e) = adapter.refresh_accounts(Some(connection_id)).await {
-        tracing::warn!(connection_id, error = %e.message, "falha ao atualizar as contas");
+        tracing::warn!(connection_id, error = %e.message, "failed to refresh the accounts");
     }
     Ok(meta)
 }
@@ -359,7 +359,7 @@ pub fn remove_meta_connection(adapter: &MetaAdapter, connection_id: &str) -> Res
     Ok(())
 }
 
-/// Conexões da Meta cujo token vence em até 7 dias (ou já venceu).
+/// Meta connections whose token expires within 7 days (or already expired).
 pub fn expiring_connections(db: &Db, now: DateTime<Utc>) -> Result<Vec<ConnectionMeta>, ToolError> {
     let limit = now + chrono::Duration::days(EXPIRY_WARNING_DAYS);
     Ok(db
@@ -370,7 +370,7 @@ pub fn expiring_connections(db: &Db, now: DateTime<Utc>) -> Result<Vec<Connectio
         .collect())
 }
 
-/// Texto do aviso de vencimento, ou `None` se faltam mais de 7 dias (ou não vence).
+/// Text of the expiry warning, or `None` if more than 7 days remain (or it never expires).
 pub(crate) fn token_warning(
     expires_at: Option<DateTime<Utc>>,
     now: DateTime<Utc>,
@@ -379,15 +379,15 @@ pub(crate) fn token_warning(
     let date = at.format("%d/%m/%Y");
     if at <= now {
         return Some(format!(
-            "O acesso desta conexão à Meta venceu em {date}. Reconecte em AdsConsole → Conexões."
+            "This connection's Meta access expired on {date}. Reconnect it in AdsConsole → Connections."
         ));
     }
     let secs = (at - now).num_seconds();
     let days = (secs + 86_399) / 86_400;
     (days <= EXPIRY_WARNING_DAYS).then(|| {
-        let unit = if days == 1 { "dia" } else { "dias" };
+        let unit = if days == 1 { "day" } else { "days" };
         format!(
-            "O acesso desta conexão à Meta vence em {date} ({days} {unit}). Reconecte em AdsConsole → Conexões."
+            "This connection's Meta access expires on {date} ({days} {unit}). Reconnect it in AdsConsole → Connections."
         )
     })
 }

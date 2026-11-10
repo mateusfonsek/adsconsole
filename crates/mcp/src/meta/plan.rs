@@ -1,7 +1,7 @@
-//! Escrita genérica da Meta: um [`MetaPlan`] descreve passos em sequência (criar,
-//! atualizar, apagar), com referências `$ref:<key>` aos objetos criados antes, e os
-//! campos a observar. Daqui saem validate_only, snapshot, execução com progresso e
-//! rollback compensatório, estado atual e a operação inversa.
+//! Generic Meta write: a [`MetaPlan`] describes sequential steps (create, update,
+//! delete), with `$ref:<key>` references to objects created earlier, and the fields to
+//! watch. From it come validate_only, snapshot, execution with progress and
+//! compensating rollback, current state and the inverse operation.
 
 use std::collections::BTreeMap;
 
@@ -26,14 +26,14 @@ pub(crate) const RESTORE_FIELDS: &str = "restore_fields";
 pub(crate) const DELETE_OBJECTS: &str = "delete_objects";
 pub(crate) const DELETE_IMAGE: &str = "delete_image";
 
-/// Quem apaga um objeto criado pelo plano.
+/// Who deletes an object created by the plan.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum Owner {
-    /// Topo de uma árvore: apagado no rollback e no desfazer.
+    /// Top of a tree: deleted on rollback and on undo.
     Root,
-    /// Apagado junto com o pai (`key` de outro `Create` do plano).
+    /// Deleted along with its parent (`key` of another `Create` in the plan).
     Under(String),
-    /// Fica na conta no desfazer (ex.: criativos); só o rollback apaga.
+    /// Stays in the account on undo (e.g. creatives); only rollback deletes it.
     Keep,
 }
 
@@ -41,7 +41,7 @@ pub(crate) enum Owner {
 pub(crate) enum Step {
     Create {
         key: String,
-        /// Relativo à raiz do Graph, ex.: `act_1/campaigns`.
+        /// Relative to the Graph root, e.g. `act_1/campaigns`.
         path: String,
         params: Map<String, Value>,
         owner: Owner,
@@ -60,13 +60,13 @@ pub(crate) struct FieldChange {
     pub object_id: String,
     pub kind: ObjectKind,
     pub field: &'static str,
-    /// Normalizado (formato das ferramentas).
+    /// Normalized (tool format).
     pub value: Value,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Watch {
-    /// Id real ou `$ref:<key>`.
+    /// Real id or `$ref:<key>`.
     pub object_id: String,
     pub kind: ObjectKind,
     pub fields: Vec<&'static str>,
@@ -80,7 +80,7 @@ pub(crate) enum InverseSpec {
     None,
 }
 
-/// Escritas que não são uma sequência de POSTs simples.
+/// Writes that are not a sequence of plain POSTs.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum DirectExec {
     GraphPost {
@@ -100,7 +100,7 @@ pub(crate) enum DirectExec {
         object_id: String,
         kind: ObjectKind,
         params: Map<String, Value>,
-        /// Mais de 3 anúncios: requisição assíncrona com polling.
+        /// More than 3 ads: async request with polling.
         asynchronous: bool,
     },
 }
@@ -114,7 +114,7 @@ pub(crate) struct MetaPlan {
     pub watch: Vec<Watch>,
     pub inverse: InverseSpec,
     pub direct: Option<DirectExec>,
-    /// Ids de ad sets cujo orçamento muda (limite de 4 por hora).
+    /// Ids of ad sets whose budget changes (limit of 4 per hour).
     pub budget_objects: Vec<String>,
 }
 
@@ -154,13 +154,13 @@ fn step_has_ref(step: &Step) -> bool {
     }
 }
 
-/// Troca `$ref:<key>` pelos ids reais em qualquer string.
+/// Replaces `$ref:<key>` with the real ids in any string.
 fn resolve_str(s: &str, refs: &BTreeMap<String, String>) -> String {
     if !s.contains(REF_PREFIX) {
         return s.to_string();
     }
     let mut out = s.to_string();
-    // Chaves mais longas primeiro: `$ref:ad_1_1` não pode virar `<id de ad_1>_1`.
+    // Longest keys first: `$ref:ad_1_1` must not become `<id of ad_1>_1`.
     let mut keys: Vec<&String> = refs.keys().collect();
     keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
     for k in keys {
@@ -188,7 +188,7 @@ fn resolve_map(m: &Map<String, Value>, refs: &BTreeMap<String, String>) -> Map<S
         .collect()
 }
 
-/// Regras locais + validate_only dos passos que não dependem de objetos do plano.
+/// Local rules + validate_only of the steps that do not depend on objects of the plan.
 pub(crate) async fn validate(
     ctx: &Ctx,
     tool: &str,
@@ -213,7 +213,7 @@ pub(crate) async fn validate(
                     p.insert("execution_options".into(), json!(["validate_only"]));
                     ctx.client.post(id, &p, WriteKind::Validate).await
                 }
-                // Só um id simples dá para conferir com GET (o vídeo sai por `advideos?video_id=`).
+                // Only a plain id can be checked with GET (the video is deleted via `advideos?video_id=`).
                 Step::Delete { id } if id.contains(['/', '?']) => continue,
                 Step::Delete { id } => ctx.client.get(id, &[("fields", "id".into())]).await,
             };
@@ -226,8 +226,8 @@ pub(crate) async fn validate(
     }
     if deferred {
         warnings.push(
-            "A Meta só valida os passos seguintes na hora de criar; se algum falhar, o que já \
-             foi criado é apagado."
+            "Meta validates the next steps only at creation time; if one fails, what was already \
+             created is deleted."
                 .into(),
         );
     }
@@ -240,10 +240,10 @@ pub(crate) async fn validate(
     })
 }
 
-/// Mudanças de orçamento por ad set por hora (limite da Meta).
+/// Budget changes per ad set per hour (Meta limit).
 const BUDGET_CHANGES_PER_HOUR: usize = 4;
 
-/// Recusa a 5ª mudança de orçamento de um ad set dentro de uma hora, antes da API.
+/// Rejects the 5th budget change of an ad set within one hour, before calling the API.
 fn check_budget_limit(ctx: &Ctx, plan: &MetaPlan) -> Result<(), ToolError> {
     let now = chrono::Utc::now();
     for id in &plan.budget_objects {
@@ -264,7 +264,7 @@ fn check_budget_limit(ctx: &Ctx, plan: &MetaPlan) -> Result<(), ToolError> {
             return Err(ToolError::new(
                 codes::BUDGET_CHANGE_LIMIT,
                 format!(
-                    "A Meta só permite 4 mudanças de orçamento por hora neste ad set. A próxima fica liberada às {free_at}."
+                    "Meta allows only 4 budget changes per hour on this ad set. The next one is allowed at {free_at}."
                 ),
             )
             .with_field(field)
@@ -274,7 +274,7 @@ fn check_budget_limit(ctx: &Ctx, plan: &MetaPlan) -> Result<(), ToolError> {
     Ok(())
 }
 
-/// Lê `fields` de `id` e normaliza (`{campo: valor}`).
+/// Reads `fields` of `id` and normalizes them (`{field: value}`).
 async fn read_fields(
     ctx: &Ctx,
     tool: &str,
@@ -284,7 +284,7 @@ async fn read_fields(
 ) -> Result<Map<String, Value>, ToolError> {
     let defs: Vec<&fields::EditableField> = names
         .iter()
-        .map(|n| fields::find(n, kind).ok_or_else(|| internal(format!("campo {n} em {kind:?}"))))
+        .map(|n| fields::find(n, kind).ok_or_else(|| internal(format!("field {n} in {kind:?}"))))
         .collect::<Result<_, _>>()?;
     let wanted = defs.iter().map(|f| f.read).collect::<Vec<_>>().join(",");
     let obj = ctx
@@ -298,7 +298,7 @@ async fn read_fields(
         .collect())
 }
 
-/// `{id: {campo: valor}}` dos campos que o plano altera, antes da mudança.
+/// `{id: {field: value}}` of the fields the plan changes, before the change.
 pub(crate) async fn snapshot(ctx: &Ctx, tool: &str, plan: &MetaPlan) -> Result<Value, ToolError> {
     let mut by_object: BTreeMap<(String, &'static str), (ObjectKind, Vec<&'static str>)> =
         BTreeMap::new();
@@ -320,7 +320,7 @@ pub(crate) async fn snapshot(ctx: &Ctx, tool: &str, plan: &MetaPlan) -> Result<V
     Ok(Value::Object(out))
 }
 
-/// Watch com os ids já resolvidos, no formato guardado em `InverseOp.target`.
+/// Watch with the ids already resolved, in the format stored in `InverseOp.target`.
 fn watch_target(watch: &[Watch], refs: &BTreeMap<String, String>) -> Value {
     Value::Array(
         watch
@@ -336,13 +336,13 @@ fn watch_target(watch: &[Watch], refs: &BTreeMap<String, String>) -> Value {
     )
 }
 
-/// Lê os objetos de um target (`{"watch": [...]}`) no formato de `after`.
+/// Reads the objects of a target (`{"watch": [...]}`) in the `after` format.
 pub(crate) async fn current_state(
     ctx: &Ctx,
     tool: &str,
     target: &Value,
 ) -> Result<Value, ToolError> {
-    // Imagem não muda depois de enviada: o estado é o que foi gravado no envio.
+    // An image does not change after upload: its state is what was stored at upload.
     if let Some(image) = target.get("image") {
         return Ok(image.clone());
     }
@@ -350,9 +350,9 @@ pub(crate) async fn current_state(
     for w in target["watch"].as_array().cloned().unwrap_or_default() {
         let id = w["object_id"]
             .as_str()
-            .ok_or_else(|| internal("watch sem object_id"))?;
+            .ok_or_else(|| internal("watch without object_id"))?;
         let kind = parse_kind(w["kind"].as_str().unwrap_or_default())
-            .ok_or_else(|| internal("watch sem kind"))?;
+            .ok_or_else(|| internal("watch without kind"))?;
         let names: Vec<&'static str> = w["fields"]
             .as_array()
             .map(|a| {
@@ -386,15 +386,15 @@ fn progress_value(created: &[Created]) -> Value {
     )
 }
 
-/// Tipo do objeto pelo caminho da criação (`act_1/adsets` → `adset`).
+/// Object type from the creation path (`act_1/adsets` → `adset`).
 fn kind_of_path(path: &str) -> String {
     let edge = path.rsplit('/').next().unwrap_or(path);
     edge.strip_suffix('s').unwrap_or(edge).to_string()
 }
 
-/// Ids a apagar, em ordem inversa de criação. No rollback (`all`), tudo o que foi
-/// criado, filho por filho; no desfazer, só o topo de cada árvore (apagar a campanha
-/// apaga ad sets e anúncios) e nada do que é `Keep`.
+/// Ids to delete, in reverse creation order. On rollback (`all`), everything that was
+/// created, child by child; on undo, only the top of each tree (deleting the campaign
+/// deletes its ad sets and ads) and nothing that is `Keep`.
 fn deletable(created: &[Created], all: bool) -> Vec<String> {
     let keys: Vec<&str> = created.iter().map(|c| c.key.as_str()).collect();
     created
@@ -411,7 +411,7 @@ fn deletable(created: &[Created], all: bool) -> Vec<String> {
         .collect()
 }
 
-/// Nome que o passo daria ao objeto, para as mensagens.
+/// Name the step would give the object, for messages.
 fn step_name(step: &Step) -> Option<String> {
     let params = match step {
         Step::Create { params, .. } | Step::Update { params, .. } => params,
@@ -430,7 +430,7 @@ fn step_label(step: &Step, refs: &BTreeMap<String, String>) -> String {
     }
 }
 
-/// Apaga o que foi criado; devolve (apagados, órfãos).
+/// Deletes what was created; returns (deleted, orphans).
 async fn rollback(ctx: &Ctx, created: &[Created]) -> (Vec<String>, Vec<String>) {
     let mut done = Vec::new();
     let mut orphans = Vec::new();
@@ -439,7 +439,7 @@ async fn rollback(ctx: &Ctx, created: &[Created]) -> (Vec<String>, Vec<String>) 
         match client.delete(&id).await {
             Ok(_) => done.push(id),
             Err(e) => {
-                tracing::error!(object_id = id.as_str(), error = %e, "rollback falhou");
+                tracing::error!(object_id = id.as_str(), error = %e, "rollback failed");
                 orphans.push(id);
             }
         }
@@ -464,7 +464,7 @@ fn merge_details(mut err: ToolError, extra: Value) -> ToolError {
     err
 }
 
-/// Erro de um passo, depois do rollback.
+/// Error of a step, after the rollback.
 async fn fail_step(
     ctx: &Ctx,
     tool: &str,
@@ -486,7 +486,7 @@ async fn fail_step(
     if maybe {
         let name = step_name(step).unwrap_or_else(|| label.clone());
         err.message = format!(
-            "A Meta não confirmou o passo {label} ('{name}'); confira na conta se esse objeto foi criado."
+            "Meta did not confirm step {label} ('{name}'); check in the account whether this object was created."
         );
     }
     let (rolled_back, orphans) = rollback(ctx, created).await;
@@ -494,7 +494,7 @@ async fn fail_step(
         let cause = serde_json::to_value(&err).unwrap_or(Value::Null);
         return ToolError::new(
             codes::PARTIAL_ROLLBACK,
-            "A criação falhou e não deu para apagar tudo o que já tinha sido criado.",
+            "The creation failed and not everything already created could be deleted.",
         )
         .with_details(json!({
             "orphaned_ids": orphans,
@@ -502,7 +502,7 @@ async fn fail_step(
             "failed_step": label,
             "cause": cause,
         }))
-        .with_suggestion("Apague esses objetos pelo Gerenciador de Anúncios.");
+        .with_suggestion("Delete these objects in Ads Manager.");
     }
     merge_details(
         err,
@@ -510,7 +510,7 @@ async fn fail_step(
     )
 }
 
-/// `after` lido; se a leitura falhar, o esperado pelos parâmetros dos passos.
+/// `after` as read; if the read fails, the value expected from the step parameters.
 async fn read_after(
     ctx: &Ctx,
     tool: &str,
@@ -521,7 +521,7 @@ async fn read_after(
     match current_state(ctx, tool, target).await {
         Ok(v) => v,
         Err(e) => {
-            tracing::warn!(error = %e.message, "falha ao ler o estado depois; usando o esperado");
+            tracing::warn!(error = %e.message, "failed to read the state after; using the expected one");
             expected_after(plan, refs)
         }
     }
@@ -557,7 +557,7 @@ fn expected_after(plan: &MetaPlan, refs: &BTreeMap<String, String>) -> Value {
     Value::Object(out)
 }
 
-/// Tipos dos objetos do `before`, para a inversa converter os valores.
+/// Types of the `before` objects, so the inverse can convert the values.
 fn kinds_of(plan: &MetaPlan) -> Value {
     let mut m = Map::new();
     for fc in &plan.field_changes {
@@ -566,7 +566,7 @@ fn kinds_of(plan: &MetaPlan) -> Value {
     Value::Object(m)
 }
 
-/// O plano preenche algum campo que estava vazio no "antes"?
+/// Does the plan fill any field that was empty in "before"?
 fn filled_empty(plan: &MetaPlan, before: &Value) -> bool {
     plan.field_changes
         .iter()
@@ -580,8 +580,8 @@ pub(crate) async fn execute(
     before: &Value,
     progress: &dyn Progress,
 ) -> Result<Applied, ToolError> {
-    // De novo aqui, sob o mutex da conta: no modo aprovação (e em chamadas
-    // concorrentes) o `validate` contou antes das outras mudanças entrarem.
+    // Again here, under the account mutex: in approval mode (and in concurrent calls)
+    // `validate` counted before the other changes went in.
     check_budget_limit(ctx, plan)?;
     match &plan.direct {
         Some(DirectExec::GraphPost { path, params }) => {
@@ -599,9 +599,9 @@ pub(crate) async fn execute(
             let bytes = load_image(source)
                 .await
                 .map_err(|e| translate(e, Some(ctx), tool))?;
-            // A Meta reaproveita imagens iguais: se a imagem já estava na biblioteca, o
-            // envio devolve a mesma, e o desfazer apagaria a do usuário. A imagem é nova só
-            // se a biblioteca diz que ela foi criada agora (com folga para o relógio).
+            // Meta reuses identical images: if the image was already in the library, the
+            // upload returns that one, and undo would delete the user's image. The image is
+            // new only if the library says it was created just now (with clock slack).
             let started = chrono::Utc::now() - chrono::Duration::minutes(2);
             let mut out = upload_image(&ctx.client, &ctx.account_id, &bytes, name.as_deref())
                 .await
@@ -613,21 +613,21 @@ pub(crate) async fn execute(
                     .unwrap_or(None),
                 None => None,
             };
-            let aviso = match created {
+            let notice = match created {
                 Some(t) if t >= started => None,
                 Some(_) => Some(
-                    "A imagem já estava na biblioteca da conta (a Meta reaproveita imagens \
-                     iguais); o desfazer não a apaga.",
+                    "The image was already in the account library (Meta reuses identical \
+                     images); undo does not delete it.",
                 ),
                 None => Some(
-                    "Não deu para confirmar que a imagem é nova na biblioteca da conta; o \
-                     desfazer não a apaga.",
+                    "Could not confirm that the image is new in the account library; undo \
+                     does not delete it.",
                 ),
             };
-            if let Some(a) = aviso {
-                out["aviso"] = json!(a);
+            if let Some(a) = notice {
+                out["warning"] = json!(a);
             }
-            let inverse = hash.filter(|_| aviso.is_none()).map(|hash| InverseOp {
+            let inverse = hash.filter(|_| notice.is_none()).map(|hash| InverseOp {
                 tool: DELETE_IMAGE.into(),
                 input: json!({ "hash": hash }),
                 target: json!({ "image": out }),
@@ -688,9 +688,8 @@ pub(crate) async fn execute(
             let Some(id) = out["id"].as_str().map(str::to_string) else {
                 let body = super::scrub(out.clone()).to_string();
                 let body: String = body.chars().take(300).collect();
-                let e = MetaError::Decode(format!(
-                    "a criação de {key} não devolveu id (resposta: {body})"
-                ));
+                let e =
+                    MetaError::Decode(format!("creating {key} returned no id (response: {body})"));
                 return Err(fail_step(ctx, tool, step, &refs, &created, e).await);
             };
             refs.insert(key.clone(), id.clone());
@@ -706,13 +705,13 @@ pub(crate) async fn execute(
     for id in &plan.budget_objects {
         let id = resolve_str(id, &refs);
         if let Err(e) = ctx.db.record_budget_change(&id, chrono::Utc::now()) {
-            tracing::error!(object_id = id.as_str(), error = %e, "falha ao contar a mudança de orçamento");
+            tracing::error!(object_id = id.as_str(), error = %e, "failed to record the budget change");
         }
     }
     let target = json!({ "watch": watch_target(&plan.watch, &refs) });
     let after = read_after(ctx, tool, plan, &target, &refs).await;
     let inverse = match &plan.inverse {
-        // Campo que estava vazio não volta a vazio: sem desfazer (o aviso do plano diz qual).
+        // A field that was empty cannot go back to empty: no undo (the plan warning says which).
         InverseSpec::RestoreFields if filled_empty(plan, before) => None,
         InverseSpec::RestoreFields => Some(InverseOp {
             tool: RESTORE_FIELDS.into(),
@@ -744,7 +743,7 @@ async fn execute_video(
         .await
         .map_err(|e| translate(e, Some(ctx), tool))?;
     progress.created(&json!([{ "key": "video", "id": id, "kind": "video" }]));
-    // Tentativa de limpeza se o processamento falhar (a Meta pode recusar; ver o fim).
+    // Cleanup attempt if processing fails (Meta may refuse; see the end).
     let delete_path = format!("{}/advideos?video_id={id}", ctx.account_id);
     let mut status = "processing";
     if wait_ready {
@@ -757,17 +756,17 @@ async fn execute_video(
                 }
                 Ok(VideoState::Error(m)) => {
                     if let Err(e) = ctx.client.bypass_limiter().delete(&delete_path).await {
-                        tracing::warn!(video_id = id.as_str(), error = %e, "falha ao apagar o vídeo com erro");
+                        tracing::warn!(video_id = id.as_str(), error = %e, "failed to delete the failed video");
                     }
                     return Err(ToolError::new(
                         codes::EXECUTION_FAILED,
-                        format!("A Meta não conseguiu processar o vídeo: {m}"),
+                        format!("Meta could not process the video: {m}"),
                     )
                     .with_details(json!({ "video_id": id })));
                 }
                 Ok(VideoState::Processing { .. }) => {}
                 Err(e) => {
-                    tracing::warn!(video_id = id.as_str(), error = %e, "falha ao ler o status do vídeo")
+                    tracing::warn!(video_id = id.as_str(), error = %e, "failed to read the video status")
                 }
             }
             if tokio::time::Instant::now() + ctx.upload_poll.every > deadline {
@@ -776,15 +775,15 @@ async fn execute_video(
             tokio::time::sleep(ctx.upload_poll.every).await;
         }
     }
-    // Sem desfazer: a Meta não deixa apagar vídeos da conta com as permissões do caso de
-    // uso (#10 em DELETE /act_…/advideos; DELETE /{video_id} pede pages_manage_posts).
+    // No undo: Meta does not allow deleting account videos with the use case's
+    // permissions (#10 on DELETE /act_…/advideos; DELETE /{video_id} requires pages_manage_posts).
     Ok(Applied {
         after: json!({ "video_id": id, "status": status }),
         inverse: None,
     })
 }
 
-/// Chave do id copiado na resposta de `/copies`.
+/// Key of the copied id in the `/copies` response.
 fn copied_key(kind: ObjectKind) -> &'static str {
     match kind {
         ObjectKind::Campaign => "copied_campaign_id",
@@ -805,8 +804,8 @@ fn form_body(params: &Map<String, Value>) -> String {
     ser.finish()
 }
 
-/// Espera a requisição assíncrona terminar; devolve o resultado do `/copies`.
-// VERIFY(v26.0): formato de async_batch_requests e do `result` de cada request.
+/// Waits for the async request to finish; returns the `/copies` result.
+// VERIFY(v26.0): format of async_batch_requests and of each request's `result`.
 async fn wait_async_copy(ctx: &Ctx, tool: &str, set_id: &str) -> Result<Value, ToolError> {
     let deadline = tokio::time::Instant::now() + ctx.upload_poll.max;
     loop {
@@ -836,14 +835,14 @@ async fn wait_async_copy(ctx: &Ctx, tool: &str, set_id: &str) -> Result<Value, T
             }
             return Err(ToolError::new(
                 codes::EXECUTION_FAILED,
-                "A cópia assíncrona terminou com erro na Meta.",
+                "The async copy finished with an error at Meta.",
             )
             .with_details(json!({ "async_request_set_id": set_id, "result": result })));
         }
         if tokio::time::Instant::now() + ctx.upload_poll.every > deadline {
             return Err(ToolError::new(
                 codes::EXECUTION_FAILED,
-                "A cópia ainda está sendo feita pela Meta; confira na conta em alguns minutos.",
+                "Meta is still making the copy; check the account in a few minutes.",
             )
             .with_details(json!({ "async_request_set_id": set_id })));
         }
@@ -864,7 +863,7 @@ async fn execute_copy(
         let mut p = Map::new();
         p.insert(
             "name".into(),
-            json!(format!("AdsConsole cópia de {object_id}")),
+            json!(format!("AdsConsole copy of {object_id}")),
         );
         p.insert(
             "adbatch".into(),
@@ -881,7 +880,7 @@ async fn execute_copy(
             .map_err(|e| translate(e, Some(ctx), tool))?;
         let set_id = out["id"]
             .as_str()
-            .ok_or_else(|| internal("async_batch_requests sem id"))?
+            .ok_or_else(|| internal("async_batch_requests without id"))?
             .to_string();
         wait_async_copy(ctx, tool, &set_id).await?
     } else {
@@ -896,7 +895,7 @@ async fn execute_copy(
         _ => {
             return Err(ToolError::new(
                 codes::EXECUTION_FAILED,
-                "A Meta não devolveu o id da cópia; confira na conta.",
+                "Meta did not return the copy id; check the account.",
             )
             .with_details(json!({ "result": result })));
         }

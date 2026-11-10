@@ -33,9 +33,9 @@ fn engine(h: &MetaHarness) -> Engine {
     .unwrap()
 }
 
-/// Simula a Meta: cada POST de criação devolve um id novo por tipo (c, s, k, a); GET de objeto
-/// devolve nome e status PAUSED; validate_only responde success; `fail` faz o N-ésimo
-/// POST real de `fail_path` dar 400.
+/// Fakes Meta: each create POST returns a new id per type (c, s, k, a); an object GET
+/// returns the name and status PAUSED; validate_only answers success; `fail` makes the
+/// Nth real POST to `fail_path` return 400.
 async fn fake_meta(h: &MetaHarness, fail: Option<(&'static str, usize)>) {
     Mock::given(method("GET"))
         .and(path("/act_111"))
@@ -63,7 +63,7 @@ async fn fake_meta(h: &MetaHarness, fail: Option<(&'static str, usize)>) {
                 && *n == k
             {
                 return ResponseTemplate::new(400).set_body_json(
-                    json!({"error": {"message": "Parâmetro inválido", "code": 100}}),
+                    json!({"error": {"message": "Invalid parameter", "code": 100}}),
                 );
             }
             let prefix = match edge.as_str() {
@@ -109,21 +109,21 @@ async fn real_posts(h: &MetaHarness) -> Vec<(String, BTreeMap<String, String>)> 
 }
 
 fn image_creative() -> Value {
-    json!({"type": "image", "page_id": "p1", "link": "https://loja.example/x", "message": "Compre",
-           "headline": "Oferta", "image_hash": "abc", "call_to_action": "SHOP_NOW"})
+    json!({"type": "image", "page_id": "p1", "link": "https://shop.example/x", "message": "Buy now",
+           "headline": "Offer", "image_hash": "abc", "call_to_action": "SHOP_NOW"})
 }
 
 fn input(adsets: Value) -> Value {
     json!({
         "account_id": "act_111",
-        "campaign": {"name": "Campanha teste", "objective": "OUTCOME_TRAFFIC"},
+        "campaign": {"name": "Test campaign", "objective": "OUTCOME_TRAFFIC"},
         "adsets": adsets,
     })
 }
 
 fn adset(name: &str, ads: usize) -> Value {
     let ads: Vec<Value> = (0..ads)
-        .map(|i| json!({"name": format!("{name} anúncio {i}"), "creative": image_creative()}))
+        .map(|i| json!({"name": format!("{name} ad {i}"), "creative": image_creative()}))
         .collect();
     json!({"name": name, "daily_budget": 30, "optimization_goal": "LINK_CLICKS",
            "targeting": {"geo_locations": {"countries": ["BR"]}}, "ads": ads})
@@ -173,10 +173,10 @@ async fn create_campaign_full_sequence() {
     let spec: Value = serde_json::from_str(&creative["object_story_spec"]).unwrap();
     assert_eq!(spec["page_id"], "p1");
     assert_eq!(spec["link_data"]["image_hash"], "abc");
-    assert_eq!(spec["link_data"]["name"], "Oferta");
+    assert_eq!(spec["link_data"]["name"], "Offer");
     assert_eq!(
         spec["link_data"]["call_to_action"],
-        json!({"type": "SHOP_NOW", "value": {"link": "https://loja.example/x"}})
+        json!({"type": "SHOP_NOW", "value": {"link": "https://shop.example/x"}})
     );
     let (_, ad) = &posts[3];
     assert_eq!(ad["adset_id"], "s1");
@@ -198,31 +198,34 @@ async fn create_campaign_full_sequence() {
     let after = rec.after.unwrap();
     assert_eq!(
         after["c1"],
-        json!({"name": "Campanha teste", "status": "PAUSED"})
+        json!({"name": "Test campaign", "status": "PAUSED"})
     );
     assert_eq!(
         after.as_object().unwrap().len(),
         5,
-        "campanha, 2 ad sets e 2 anúncios"
+        "campaign, 2 ad sets and 2 ads"
     );
     let summary = out["summary"].as_str().unwrap();
     assert!(
-        summary.contains("2 ad sets") && summary.contains("2 anúncios"),
+        summary.contains("2 ad sets") && summary.contains("2 ads"),
         "{summary}"
     );
-    assert!(summary.contains("criativos"), "{summary}");
+    assert!(
+        summary.contains("the creatives stay in the account"),
+        "{summary}"
+    );
 }
 
 #[tokio::test]
 async fn create_without_id_shows_the_response() {
-    // Visto na conta real: o POST do anúncio deu 200 sem `id`. O erro precisa mostrar a
-    // resposta (sem tokens) para dar para entender o que a Meta devolveu.
+    // Seen on the real account: the ad POST returned 200 without `id`. The error must show
+    // the response (without tokens) so it is clear what Meta returned.
     let h = meta_harness().await;
     Mock::given(method("POST"))
         .and(path("/act_111/ads"))
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({
             "success": true,
-            "link": "https://graph.facebook.com/x?access_token=EAAsegredo"
+            "link": "https://graph.facebook.com/x?access_token=EAAsecret"
         })))
         .with_priority(1)
         .mount(&h.server)
@@ -233,7 +236,7 @@ async fn create_without_id_shows_the_response() {
         .await
         .unwrap_err();
     assert!(err.message.contains("success"), "{}", err.message);
-    assert!(!err.message.contains("EAAsegredo"), "{}", err.message);
+    assert!(!err.message.contains("EAAsecret"), "{}", err.message);
 }
 
 #[tokio::test]
@@ -285,7 +288,7 @@ async fn campaign_budget_cbo() {
     assert!(!posts[0].1.contains_key("is_adset_budget_sharing_enabled"));
     assert!(!posts[1].1.contains_key("daily_budget"));
     assert!(
-        out["summary"].as_str().unwrap().contains("100 BRL/dia"),
+        out["summary"].as_str().unwrap().contains("100 BRL/day"),
         "{}",
         out["summary"]
     );
@@ -324,14 +327,14 @@ async fn creative_shapes() {
         .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
     let mut bad_cta = image_creative();
-    bad_cta["call_to_action"] = json!("COMPRE_JA");
+    bad_cta["call_to_action"] = json!("BUY_IT_NOW");
     let err = e
         .call_tool("create_campaign", with(bad_cta), None)
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
     let mut http = image_creative();
-    http["link"] = json!("http://loja.example");
+    http["link"] = json!("http://shop.example");
     let err = e
         .call_tool("create_campaign", with(http), None)
         .await
@@ -339,7 +342,7 @@ async fn creative_shapes() {
     assert_eq!(err.code, codes::INVALID_INPUT);
     assert!(real_posts(&h).await.is_empty());
 
-    // Vídeo com capa e carrossel válidos.
+    // Valid video with thumbnail and carousel.
     e.call_tool(
         "create_campaign",
         with(json!({"type": "video", "page_id": "p1", "instagram_user_id": "ig1", "link": "https://x.example",
@@ -398,7 +401,7 @@ async fn create_campaign_rolls_back_on_ad_failure() {
     assert_ne!(
         err.code,
         codes::PARTIAL_ROLLBACK,
-        "o rollback não pode ser barrado pelo limiter local"
+        "the rollback must not be blocked by the local limiter"
     );
     let d = err.details.unwrap();
     assert_eq!(d["failed_step"], "ad_2_1");
@@ -415,7 +418,7 @@ async fn create_campaign_rolls_back_on_ad_failure() {
     assert_eq!(
         deletes.last().unwrap(),
         "/c1",
-        "a campanha é a última a sair"
+        "the campaign is the last one deleted"
     );
 }
 
@@ -447,7 +450,7 @@ async fn sales_without_promoted_object_warns() {
 
 #[tokio::test]
 async fn engagement_without_promoted_object_warns() {
-    // Na conta real, engajamento sem promoted_object é recusado já no anúncio.
+    // On the real account, engagement without promoted_object is rejected at the ad.
     let h = meta_harness().await;
     fake_meta(&h, None).await;
     let mut config = Config::default();
@@ -498,7 +501,7 @@ async fn create_ad_in_existing_adset() {
     let out = e
         .call_tool(
             "create_ad",
-            json!({"account_id": "act_111", "adset_id": "s5", "name": "Novo anúncio", "creative": image_creative()}),
+            json!({"account_id": "act_111", "adset_id": "s5", "name": "New ad", "creative": image_creative()}),
             None,
         )
         .await
@@ -514,16 +517,16 @@ async fn create_ad_in_existing_adset() {
     assert_eq!(
         rec.inverse.unwrap().input,
         json!({"ids": ["a1"]}),
-        "o criativo fica"
+        "the creative stays"
     );
     e.call_tool("undo_change", json!({"change_id": out["change_id"]}), None)
         .await
         .unwrap();
 
-    // Com criativo existente, só o anúncio.
+    // With an existing creative, only the ad.
     e.call_tool(
         "create_ad",
-        json!({"account_id": "act_111", "adset_id": "s5", "name": "Outro", "creative_id": "k9"}),
+        json!({"account_id": "act_111", "adset_id": "s5", "name": "Other", "creative_id": "k9"}),
         None,
     )
     .await
@@ -581,7 +584,7 @@ async fn default_bid_strategy_without_cap() {
         .unwrap();
     let posts = real_posts(&h).await;
     assert_eq!(posts[1].1["bid_strategy"], "LOWEST_COST_WITHOUT_CAP");
-    // Com bid_amount, fica a estratégia que o usuário escolher (ou a padrão da Meta).
+    // With bid_amount, the user's chosen strategy stays (or Meta's default).
     let h = meta_harness().await;
     fake_meta(&h, None).await;
     let mut s = adset("S1", 1);
@@ -593,7 +596,7 @@ async fn default_bid_strategy_without_cap() {
         .unwrap();
     let posts = real_posts(&h).await;
     assert_eq!(posts[1].1["bid_strategy"], "LOWEST_COST_WITH_BID_CAP");
-    // Com orçamento de campanha, a estratégia vai na campanha.
+    // With a campaign budget, the strategy goes on the campaign.
     let h = meta_harness().await;
     fake_meta(&h, None).await;
     let mut s = adset("S1", 1);

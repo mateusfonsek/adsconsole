@@ -1,5 +1,5 @@
-//! Ferramentas da Meta. Cada uma é uma leitura ([`ReadTool`]) ou uma escrita
-//! ([`WriteTool`], a partir da Task 6), registrada em [`all`].
+//! Meta tools. Each one is a read ([`ReadTool`]) or a write ([`WriteTool`]),
+//! registered in [`all`].
 
 pub(crate) mod accounts;
 pub(crate) mod create;
@@ -29,8 +29,8 @@ pub(crate) trait ReadTool: Send + Sync {
     async fn run(&self, ctx: &Ctx, input: &Value) -> Result<Value, ToolError>;
 }
 
-/// Uma escrita: monta o [`MetaPlan`], refeito em cada etapa (validate, snapshot,
-/// execute), então precisa ser determinístico e sem efeitos colaterais.
+/// A write: builds the [`MetaPlan`], rebuilt at every step (validate, snapshot,
+/// execute), so it must be deterministic and free of side effects.
 #[async_trait::async_trait]
 pub(crate) trait WriteTool: Send + Sync {
     fn spec(&self) -> ToolSpec;
@@ -51,7 +51,7 @@ impl MTool {
     }
 }
 
-/// Ferramentas com conta (as sem conta, como `list_ad_accounts`, ficam no adapter).
+/// Tools with an account (the ones without, like `list_ad_accounts`, live in the adapter).
 pub(crate) fn all() -> Vec<MTool> {
     let mut tools = reports::tools();
     tools.extend(lookup::tools());
@@ -64,7 +64,7 @@ pub(crate) fn all() -> Vec<MTool> {
     tools
 }
 
-/// `path` do Graph precisa ser da conta da chamada (`act_…`) ou um id numérico de objeto.
+/// A Graph `path` must belong to the call's account (`act_…`) or be a numeric object id.
 pub(crate) fn own_path(ctx: &Ctx, path: &str) -> Result<(), ToolError> {
     let first = path
         .trim_start_matches('/')
@@ -78,7 +78,7 @@ pub(crate) fn own_path(ctx: &Ctx, path: &str) -> Result<(), ToolError> {
     Err(ToolError::new(
         codes::INVALID_INPUT,
         format!(
-            "O caminho precisa começar pela conta da chamada ({}) ou por um id de objeto.",
+            "The path must start with the call's account ({}) or with an object id.",
             ctx.account_id
         ),
     )
@@ -87,14 +87,14 @@ pub(crate) fn own_path(ctx: &Ctx, path: &str) -> Result<(), ToolError> {
 
 pub(crate) fn parse_input<T: DeserializeOwned>(input: &Value) -> Result<T, ToolError> {
     serde_json::from_value(input.clone())
-        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Entrada inválida: {e}")))
+        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Invalid input: {e}")))
 }
 
-/// Parâmetros de query que nunca saem numa URL devolvida.
+/// Query parameters that never appear in a returned URL.
 const SECRET_PARAMS: [&str; 2] = ["access_token", "appsecret_proof"];
 
-/// Tira `access_token` e `appsecret_proof` da query de uma URL http(s) (a Meta os põe
-/// em `paging.next`, `ad_snapshot_url` etc.). Outros textos ficam como estão.
+/// Strips `access_token` and `appsecret_proof` from the query of an http(s) URL (Meta puts
+/// them in `paging.next`, `ad_snapshot_url` etc.). Other text is left as is.
 pub(crate) fn without_token(url: &str) -> String {
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return url.to_string();
@@ -121,9 +121,9 @@ pub(crate) fn without_token(url: &str) -> String {
     u.to_string()
 }
 
-/// Tira toda chave `access_token`, em qualquer profundidade (ex.: tokens de Página que
-/// `me/accounts` traz), e os tokens na query de URLs. Toda leitura (e o `graph_post`)
-/// passa o resultado por aqui.
+/// Strips every `access_token` key, at any depth (e.g. the Page tokens that `me/accounts`
+/// returns), and the tokens in URL queries. Every read (and `graph_post`) passes its
+/// result through here.
 pub fn scrub(value: Value) -> Value {
     match value {
         Value::String(s) => Value::String(without_token(&s)),
@@ -138,14 +138,14 @@ pub fn scrub(value: Value) -> Value {
     }
 }
 
-/// `next_cursor` das leituras paginadas: o `after` da Meta e quantos itens pular na página.
+/// `next_cursor` of paginated reads: Meta's `after` and how many items to skip on the page.
 pub(crate) fn encode_cursor(c: &PageCursor) -> String {
     let v = serde_json::json!({ "a": c.after, "s": c.skip });
     URL_SAFE_NO_PAD.encode(v.to_string())
 }
 
 pub(crate) fn decode_cursor(s: &str) -> Result<PageCursor, ToolError> {
-    let bad = || ToolError::new(codes::INVALID_INPUT, "cursor inválido").with_field("cursor");
+    let bad = || ToolError::new(codes::INVALID_INPUT, "Invalid cursor.").with_field("cursor");
     let bytes = URL_SAFE_NO_PAD.decode(s).map_err(|_| bad())?;
     let v: Value = serde_json::from_slice(&bytes).map_err(|_| bad())?;
     Ok(PageCursor {

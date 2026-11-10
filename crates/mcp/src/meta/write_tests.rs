@@ -1,5 +1,5 @@
-//! Testes da escrita genérica da Meta (`MetaPlan`), com ferramentas montadas só para
-//! eles via `MetaAdapter::with_tools`.
+//! Tests of the generic Meta write (`MetaPlan`), with tools built just for them via
+//! `MetaAdapter::with_tools`.
 
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, RwLock};
@@ -46,13 +46,13 @@ fn params(v: Value) -> Map<String, Value> {
     v.as_object().unwrap().clone()
 }
 
-/// Cria campanha → ad set → anúncio, com refs entre eles.
+/// Creates campaign → ad set → ad, with refs between them.
 struct CreateThree;
 
 #[async_trait::async_trait]
 impl WriteTool for CreateThree {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::write::<Value>("teste_cria3", "teste", ToolGroup::Create, true)
+        ToolSpec::write::<Value>("test_create3", "test", ToolGroup::Create, true)
     }
     async fn plan(&self, ctx: &Ctx, _input: &Value) -> Result<MetaPlan, ToolError> {
         let act = &ctx.account_id;
@@ -62,7 +62,7 @@ impl WriteTool for CreateThree {
             fields: vec!["name", "status"],
         };
         Ok(MetaPlan {
-            summary: "Criar 3".into(),
+            summary: "Create 3".into(),
             steps: vec![
                 Step::Create {
                     key: "campaign".into(),
@@ -84,7 +84,7 @@ impl WriteTool for CreateThree {
                     key: "ad".into(),
                     path: format!("{act}/ads"),
                     params: params(
-                        json!({"name": "Anúncio X", "status": "PAUSED", "adset_id": "$ref:adset"}),
+                        json!({"name": "Ad X", "status": "PAUSED", "adset_id": "$ref:adset"}),
                     ),
                     owner: Owner::Under("adset".into()),
                 },
@@ -100,13 +100,13 @@ impl WriteTool for CreateThree {
     }
 }
 
-/// Renomeia uma campanha.
+/// Renames a campaign.
 struct Rename;
 
 #[async_trait::async_trait]
 impl WriteTool for Rename {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::write::<Value>("teste_renomeia", "teste", ToolGroup::Edit, true)
+        ToolSpec::write::<Value>("test_rename", "test", ToolGroup::Edit, true)
     }
     async fn plan(&self, _ctx: &Ctx, input: &Value) -> Result<MetaPlan, ToolError> {
         #[derive(serde::Deserialize)]
@@ -116,7 +116,7 @@ impl WriteTool for Rename {
         }
         let i: In = parse_input(input)?;
         Ok(MetaPlan {
-            summary: format!("Renomear {}", i.campaign_id),
+            summary: format!("Rename {}", i.campaign_id),
             steps: vec![Step::Update {
                 id: i.campaign_id.clone(),
                 params: params(json!({ "name": i.name })),
@@ -174,7 +174,7 @@ async fn harness(extra: Vec<MTool>) -> Harness {
     save_connection(
         &adapter,
         "m_test",
-        "Teste",
+        "Test",
         &Secret::new("T"),
         None,
         &extra,
@@ -186,7 +186,7 @@ async fn harness(extra: Vec<MTool>) -> Harness {
         "m_test",
         &[AccountInfo {
             account_id: "act_111".into(),
-            name: "Conta".into(),
+            name: "Account".into(),
             currency: "BRL".into(),
             timezone: None,
             status: Some("ACTIVE".into()),
@@ -221,7 +221,7 @@ async fn requests(h: &Harness) -> Vec<Request> {
     h.server.received_requests().await.unwrap()
 }
 
-/// Requests que não são o GET do account_status.
+/// Requests other than the account_status GET.
 async fn calls(h: &Harness) -> Vec<String> {
     requests(h)
         .await
@@ -252,7 +252,7 @@ async fn mock_creates(h: &Harness) {
 }
 
 async fn mock_reads(h: &Harness, status: &str) {
-    for (p, name) in [("/c1", "C"), ("/s1", "S"), ("/a1", "Anúncio X")] {
+    for (p, name) in [("/c1", "C"), ("/s1", "S"), ("/a1", "Ad X")] {
         let body = json!({"id": &p[1..], "name": name, "status": status});
         Mock::given(method("GET"))
             .and(path(p))
@@ -265,7 +265,7 @@ async fn mock_reads(h: &Harness, status: &str) {
 async fn call(h: &Harness, tool: &str, input: Value) -> Result<Value, ToolError> {
     let mut input = input;
     input["account_id"] = json!("act_111");
-    h.engine.call_tool(tool, input, Some("teste".into())).await
+    h.engine.call_tool(tool, input, Some("test".into())).await
 }
 
 #[tokio::test]
@@ -273,14 +273,18 @@ async fn validate_only_first_level() {
     let h = harness(vec![]).await;
     mock_creates(&h).await;
     mock_reads(&h, "PAUSED").await;
-    let out = call(&h, "teste_cria3", json!({})).await.unwrap();
+    let out = call(&h, "test_create3", json!({})).await.unwrap();
     assert_eq!(out["status"], "applied");
     let validations: Vec<Request> = requests(&h)
         .await
         .into_iter()
         .filter(|r| form(r).contains_key("execution_options"))
         .collect();
-    assert_eq!(validations.len(), 1, "só a campanha vai ao validate_only");
+    assert_eq!(
+        validations.len(),
+        1,
+        "only the campaign goes to validate_only"
+    );
     assert_eq!(validations[0].url.path(), "/act_111/campaigns");
     assert_eq!(
         form(&validations[0])["execution_options"],
@@ -313,13 +317,16 @@ async fn validate_warning_mentions_dependent_steps() {
     .unwrap();
     mock_creates(&h).await;
     let out = engine
-        .call_tool("teste_cria3", json!({"account_id": "act_111"}), None)
+        .call_tool("test_create3", json!({"account_id": "act_111"}), None)
         .await
         .unwrap();
     assert_eq!(out["status"], "pending");
     let pending = engine.pending().unwrap();
     let warning = pending[0].warning.as_deref().unwrap();
-    assert!(warning.contains("passos seguintes"), "{warning}");
+    assert!(
+        warning.contains("validates the next steps only at creation time"),
+        "{warning}"
+    );
 }
 
 impl Harness {
@@ -333,7 +340,7 @@ async fn execute_resolves_refs_and_records_progress() {
     let h = harness(vec![]).await;
     mock_creates(&h).await;
     mock_reads(&h, "PAUSED").await;
-    let out = call(&h, "teste_cria3", json!({})).await.unwrap();
+    let out = call(&h, "test_create3", json!({})).await.unwrap();
     let reqs = requests(&h).await;
     let adset = reqs
         .iter()
@@ -363,7 +370,7 @@ async fn execute_resolves_refs_and_records_progress() {
         json!({
             "c1": {"name": "C", "status": "PAUSED"},
             "s1": {"name": "S", "status": "PAUSED"},
-            "a1": {"name": "Anúncio X", "status": "PAUSED"}
+            "a1": {"name": "Ad X", "status": "PAUSED"}
         })
     );
     let inverse = rec.inverse.unwrap();
@@ -379,7 +386,7 @@ async fn rollback_on_mid_failure() {
         .and(|r: &Request| !form(r).contains_key("execution_options"))
         .respond_with(
             ResponseTemplate::new(400)
-                .set_body_json(json!({"error": {"message": "Criativo inválido", "code": 100}})),
+                .set_body_json(json!({"error": {"message": "Invalid creative", "code": 100}})),
         )
         .mount(&h.server)
         .await;
@@ -388,7 +395,7 @@ async fn rollback_on_mid_failure() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"success": true})))
         .mount(&h.server)
         .await;
-    let err = call(&h, "teste_cria3", json!({})).await.unwrap_err();
+    let err = call(&h, "test_create3", json!({})).await.unwrap_err();
     let details = err.details.clone().unwrap();
     assert_eq!(details["failed_step"], "ad");
     assert_eq!(details["rolled_back"], json!(["s1", "c1"]));
@@ -428,12 +435,16 @@ async fn rollback_failure_reports_orphans() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"success": true})))
         .mount(&h.server)
         .await;
-    let err = call(&h, "teste_cria3", json!({})).await.unwrap_err();
+    let err = call(&h, "test_create3", json!({})).await.unwrap_err();
     assert_eq!(err.code, codes::PARTIAL_ROLLBACK);
     let details = err.details.unwrap();
     assert_eq!(details["orphaned_ids"], json!(["s1"]));
     assert!(details["cause"]["code"].is_string());
-    assert!(err.suggestion.unwrap().contains("Gerenciador de Anúncios"));
+    assert!(
+        err.suggestion
+            .unwrap()
+            .contains("Delete these objects in Ads Manager")
+    );
 }
 
 #[tokio::test]
@@ -450,9 +461,9 @@ async fn maybe_applied_step_names_object() {
         .respond_with(ResponseTemplate::new(200).set_body_json(json!({"success": true})))
         .mount(&h.server)
         .await;
-    let err = call(&h, "teste_cria3", json!({})).await.unwrap_err();
+    let err = call(&h, "test_create3", json!({})).await.unwrap_err();
     assert_eq!(err.code, codes::EXECUTION_FAILED);
-    assert!(err.message.contains("Anúncio X"), "{}", err.message);
+    assert!(err.message.contains("Ad X"), "{}", err.message);
     assert_eq!(err.details.unwrap()["rolled_back"], json!(["s1", "c1"]));
 }
 
@@ -461,10 +472,10 @@ async fn undo_create_with_conflict() {
     let h = harness(vec![]).await;
     mock_creates(&h).await;
     mock_reads(&h, "PAUSED").await;
-    let out = call(&h, "teste_cria3", json!({})).await.unwrap();
+    let out = call(&h, "test_create3", json!({})).await.unwrap();
     let change_id = out["change_id"].as_str().unwrap().to_string();
 
-    // Alguém ativou a campanha fora do AdsConsole.
+    // Someone activated the campaign outside AdsConsole.
     h.server.reset().await;
     Mock::given(method("GET"))
         .and(path("/act_111"))
@@ -502,7 +513,7 @@ async fn undo_create_with_conflict() {
 #[tokio::test]
 async fn restore_fields_round_trip() {
     let h = harness(vec![]).await;
-    let name = Arc::new(Mutex::new("Velho".to_string()));
+    let name = Arc::new(Mutex::new("Old".to_string()));
     let read_name = name.clone();
     Mock::given(method("GET"))
         .and(path("/c9"))
@@ -526,31 +537,31 @@ async fn restore_fields_round_trip() {
         .await;
     let out = call(
         &h,
-        "teste_renomeia",
-        json!({"campaign_id": "c9", "name": "Novo"}),
+        "test_rename",
+        json!({"campaign_id": "c9", "name": "New"}),
     )
     .await
     .unwrap();
-    assert_eq!(*name.lock().unwrap(), "Novo");
+    assert_eq!(*name.lock().unwrap(), "New");
     let rec =
         h.db.get_change(out["change_id"].as_str().unwrap())
             .unwrap()
             .unwrap();
-    assert_eq!(rec.before.unwrap(), json!({"c9": {"name": "Velho"}}));
-    assert_eq!(rec.after.unwrap(), json!({"c9": {"name": "Novo"}}));
+    assert_eq!(rec.before.unwrap(), json!({"c9": {"name": "Old"}}));
+    assert_eq!(rec.after.unwrap(), json!({"c9": {"name": "New"}}));
 
     let undo = h
         .engine
         .call_tool("undo_change", json!({"change_id": out["change_id"]}), None)
         .await
         .unwrap();
-    assert_eq!(*name.lock().unwrap(), "Velho");
+    assert_eq!(*name.lock().unwrap(), "Old");
     assert_eq!(undo["reversible"], true);
     h.engine
         .call_tool("undo_change", json!({"change_id": undo["change_id"]}), None)
         .await
         .unwrap();
-    assert_eq!(*name.lock().unwrap(), "Novo");
+    assert_eq!(*name.lock().unwrap(), "New");
 }
 
 #[tokio::test]

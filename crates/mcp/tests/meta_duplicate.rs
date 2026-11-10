@@ -34,7 +34,7 @@ fn engine(h: &MetaHarness) -> Engine {
     .unwrap()
 }
 
-/// Conta ativa, campanha c1 da conta com `ads` anúncios, e GET das cópias.
+/// Active account, campaign c1 of the account with `ads` ads, and the GET of the copies.
 async fn setup(h: &MetaHarness, ads: usize) {
     Mock::given(method("GET"))
         .and(path("/act_111"))
@@ -61,7 +61,7 @@ async fn setup(h: &MetaHarness, ads: usize) {
         .and(path("/c2"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(json!({"id": "c2", "name": "Original (cópia)", "status": "PAUSED"})),
+                .set_body_json(json!({"id": "c2", "name": "Original (copy)", "status": "PAUSED"})),
         )
         .mount(&h.server)
         .await;
@@ -102,7 +102,7 @@ async fn sync_copy_up_to_three() {
     assert_eq!(out["status"], "applied");
     assert_eq!(
         out["result"]["c2"],
-        json!({"name": "Original (cópia)", "status": "PAUSED"})
+        json!({"name": "Original (copy)", "status": "PAUSED"})
     );
     let calls = non_get(&h).await;
     assert_eq!(calls.len(), 1);
@@ -111,7 +111,7 @@ async fn sync_copy_up_to_three() {
     assert_eq!(f["status_option"], "PAUSED");
     assert_eq!(
         serde_json::from_str::<Value>(&f["rename_options"]).unwrap(),
-        json!({"rename_suffix": " (cópia)"})
+        json!({"rename_suffix": " (copy)"})
     );
     let rec =
         h.db.get_change(out["change_id"].as_str().unwrap())
@@ -191,7 +191,7 @@ async fn over_fifty_one_refused() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::INVALID_INPUT);
-    assert!(err.message.contains("51"), "{}", err.message);
+    assert!(err.message.contains("at most 51 ads"), "{}", err.message);
     assert!(non_get(&h).await.is_empty());
 }
 
@@ -276,7 +276,7 @@ async fn adset_copy_to_other_campaign() {
         .and(path("/s2"))
         .respond_with(
             ResponseTemplate::new(200)
-                .set_body_json(json!({"id": "s2", "name": "S (cópia)", "status": "PAUSED"})),
+                .set_body_json(json!({"id": "s2", "name": "S (copy)", "status": "PAUSED"})),
         )
         .mount(&h.server)
         .await;

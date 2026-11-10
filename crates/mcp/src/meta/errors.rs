@@ -1,4 +1,4 @@
-//! Tradução dos erros da Meta para [`ToolError`].
+//! Translation of Meta errors into [`ToolError`].
 
 use adsconsole_core::db::{ConnectionStatus, Db};
 use adsconsole_meta_ads::error::MetaError;
@@ -7,18 +7,18 @@ use serde_json::json;
 use super::ctx::Ctx;
 use crate::error::{ToolError, codes};
 
-const RECONNECT_HINT: &str = "Reconecte a conexão em AdsConsole → Conexões.";
+const RECONNECT_HINT: &str = "Reconnect this connection in AdsConsole → Connections.";
 
-/// Marca a conexão como `needs_reconnect` (quando há banco) e devolve o erro.
+/// Marks the connection as `needs_reconnect` (when there is a database) and returns the error.
 fn needs_reconnect(scope: Option<(&Db, &str)>) -> ToolError {
     if let Some((db, connection_id)) = scope
         && let Err(e) = db.set_connection_status(connection_id, ConnectionStatus::NeedsReconnect)
     {
-        tracing::warn!(connection_id, error = %e, "falha ao marcar a conexão para reconectar");
+        tracing::warn!(connection_id, error = %e, "failed to mark the connection for reconnect");
     }
     ToolError::new(
         codes::CONNECTION_NEEDS_RECONNECT,
-        "O acesso desta conexão à Meta venceu ou foi revogado.",
+        "This connection's Meta access expired or was revoked.",
     )
     .with_suggestion(RECONNECT_HINT)
 }
@@ -38,12 +38,12 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
             let mut e = ToolError::new(
                 codes::RATE_LIMITED,
                 format!(
-                    "A conta {account} chegou ao limite de chamadas da Meta; tente de novo em {} s.",
+                    "Account {account} reached the Meta call limit; try again in {} s.",
                     wait.as_secs()
                 ),
             )
             .with_details(json!({ "retry_after_secs": wait.as_secs() }))
-            .with_suggestion("Espere o tempo indicado antes de repetir.");
+            .with_suggestion("Wait the indicated time before retrying.");
             e.retryable = true;
             e
         }
@@ -70,7 +70,7 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
                 let secs = api.retry_after().map(|d| d.as_secs());
                 let mut e = ToolError::new(
                     codes::RATE_LIMITED,
-                    "A Meta recusou a chamada por limite de uso; tente de novo em alguns minutos.",
+                    "Meta refused the call because of a usage limit; try again in a few minutes.",
                 )
                 .with_details(
                     json!({ "retry_after_secs": secs, "code": code, "subcode": subcode }),
@@ -81,31 +81,31 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
             if subcode == Some(4841021) {
                 return ToolError::new(
                     codes::ACCOUNT_NOT_ACTIVE,
-                    "A Meta não deixa escrever nesta conta pelo status dela.",
+                    "Meta does not allow writes to this account because of its status.",
                 )
                 .with_details(json!({ "code": code, "subcode": subcode }));
             }
             if code == 10 || (200..=299).contains(&code) {
                 return ToolError::new(
                     codes::ACCESS_DENIED,
-                    format!("A Meta negou o acesso: {shown}"),
+                    format!("Meta denied access: {shown}"),
                 )
                 .with_suggestion(
-                    "Confira se o token tem as 6 permissões (ads_read, ads_management, \
+                    "Check that the token has the 6 permissions (ads_read, ads_management, \
                          business_management, pages_show_list, pages_read_engagement, \
-                         pages_manage_ads) e se a pessoa tem função na conta de anúncios.",
+                         pages_manage_ads) and that the person has a role on the ad account.",
                 )
                 .with_details(json!({ "code": code, "subcode": subcode }));
             }
             if subcode == Some(1885183) {
                 return ToolError::new(
                     codes::API_ERROR,
-                    "A Meta não deixa anunciar um criativo novo criado por um app em modo de \
-                     desenvolvimento.",
+                    "Meta does not allow running a new creative created by an app in development \
+                     mode.",
                 )
                 .with_suggestion(
-                    "Use um post que já existe na Página (criativo existing_post; veja \
-                     get_page_posts) ou publique o app (modo Live) no Meta for Developers.",
+                    "Use a post that already exists on the Page (existing_post creative; see \
+                     get_page_posts) or publish the app (Live mode) in Meta for Developers.",
                 )
                 .with_details(json!({ "code": code, "subcode": subcode }));
             }
@@ -131,24 +131,24 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
                 .with_details(json!({ "code": code, "subcode": subcode, "fbtrace_id": fbtrace_id }))
         }
         MetaError::Timeout => {
-            let mut e = ToolError::new(codes::API_ERROR, "A Meta demorou demais para responder.");
+            let mut e = ToolError::new(codes::API_ERROR, "Meta took too long to respond.");
             e.retryable = true;
             e
         }
         MetaError::Transport(m) => {
             let mut e = ToolError::new(
                 codes::API_ERROR,
-                format!("Falha de rede ao falar com a Meta: {m}"),
+                format!("Failed to communicate with Meta: {m}"),
             );
             e.retryable = true;
             e
         }
         MetaError::Auth(m) => {
-            ToolError::new(codes::API_ERROR, format!("Falha no login da Meta: {m}"))
+            ToolError::new(codes::API_ERROR, format!("Meta authentication failed: {m}"))
         }
         MetaError::Decode(m) => ToolError::new(
             codes::API_ERROR,
-            format!("Resposta inesperada da Meta: {m}"),
+            format!("Unexpected response from Meta: {m}"),
         ),
         MetaError::File(m) => ToolError::new(codes::INVALID_INPUT, m).with_field("file_path"),
     }
@@ -157,7 +157,7 @@ pub(crate) fn translate_in(err: MetaError, scope: Option<(&Db, &str)>, tool: &st
 fn maybe_applied(tool: &str, cause: &str) -> ToolError {
     ToolError::new(
         codes::EXECUTION_FAILED,
-        format!("A Meta não confirmou o resultado de {tool} ({cause})."),
+        format!("Meta did not confirm the result of {tool} ({cause})."),
     )
-    .with_suggestion("A Meta não confirmou a mudança; confira na conta antes de repetir.")
+    .with_suggestion("Meta did not confirm the change; check the account before retrying.")
 }

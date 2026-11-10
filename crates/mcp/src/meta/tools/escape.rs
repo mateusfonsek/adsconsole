@@ -1,4 +1,4 @@
-//! Escape: `graph_get` e `graph_post` brutos, desligados por padrão (grupo Escape).
+//! Escape: raw `graph_get` and `graph_post`, off by default (Escape group).
 
 use std::collections::BTreeMap;
 
@@ -27,9 +27,9 @@ struct GetInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Caminho relativo à conta (`act_…/campaigns`) ou a um id de objeto.
+    /// Path relative to the account (`act_…/campaigns`) or to an object id.
     path: String,
-    /// Parâmetros da query (ex.: `fields`).
+    /// Query parameters (e.g. `fields`).
     #[serde(default)]
     params: BTreeMap<String, String>,
 }
@@ -41,7 +41,7 @@ impl ReadTool for GraphGet {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetInput>(
             "graph_get",
-            "GET bruto na Graph API v26.0, para o que as outras ferramentas não cobrem.",
+            "Raw GET on Graph API v26.0, for what the other tools do not cover.",
             ToolGroup::Escape,
         )
     }
@@ -75,9 +75,9 @@ struct PostInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Caminho relativo à conta (`act_…/campaigns`) ou a um id de objeto.
+    /// Path relative to the account (`act_…/campaigns`) or to an object id.
     path: String,
-    /// Parâmetros do POST.
+    /// POST parameters.
     #[serde(default)]
     params: Map<String, Value>,
 }
@@ -89,7 +89,7 @@ impl WriteTool for GraphPost {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<PostInput>(
             "graph_post",
-            "POST bruto na Graph API v26.0. Não passa pelas validações das outras ferramentas.",
+            "Raw POST on Graph API v26.0. Skips the validations of the other tools.",
             ToolGroup::Escape,
             false,
         )
@@ -103,7 +103,7 @@ impl WriteTool for GraphPost {
         if path.split('/').any(|seg| seg == "copies") {
             return Err(ToolError::new(
                 codes::INVALID_INPUT,
-                "Para duplicar, use a ferramenta duplicate.",
+                "To duplicate, use the duplicate tool.",
             )
             .with_field("path"));
         }

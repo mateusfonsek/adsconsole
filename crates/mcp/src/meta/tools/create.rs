@@ -1,5 +1,5 @@
-//! Criação: `create_campaign` (campanha + ad sets + criativos + anúncios, tudo pausado)
-//! e `create_ad` (num ad set que já existe). Falha no meio desfaz o que foi criado.
+//! Creation: `create_campaign` (campaign + ad sets + creatives + ads, all paused) and
+//! `create_ad` (in an existing ad set). A failure midway undoes what was created.
 
 use adsconsole_core::Decimal;
 use adsconsole_core::config::ToolGroup;
@@ -75,10 +75,10 @@ impl Objective {
 struct CampaignIn {
     name: String,
     objective: Objective,
-    /// Categorias especiais (CREDIT, EMPLOYMENT, HOUSING...). Padrão: nenhuma.
+    /// Special ad categories (CREDIT, EMPLOYMENT, HOUSING...). Default: none.
     #[serde(default)]
     special_ad_categories: Vec<String>,
-    /// Orçamento de campanha (diário), na moeda da conta. Ou na campanha, ou em cada ad set.
+    /// Campaign (daily) budget, in the account currency. Set it either on the campaign or on each ad set.
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     daily_budget: Option<Decimal>,
@@ -106,7 +106,7 @@ struct AdsetIn {
     lifetime_budget: Option<Decimal>,
     /// LINK_CLICKS, LANDING_PAGE_VIEWS, REACH, IMPRESSIONS, OFFSITE_CONVERSIONS, LEAD_GENERATION...
     optimization_goal: String,
-    /// Padrão IMPRESSIONS.
+    /// Default IMPRESSIONS.
     #[serde(default)]
     billing_event: Option<String>,
     #[serde(default)]
@@ -114,20 +114,20 @@ struct AdsetIn {
     #[serde(default, with = "rust_decimal::serde::float_option")]
     #[schemars(with = "Option<f64>")]
     bid_amount: Option<Decimal>,
-    /// targeting_spec (geo_locations obrigatório).
+    /// targeting_spec (geo_locations required).
     targeting: Value,
     /// ISO 8601.
     #[serde(default)]
     start_time: Option<String>,
-    /// Obrigatório com lifetime_budget.
+    /// Required with lifetime_budget.
     #[serde(default)]
     end_time: Option<String>,
-    /// Pixel/evento ou página, para vendas e cadastros.
+    /// Pixel/event or Page, for sales and leads.
     #[serde(default)]
     promoted_object: Option<Value>,
     #[serde(default)]
     destination_type: Option<String>,
-    /// 1 a 10 anúncios.
+    /// 1 to 10 ads.
     ads: Vec<AdIn>,
 }
 
@@ -137,20 +137,20 @@ struct CreateCampaignInput {
     #[allow(dead_code)]
     account: AccountRef,
     campaign: CampaignIn,
-    /// 1 a 10 ad sets.
+    /// 1 to 10 ad sets.
     adsets: Vec<AdsetIn>,
 }
 
-/// targeting com geo e `targeting_automation.advantage_audience` (0 quando não vier).
+/// targeting with geo and `targeting_automation.advantage_audience` (0 when not given).
 fn targeting(field: &str, t: &Value) -> Result<Value, ToolError> {
     if !t["geo_locations"].is_object() {
         return Err(invalid(
             field,
-            "Informe ao menos um local em targeting.geo_locations.",
+            "Provide at least one location in targeting.geo_locations.",
         ));
     }
     let mut t = t.clone();
-    // VERIFY(v26.0): a Meta exige targeting_automation.advantage_audience explícito.
+    // VERIFY(v26.0): Meta requires an explicit targeting_automation.advantage_audience.
     if t["targeting_automation"]["advantage_audience"].is_null() {
         let auto = t
             .as_object_mut()
@@ -159,7 +159,7 @@ fn targeting(field: &str, t: &Value) -> Result<Value, ToolError> {
                     .or_insert_with(|| json!({}))
                     .as_object_mut()
             })
-            .ok_or_else(|| invalid(field, "targeting inválido."))?;
+            .ok_or_else(|| invalid(field, "Invalid targeting."))?;
         auto.insert("advantage_audience".into(), json!(0));
     }
     Ok(t)
@@ -167,15 +167,15 @@ fn targeting(field: &str, t: &Value) -> Result<Value, ToolError> {
 
 fn object_name(c: &CreativeInput, ad: &str) -> String {
     let kind = match c {
-        CreativeInput::Image { .. } => "imagem",
-        CreativeInput::Video { .. } => "vídeo",
-        CreativeInput::Carousel { .. } => "carrossel",
+        CreativeInput::Image { .. } => "image",
+        CreativeInput::Video { .. } => "video",
+        CreativeInput::Carousel { .. } => "carousel",
         CreativeInput::ExistingPost { .. } => "post",
     };
     format!("{ad} ({kind})")
 }
 
-/// Passos de um criativo e do anúncio que o usa.
+/// Steps of a creative and of the ad that uses it.
 fn ad_steps(
     ctx: &Ctx,
     at: &str,
@@ -239,9 +239,9 @@ impl WriteTool for CreateCampaign {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreateCampaignInput>(
             "create_campaign",
-            "Cria uma campanha completa, pausada: campanha, ad sets (público, orçamento, \
-             agenda), criativos (imagem, vídeo ou carrossel) e anúncios. Se algum passo falhar, \
-             o que já foi criado é apagado.",
+            "Creates a full campaign, paused: campaign, ad sets (audience, budget, schedule), \
+             creatives (image, video or carousel) and ads. If any step fails, what was \
+             already created is deleted.",
             ToolGroup::Create,
             true,
         )
@@ -251,18 +251,18 @@ impl WriteTool for CreateCampaign {
         let i: CreateCampaignInput = parse_input(input)?;
         let c = &i.campaign;
         if c.name.trim().is_empty() {
-            return Err(invalid("campaign.name", "Dê um nome para a campanha."));
+            return Err(invalid("campaign.name", "Give the campaign a name."));
         }
         if i.adsets.is_empty() || i.adsets.len() > MAX_ADSETS {
             return Err(invalid(
                 "adsets",
-                format!("Informe de 1 a {MAX_ADSETS} ad sets."),
+                format!("Provide 1 to {MAX_ADSETS} ad sets."),
             ));
         }
         if c.daily_budget.is_some() && c.lifetime_budget.is_some() {
             return Err(invalid(
                 "campaign.daily_budget",
-                "Use daily_budget ou lifetime_budget, não os dois.",
+                "Use daily_budget or lifetime_budget, not both.",
             ));
         }
         let cbo = c.daily_budget.is_some() || c.lifetime_budget.is_some();
@@ -286,10 +286,10 @@ impl WriteTool for CreateCampaign {
             );
         }
         if !cbo {
-            // VERIFY(v26.0): sem orçamento de campanha, a Meta pede este campo explícito.
+            // VERIFY(v26.0): without a campaign budget, Meta requires this field explicitly.
             campaign.insert("is_adset_budget_sharing_enabled".into(), json!(false));
         }
-        // Sem estratégia, a Meta passou a pedir valor de lance; o padrão é sem limite.
+        // Without a strategy, Meta now asks for a bid amount; the default is no cap.
         match (&c.bid_strategy, cbo) {
             (Some(b), _) => {
                 campaign.insert("bid_strategy".into(), json!(b));
@@ -315,33 +315,33 @@ impl WriteTool for CreateCampaign {
             if s.ads.is_empty() || s.ads.len() > MAX_ADS {
                 return Err(invalid(
                     format!("{at}.ads"),
-                    format!("Informe de 1 a {MAX_ADS} anúncios por ad set."),
+                    format!("Provide 1 to {MAX_ADS} ads per ad set."),
                 ));
             }
             let has_budget = s.daily_budget.is_some() || s.lifetime_budget.is_some();
             if cbo && has_budget {
                 return Err(invalid(
                     format!("{at}.daily_budget"),
-                    "Com orçamento de campanha, os ad sets não levam orçamento próprio.",
+                    "With a campaign budget, the ad sets do not take their own budget.",
                 ));
             }
             if !cbo && !has_budget {
                 return Err(invalid(
                     format!("{at}.daily_budget"),
-                    "Informe o orçamento na campanha ou em cada ad set.",
+                    "Provide the budget on the campaign or on each ad set.",
                 ));
             }
             if s.daily_budget.is_some() && s.lifetime_budget.is_some() {
                 return Err(invalid(
                     format!("{at}.daily_budget"),
-                    "Use daily_budget ou lifetime_budget, não os dois.",
+                    "Use daily_budget or lifetime_budget, not both.",
                 ));
             }
             let lifetime = s.lifetime_budget.is_some() || c.lifetime_budget.is_some();
             if lifetime && s.end_time.is_none() {
                 return Err(invalid(
                     format!("{at}.end_time"),
-                    "Orçamento total exige end_time no ad set.",
+                    "A lifetime budget requires end_time on the ad set.",
                 ));
             }
             let mut p = params(json!({
@@ -419,27 +419,27 @@ impl WriteTool for CreateCampaign {
         }
 
         let budget = match (c.daily_budget, c.lifetime_budget) {
-            (Some(d), _) => format!("orçamento {d} {}/dia", ctx.currency),
-            (_, Some(l)) => format!("orçamento {l} {} no total", ctx.currency),
-            _ => "orçamento em cada ad set".to_string(),
+            (Some(d), _) => format!("budget {d} {}/day", ctx.currency),
+            (_, Some(l)) => format!("budget {l} {} lifetime", ctx.currency),
+            _ => "budget on each ad set".to_string(),
         };
         let warning = match c.objective {
             _ if promoted => None,
-            Objective::Sales | Objective::Leads => Some(
-                "Para vendas e cadastros, a Meta costuma exigir promoted_object (pixel ou página).",
-            ),
-            // Visto na conta real: sem a Página no ad set, a Meta recusa o anúncio.
+            Objective::Sales | Objective::Leads => {
+                Some("For sales and leads, Meta usually requires promoted_object (pixel or Page).")
+            }
+            // Seen on the real account: without the Page on the ad set, Meta rejects the ad.
             Objective::Engagement => Some(
-                "Para engajamento, a Meta exige promoted_object com a Página em cada ad set: \
-                 {\"page_id\": \"<id da Página>\"}.",
+                "For engagement, Meta requires promoted_object with the Page on each ad set: \
+                 {\"page_id\": \"<Page id>\"}.",
             ),
             _ => None,
         }
         .map(str::to_string);
         Ok(MetaPlan {
             summary: format!(
-                "Criar campanha '{}' ({}, pausada) com {} ad sets e {ads_total} anúncios; {budget}. \
-                 Desfazer apaga a campanha; os criativos ficam na conta.",
+                "Create campaign '{}' ({}, paused) with {} ad sets and {ads_total} ads; {budget}. \
+                 Undo deletes the campaign; the creatives stay in the account.",
                 c.name.trim(),
                 c.objective.as_str(),
                 i.adsets.len(),
@@ -460,10 +460,10 @@ struct CreateAdInput {
     account: AccountRef,
     adset_id: String,
     name: String,
-    /// Criativo novo (no lugar de creative_id).
+    /// New creative (instead of creative_id).
     #[serde(default)]
     creative: Option<CreativeInput>,
-    /// Criativo que já existe na conta.
+    /// Creative that already exists in the account.
     #[serde(default)]
     creative_id: Option<String>,
 }
@@ -475,7 +475,7 @@ impl WriteTool for CreateAd {
     fn spec(&self) -> ToolSpec {
         ToolSpec::write::<CreateAdInput>(
             "create_ad",
-            "Cria um anúncio pausado num ad set que já existe, com um criativo novo ou existente.",
+            "Creates a paused ad in an existing ad set, with a new or existing creative.",
             ToolGroup::Create,
             true,
         )
@@ -484,7 +484,7 @@ impl WriteTool for CreateAd {
     async fn plan(&self, ctx: &Ctx, input: &Value) -> Result<MetaPlan, ToolError> {
         let i: CreateAdInput = parse_input(input)?;
         if i.name.trim().is_empty() {
-            return Err(invalid("name", "Dê um nome para o anúncio."));
+            return Err(invalid("name", "Give the ad a name."));
         }
         let creative = match (&i.creative, &i.creative_id) {
             (Some(c), None) => Creative::New(c),
@@ -492,7 +492,7 @@ impl WriteTool for CreateAd {
             _ => {
                 return Err(invalid(
                     "creative",
-                    "Informe creative ou creative_id (um dos dois).",
+                    "Provide creative or creative_id (exactly one).",
                 ));
             }
         };
@@ -508,7 +508,7 @@ impl WriteTool for CreateAd {
         )?;
         Ok(MetaPlan {
             summary: format!(
-                "Criar o anúncio '{}' (pausado) no ad set {}",
+                "Create ad '{}' (paused) in ad set {}",
                 i.name.trim(),
                 i.adset_id
             ),

@@ -40,21 +40,21 @@ async fn active(h: &MetaHarness) {
 }
 
 const IMAGE: &[u8] = b"\x89PNG fake";
-/// O hash que a Meta dá a `IMAGE` (não é o MD5 dos bytes, como se viu na conta real).
+/// The hash Meta gives `IMAGE` (not the MD5 of the bytes, as seen on the real account).
 const META_HASH: &str = "b8c704229b6dd1351b024c35acbafa4c";
 
-/// Quando a biblioteca diz que a imagem `META_HASH` foi criada.
+/// When the library says image `META_HASH` was created.
 #[derive(Clone, Copy)]
 enum Created {
-    /// Agora: o envio criou a imagem.
+    /// Now: the upload created the image.
     Now,
-    /// Bem antes do envio: a imagem já estava lá.
+    /// Well before the upload: the image was already there.
     Old,
-    /// A biblioteca não acha a imagem.
+    /// The library does not find the image.
     Missing,
 }
 
-/// `GET {act}/adimages?hashes=[...]`: responde `created_time` conforme `created`.
+/// `GET {act}/adimages?hashes=[...]`: answers `created_time` according to `created`.
 async fn library(h: &MetaHarness, created: Created) {
     Mock::given(method("GET"))
         .and(path("/act_111/adimages"))
@@ -115,7 +115,7 @@ async fn image_upload_returns_hash() {
     assert_eq!(out["status"], "applied");
     assert_eq!(out["reversible"], true);
     assert_eq!(out["result"]["image_hash"], META_HASH);
-    assert!(out["result"].get("aviso").is_none(), "{out}");
+    assert!(out["result"].get("warning").is_none(), "{out}");
     let reqs = h.server.received_requests().await.unwrap();
     let lookup = reqs
         .iter()
@@ -187,7 +187,7 @@ async fn image_undo_deletes_by_hash() {
     assert_eq!(*deletes.lock().unwrap(), vec![META_HASH.to_string()]);
 }
 
-/// Envia `IMAGE` com a Meta devolvendo `hash`; desfazer não pode apagar nada.
+/// Uploads `IMAGE` with Meta returning `hash`; undo must not delete anything.
 async fn upload_not_undoable(created: Created) {
     let h = meta_harness().await;
     active(&h).await;
@@ -223,7 +223,7 @@ async fn upload_not_undoable(created: Created) {
     assert_eq!(out["status"], "applied");
     assert_eq!(out["reversible"], false, "{out}");
     assert_eq!(out["result"]["image_hash"], META_HASH);
-    assert!(out["result"]["aviso"].as_str().is_some(), "{out}");
+    assert!(out["result"]["warning"].as_str().is_some(), "{out}");
     let err = e
         .call_tool("undo_change", json!({"change_id": out["change_id"]}), None)
         .await
@@ -239,7 +239,7 @@ async fn image_already_in_library_not_undoable() {
 
 #[tokio::test]
 async fn image_hash_unconfirmed_not_undoable() {
-    // A biblioteca não acha a imagem: não dá para saber se ela já existia.
+    // The library does not find the image: there is no way to know whether it already existed.
     upload_not_undoable(Created::Missing).await;
 }
 
@@ -272,7 +272,7 @@ async fn image_url_rules() {
     let err = e
         .call_tool(
             "upload_image",
-            json!({"account_id": "act_111", "file_path": "/nao/existe.png"}),
+            json!({"account_id": "act_111", "file_path": "/does/not/exist.png"}),
             None,
         )
         .await
@@ -306,7 +306,7 @@ async fn mock_video_upload(h: &MetaHarness) {
         .await;
 }
 
-/// GET do vídeo devolve os estados em sequência (o último se repete).
+/// The video GET returns the states in sequence (the last one repeats).
 async fn mock_states(h: &MetaHarness, states: Vec<&'static str>) {
     let n = Arc::new(Mutex::new(0usize));
     Mock::given(method("GET"))
@@ -342,7 +342,7 @@ async fn video_waits_until_ready() {
     let out = engine(&h)
         .call_tool(
             "upload_video",
-            json!({"account_id": "act_111", "file_path": file, "title": "Vídeo"}),
+            json!({"account_id": "act_111", "file_path": file, "title": "Video"}),
             None,
         )
         .await
@@ -379,11 +379,11 @@ async fn video_warning_and_validation() {
     .await
     .unwrap();
     let w = e.pending().unwrap()[0].warning.clone().unwrap();
-    assert!(w.contains("esperam o envio terminar"), "{w}");
+    assert!(w.contains("wait for the upload to finish"), "{w}");
     let err = e
         .call_tool(
             "upload_video",
-            json!({"account_id": "act_111", "file_path": "/nao/existe.mp4", "title": "x"}),
+            json!({"account_id": "act_111", "file_path": "/does/not/exist.mp4", "title": "x"}),
             None,
         )
         .await
@@ -420,8 +420,8 @@ async fn video_error_deletes_and_fails() {
 
 #[tokio::test]
 async fn video_upload_is_not_reversible() {
-    // A Meta não deixa apagar vídeos da conta com as permissões do caso de uso
-    // (#10 em DELETE /act_…/advideos e pages_manage_posts em DELETE /{video_id}).
+    // Meta does not allow deleting account videos with the use case's permissions
+    // (#10 on DELETE /act_…/advideos and pages_manage_posts on DELETE /{video_id}).
     let h = meta_harness().await;
     h.adapter
         .set_poll(Duration::from_millis(5), Duration::from_secs(5));

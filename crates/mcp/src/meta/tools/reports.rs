@@ -1,4 +1,4 @@
-//! Leituras de campanha e insights: `get_campaigns`, `get_campaign_details`, `get_insights`.
+//! Campaign and insights reads: `get_campaigns`, `get_campaign_details`, `get_insights`.
 
 use adsconsole_core::Status;
 use adsconsole_core::config::ToolGroup;
@@ -70,7 +70,7 @@ fn int(v: &Value) -> Option<i64> {
     }
 }
 
-/// Tipo de ação que conta como "resultado" de cada objetivo.
+/// Action type that counts as a "result" for each objective.
 fn result_action(objective: Option<&str>) -> Option<&'static str> {
     match objective? {
         "OUTCOME_TRAFFIC" | "LINK_CLICKS" => Some("link_click"),
@@ -82,7 +82,7 @@ fn result_action(objective: Option<&str>) -> Option<&'static str> {
     }
 }
 
-/// Métricas de uma linha de insights, normalizadas. `extra` são campos pedidos a mais.
+/// Normalized metrics of an insights row. `extra` are additionally requested fields.
 pub(crate) fn metrics(row: &Value, objective: Option<&str>, extra: &[String]) -> Value {
     let actions: Vec<Value> = row["actions"]
         .as_array()
@@ -125,13 +125,13 @@ pub(crate) fn metrics(row: &Value, objective: Option<&str>, extra: &[String]) ->
     out
 }
 
-/// Orçamento (unidades mínimas da Meta) na moeda da conta.
+/// Budget (Meta minor units) in the account currency.
 fn money(ctx: &Ctx, kind: ObjectKind, name: &str, obj: &Value) -> Value {
     find(name, kind).map_or(Value::Null, |f| normalize(f, obj, ctx.exponent))
 }
 
-/// Página de `path` a partir do cursor da entrada, cortada por tamanho; devolve os itens
-/// mantidos e o cursor seguinte.
+/// Page of `path` starting at the input cursor, cut by size; returns the kept items and
+/// the next cursor.
 async fn page(
     ctx: &Ctx,
     tool: &str,
@@ -155,7 +155,7 @@ async fn page(
         .map_err(|e| translate(e, Some(ctx), tool))?;
     let shaped: Vec<Value> = data.iter().map(&shape).collect();
     let (kept, cut) = fit(shaped, ITEMS_BUDGET);
-    // Cortado por tamanho: continua no primeiro item que ficou de fora.
+    // Cut by size: continue at the first item left out.
     let next = if cut {
         starts.get(kept.len()).cloned()
     } else {
@@ -169,16 +169,16 @@ struct GetCampaignsInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Período das métricas (padrão last_30d).
+    /// Metrics period (default last_30d).
     #[serde(default)]
     period: Option<Period>,
-    /// Só campanhas com estes status efetivos.
+    /// Only campaigns with these effective statuses.
     #[serde(default)]
     status: Vec<Status>,
-    /// Máximo de campanhas (padrão 50, até 500).
+    /// Maximum number of campaigns (default 50, up to 500).
     #[serde(default)]
     limit: Option<usize>,
-    /// `next_cursor` de uma resposta anterior.
+    /// `next_cursor` from a previous response.
     #[serde(default)]
     cursor: Option<String>,
 }
@@ -190,8 +190,8 @@ impl ReadTool for GetCampaigns {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<GetCampaignsInput>(
             "get_campaigns",
-            "Lista as campanhas da conta com orçamento, objetivo e métricas do período \
-             (gasto, impressões, cliques, resultados).",
+            "Lists the account's campaigns with budget, objective and period metrics \
+             (spend, impressions, clicks, results).",
             ToolGroup::Read,
         )
     }
@@ -256,7 +256,7 @@ const ADSET_FIELDS: &str = "id,name,status,effective_status,daily_budget,lifetim
 const AD_FIELDS: &str = "id,name,status,effective_status,adset_id,\
     creative{id,name,object_story_spec,asset_feed_spec,thumbnail_url}";
 
-/// Objeto da conta da chamada? A Meta devolve `account_id` sem o `act_`.
+/// Does the object belong to the call's account? Meta returns `account_id` without `act_`.
 pub(crate) fn of_account(ctx: &Ctx, obj: &Value) -> bool {
     let id = match &obj["account_id"] {
         Value::String(s) => s.clone(),
@@ -269,11 +269,11 @@ pub(crate) fn of_account(ctx: &Ctx, obj: &Value) -> bool {
 pub(crate) fn not_found(what: &str, id: &str) -> ToolError {
     ToolError::new(
         codes::NOT_FOUND,
-        format!("{what} {id} não encontrado nesta conta."),
+        format!("{what} {id} not found in this account."),
     )
 }
 
-/// GET de um objeto; inexistente (código 100, subcódigo 33) vira `NOT_FOUND`.
+/// GET of an object; a missing one (code 100, subcode 33) becomes `NOT_FOUND`.
 pub(crate) async fn get_object(
     ctx: &Ctx,
     tool: &str,
@@ -304,8 +304,8 @@ impl ReadTool for GetCampaignDetails {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<DetailsInput>(
             "get_campaign_details",
-            "Detalha uma campanha: ad sets (orçamento, lance, público, agenda) e anúncios com \
-             os criativos.",
+            "Details a campaign: ad sets (budget, bid, audience, schedule) and ads with \
+             their creatives.",
             ToolGroup::Read,
         )
     }
@@ -316,7 +316,7 @@ impl ReadTool for GetCampaignDetails {
         let c = get_object(
             ctx,
             tool,
-            "Campanha",
+            "Campaign",
             &i.campaign_id,
             "id,name,account_id,status,effective_status,objective,daily_budget,lifetime_budget,\
              bid_strategy,special_ad_categories,start_time,stop_time",
@@ -397,7 +397,7 @@ impl ReadTool for GetCampaignDetails {
                 })
             })
             .collect();
-        // Corta os anúncios primeiro; se ainda não couber, os ad sets.
+        // Cut the ads first; if it still does not fit, the ad sets.
         let size = |v: &Vec<Value>| serde_json::to_vec(v).map(|b| b.len()).unwrap_or(0);
         let room_for_sets = ITEMS_BUDGET.saturating_sub(campaign.to_string().len());
         let (adsets, cut_sets) = if size(&adsets) > room_for_sets {
@@ -435,7 +435,7 @@ impl Level {
         }
     }
 
-    /// Ids e nomes que acompanham cada linha.
+    /// Ids and names that come with each row.
     fn id_fields(self) -> &'static str {
         match self {
             Level::Account => "account_id,account_name",
@@ -451,25 +451,25 @@ struct InsightsInput {
     #[serde(flatten)]
     #[allow(dead_code)]
     account: AccountRef,
-    /// Nível das linhas: account, campaign, adset ou ad.
+    /// Row level: account, campaign, adset or ad.
     level: Level,
-    /// Campanha, ad set ou anúncio; sem ele, a conta inteira.
+    /// Campaign, ad set or ad; without it, the whole account.
     #[serde(default)]
     object_id: Option<String>,
-    /// Período (padrão last_30d).
+    /// Period (default last_30d).
     #[serde(default)]
     period: Option<Period>,
     /// age, gender, country, region, publisher_platform, platform_position,
     /// device_platform, impression_device.
     #[serde(default)]
     breakdowns: Vec<String>,
-    /// "1" (diário), "7", "monthly" ou "all_days".
+    /// "1" (daily), "7", "monthly" or "all_days".
     #[serde(default)]
     time_increment: Option<String>,
-    /// Métricas extras: frequency, unique_clicks, cost_per_action_type, action_values, purchase_roas.
+    /// Extra metrics: frequency, unique_clicks, cost_per_action_type, action_values, purchase_roas.
     #[serde(default)]
     fields: Vec<String>,
-    /// Máximo de linhas (padrão 100, até 500).
+    /// Maximum number of rows (default 100, up to 500).
     #[serde(default)]
     limit: Option<usize>,
     #[serde(default)]
@@ -483,8 +483,8 @@ impl ReadTool for GetInsights {
     fn spec(&self) -> ToolSpec {
         ToolSpec::read::<InsightsInput>(
             "get_insights",
-            "Métricas da conta, de uma campanha, ad set ou anúncio, por nível, período, \
-             quebras (idade, gênero, posicionamento...) e intervalo de tempo.",
+            "Metrics of the account, a campaign, an ad set or an ad, by level, period, \
+             breakdowns (age, gender, placement...) and time increment.",
             ToolGroup::Read,
         )
     }
@@ -501,7 +501,7 @@ impl ReadTool for GetInsights {
         {
             return Err(invalid(
                 "breakdowns",
-                format!("Quebra desconhecida: {b}. Use: {}.", BREAKDOWNS.join(", ")),
+                format!("Unknown breakdown: {b}. Use: {}.", BREAKDOWNS.join(", ")),
             ));
         }
         if let Some(f) = i
@@ -512,7 +512,7 @@ impl ReadTool for GetInsights {
             return Err(invalid(
                 "fields",
                 format!(
-                    "Métrica não suportada: {f}. Use: {}.",
+                    "Unsupported metric: {f}. Use: {}.",
                     EXTRA_METRICS.join(", ")
                 ),
             ));
@@ -522,12 +522,12 @@ impl ReadTool for GetInsights {
         {
             return Err(invalid(
                 "time_increment",
-                "Use \"1\", \"7\", \"monthly\" ou \"all_days\".",
+                "Use \"1\", \"7\", \"monthly\" or \"all_days\".",
             ));
         }
         let target = match i.object_id.as_deref().filter(|o| *o != ctx.account_id) {
             Some(id) => {
-                get_object(ctx, tool, "Objeto", id, "id,account_id").await?;
+                get_object(ctx, tool, "Object", id, "id,account_id").await?;
                 id.to_string()
             }
             None => ctx.account_id.clone(),
