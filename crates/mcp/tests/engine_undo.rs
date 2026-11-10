@@ -426,7 +426,7 @@ async fn history_tools() {
         "undone_by",
         "created_at",
     ] {
-        assert!(item.get(key).is_some(), "falta {key}: {item}");
+        assert!(item.get(key).is_some(), "missing {key}: {item}");
     }
     assert_eq!(item["tool"], "update_campaign");
     assert_eq!(item["status"], "applied");
