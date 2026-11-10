@@ -679,7 +679,7 @@ mod tests {
                 Vec::new()
             };
             Ok(WritePlan {
-                summary: "Creates a campaign.".into(),
+                summary: "Create a campaign.".into(),
                 warning: None,
                 operations: vec![
                     json!({ "campaignBudgetOperation": { "create": {

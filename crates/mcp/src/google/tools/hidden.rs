@@ -93,7 +93,7 @@ impl WriteTool for RestoreFields {
         }
         Ok(WritePlan {
             summary: format!(
-                "Restores {} field(s) on {} resource(s).",
+                "Restore {} field(s) on {} resource(s).",
                 field_changes.len(),
                 operations.len()
             ),
@@ -143,7 +143,7 @@ impl WriteTool for RemoveResources {
             .collect::<Result<Vec<_>, _>>()?;
         Ok(WritePlan {
             summary: format!(
-                "Removes {} resource(s): {}.",
+                "Remove {} resource(s): {}.",
                 operations.len(),
                 input.resource_names.join(", ")
             ),
@@ -195,7 +195,7 @@ impl WriteTool for RemoveYoutubeUpload {
             .with_field("resource_name"));
         }
         Ok(WritePlan {
-            summary: format!("Removes uploaded video {rn}."),
+            summary: format!("Remove uploaded video {rn}."),
             warning: None,
             operations: Vec::new(),
             field_changes: Vec::new(),

@@ -520,7 +520,7 @@ fn add(ctx: &Ctx, lvl: &Level, criteria: &[CriterionIn]) -> Result<WritePlan, To
     }
     Ok(WritePlan {
         summary: format!(
-            "Adds {} targeting criterion(s) to {}: {}",
+            "Add {} targeting criterion(s) to {}: {}",
             names.len(),
             lvl.label,
             list(&names)
@@ -623,7 +623,7 @@ async fn remove(ctx: &Ctx, lvl: &Level, criteria: &[CriterionIn]) -> Result<Writ
     }
     Ok(WritePlan {
         summary: format!(
-            "Removes {} targeting criterion(s) from {}: {}",
+            "Remove {} targeting criterion(s) from {}: {}",
             names.len(),
             lvl.label,
             list(&names)

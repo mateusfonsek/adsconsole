@@ -391,7 +391,7 @@ async fn build(ctx: &Ctx, input: &CreateDemandGenInput) -> Result<WritePlan, Too
     );
     Ok(WritePlan {
         summary: format!(
-            "Creates Demand Gen campaign '{name}' (paused), {} ad groups, {ads} ads, \
+            "Create Demand Gen campaign '{name}' (paused), {} ad groups, {ads} ads, \
              budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),

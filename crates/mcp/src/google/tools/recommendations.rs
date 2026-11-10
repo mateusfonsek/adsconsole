@@ -162,7 +162,7 @@ impl WriteTool for ApplyRecommendation {
         op.insert("resourceName".into(), json!(rn));
         let kind = lookup(ctx, APPLY, &rn).await?;
         Ok(post_plan(
-            format!("Applies recommendation {kind} ({rn})"),
+            format!("Apply recommendation {kind} ({rn})"),
             "/recommendations:apply",
             Value::Object(op),
         ))
@@ -188,7 +188,7 @@ impl WriteTool for DismissRecommendation {
         let rn = recommendation_rn(ctx, &input.recommendation)?;
         let kind = lookup(ctx, DISMISS, &rn).await?;
         Ok(post_plan(
-            format!("Dismisses recommendation {kind} ({rn})"),
+            format!("Dismiss recommendation {kind} ({rn})"),
             "/recommendations:dismiss",
             json!({ "resourceName": rn }),
         ))

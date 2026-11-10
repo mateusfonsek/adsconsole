@@ -252,7 +252,7 @@ async fn search_campaign_operations() {
     assert_eq!(out["reversible"], true);
     assert_eq!(
         out["summary"],
-        "Creates Search campaign 'Shoe Search' (paused), 1 ad groups, 2 keywords, \
+        "Create Search campaign 'Shoe Search' (paused), 1 ad groups, 2 keywords, \
          budget 50 BRL/day"
     );
 
@@ -940,7 +940,7 @@ async fn pmax_single_mutate_with_assets() {
     assert_eq!(
         out["summary"],
         format!(
-            "Creates Performance Max campaign 'PMax Shoes' (paused), 1 asset groups, \
+            "Create Performance Max campaign 'PMax Shoes' (paused), 1 asset groups, \
              budget 80 BRL/day; images from {}, {}",
             img.square, img.landscape
         )
@@ -1700,7 +1700,7 @@ async fn demand_gen_multi_asset_ops() {
     assert_eq!(
         out["summary"],
         format!(
-            "Creates Demand Gen campaign 'DG Shoes' (paused), 1 ad groups, 1 ads, \
+            "Create Demand Gen campaign 'DG Shoes' (paused), 1 ad groups, 1 ads, \
              budget 30 BRL/day; images from {}, {}, {}",
             img.logo, img.base.landscape, img.base.square
         )
@@ -2394,7 +2394,7 @@ async fn display_rda_ops() {
     assert_eq!(
         out["summary"],
         format!(
-            "Creates Display campaign 'Display Shoes' (paused), 1 ad groups, 1 ads, \
+            "Create Display campaign 'Display Shoes' (paused), 1 ad groups, 1 ads, \
              budget 40 BRL/day; images from {}, {}",
             img.landscape, img.square
         )

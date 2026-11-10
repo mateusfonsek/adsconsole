@@ -49,7 +49,7 @@ impl WriteTool for Mutate {
         let input: MutateInput = parse_input(input)?;
         Ok(WritePlan {
             summary: format!(
-                "Sends {} raw operation(s) to googleAds:mutate.",
+                "Send {} raw operation(s) to googleAds:mutate.",
                 input.operations.len()
             ),
             warning: None,

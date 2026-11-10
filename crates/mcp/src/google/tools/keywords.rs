@@ -320,7 +320,7 @@ impl WriteTool for ManageKeywords {
                 }
                 Ok(irreversible(
                     format!(
-                        "Removes {} keyword(s) from ad group {ag}: {}",
+                        "Remove {} keyword(s) from ad group {ag}: {}",
                         names.len(),
                         list(&names)
                     ),
@@ -392,7 +392,7 @@ fn add_keywords(
     }
     Ok(WritePlan {
         summary: format!(
-            "Adds {} keyword(s) to ad group {ag} (created paused): {}",
+            "Add {} keyword(s) to ad group {ag} (created paused): {}",
             names.len(),
             list(&names)
         ),
@@ -494,7 +494,7 @@ fn change_match_types(
     }
     Ok(irreversible(
         format!(
-            "Changes the match type of {} keyword(s) in ad group {ag}: {}",
+            "Change the match type of {} keyword(s) in ad group {ag}: {}",
             names.len(),
             list(&names)
         ),
@@ -713,7 +713,7 @@ impl WriteTool for ManageNegatives {
                 )?;
                 Ok(WritePlan {
                     summary: format!(
-                        "Adds {} negative keyword(s) to {}: {}",
+                        "Add {} negative keyword(s) to {}: {}",
                         names.len(),
                         lvl.label,
                         list(&names)
@@ -737,7 +737,7 @@ impl WriteTool for ManageNegatives {
                 let names: Vec<String> = found.iter().map(|(_, d)| d.clone()).collect();
                 Ok(irreversible(
                     format!(
-                        "Removes {} negative keyword(s) from {}: {}",
+                        "Remove {} negative keyword(s) from {}: {}",
                         names.len(),
                         lvl.label,
                         list(&names)
@@ -889,7 +889,7 @@ fn create_list(
         &mut names,
     )?;
     let mut summary = format!(
-        "Creates negative keyword list '{name}' with {} keyword(s)",
+        "Create negative keyword list '{name}' with {} keyword(s)",
         names.len()
     );
     if let Some(cid) = campaign_id {
@@ -911,7 +911,7 @@ fn create_list(
             fields: vec!["campaign_shared_set.campaign", "campaign_shared_set.status"],
         });
         order.push(rn);
-        summary.push_str(&format!(" and attaches it to campaign {cid}"));
+        summary.push_str(&format!(" and attach it to campaign {cid}"));
     }
     order.push(set_rn);
     if !names.is_empty() {
@@ -944,7 +944,7 @@ fn attach_list(ctx: &Ctx, input: &ManageNegativesInput) -> Result<WritePlan, Too
         "sharedSet": resources::rn(&ctx.customer_id, "sharedSets", &sid),
     } } });
     Ok(WritePlan {
-        summary: format!("Attaches negative keyword list {sid} to campaign {cid}"),
+        summary: format!("Attach negative keyword list {sid} to campaign {cid}"),
         warning: None,
         operations: vec![operation],
         field_changes: Vec::new(),

@@ -1590,7 +1590,7 @@ async fn negatives_remove_is_irreversible() {
     assert!(g.state.lock().unwrap().get(neg).is_none());
     assert_eq!(
         out["summary"],
-        "Removes 1 negative keyword(s) from campaign 5: 'free' [BROAD]"
+        "Remove 1 negative keyword(s) from campaign 5: 'free' [BROAD]"
     );
     let applied_before = mutate_bodies(&h).await.len();
 

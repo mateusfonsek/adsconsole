@@ -455,7 +455,7 @@ async fn build(ctx: &Ctx, input: &CreateDisplayInput) -> Result<WritePlan, ToolE
     );
     Ok(WritePlan {
         summary: format!(
-            "Creates Display campaign '{name}' (paused), {} ad groups, {ads} ads, \
+            "Create Display campaign '{name}' (paused), {} ad groups, {ads} ads, \
              budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),

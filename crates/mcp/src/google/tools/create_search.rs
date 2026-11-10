@@ -330,7 +330,7 @@ fn build(ctx: &Ctx, input: &CreateSearchInput) -> Result<WritePlan, ToolError> {
 
     Ok(WritePlan {
         summary: format!(
-            "Creates Search campaign '{name}' (paused), {} ad groups, {keywords} keywords, \
+            "Create Search campaign '{name}' (paused), {} ad groups, {keywords} keywords, \
              budget {} {}/day",
             input.ad_groups.len(),
             input.daily_budget.normalize(),

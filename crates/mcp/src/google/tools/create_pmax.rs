@@ -609,7 +609,7 @@ async fn build(ctx: &Ctx, input: &CreatePmaxInput) -> Result<WritePlan, ToolErro
 
     Ok(WritePlan {
         summary: format!(
-            "Creates Performance Max campaign '{name}' (paused), {} asset groups, \
+            "Create Performance Max campaign '{name}' (paused), {} asset groups, \
              budget {} {}/day; images from {}",
             groups.len(),
             input.daily_budget.normalize(),

@@ -193,7 +193,7 @@ impl WriteTool for UploadAsset {
                         .1
                 };
                 format!(
-                    "Creates an asset ({}) from {}.",
+                    "Create an asset ({}) from {}.",
                     kind_label(role),
                     image_source_label(&r)
                 )
@@ -213,7 +213,7 @@ impl WriteTool for UploadAsset {
                     body["name"] = json!(name_text(name, "name")?);
                 }
                 operations.push(create_op(&temps.next("assets"), body)?);
-                format!("Creates text asset '{t}'.")
+                format!("Create text asset '{t}'.")
             }
             AssetKind::Youtube => {
                 let raw = input.youtube_video_id.as_deref().ok_or_else(|| {
@@ -225,7 +225,7 @@ impl WriteTool for UploadAsset {
                     body["name"] = json!(name_text(name, "name")?);
                 }
                 operations.push(create_op(&temps.next("assets"), body)?);
-                format!("Creates an asset for YouTube video {id}.")
+                format!("Create an asset for YouTube video {id}.")
             }
         };
         let asset = operations
@@ -437,8 +437,8 @@ impl WriteTool for UploadVideo {
             None => "to a channel managed by Google".to_string(),
         };
         let summary = format!(
-            "Uploads {} ({:.1} MB) to YouTube as \"{title}\" ({privacy}, {place}) and, when \
-             processing finishes (waits up to {wait} min), creates the video asset. Google \
+            "Upload {} ({:.1} MB) to YouTube as \"{title}\" ({privacy}, {place}) and, when \
+             processing finishes (waiting up to {wait} min), create the video asset. Google \
              has no prior validation (validate_only) for video uploads: only local checks \
              were made.",
             path.display(),
