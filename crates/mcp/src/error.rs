@@ -3,7 +3,7 @@ use rmcp::model::CallToolResult;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// Códigos de erro estáveis devolvidos ao cliente MCP.
+/// Stable error codes returned to the MCP client.
 pub mod codes {
     pub const UNKNOWN_TOOL: &str = "UNKNOWN_TOOL";
     pub const TOOL_DISABLED: &str = "TOOL_DISABLED";
@@ -37,7 +37,7 @@ pub mod codes {
     pub const BUDGET_CHANGE_LIMIT: &str = "BUDGET_CHANGE_LIMIT";
 }
 
-/// Erro de ferramenta: volta ao cliente como resultado com `isError: true`.
+/// Tool error: returned to the client as a result with `isError: true`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolError {
     pub code: String,
@@ -95,19 +95,25 @@ impl From<RoutingError> for ToolError {
             RoutingError::UnknownConnection(_) => {
                 ToolError::new(codes::UNKNOWN_CONNECTION, message)
                     .with_field("connection")
-                    .with_suggestion("Use list_accounts para ver as conexões e contas disponíveis.")
+                    .with_suggestion(
+                        "Use list_accounts to see the available connections and accounts.",
+                    )
             }
             RoutingError::AccountNotInConnection { .. } => {
                 ToolError::new(codes::ACCOUNT_NOT_IN_CONNECTION, message)
                     .with_field("connection")
-                    .with_suggestion("Use list_accounts para ver em qual conexão a conta está.")
+                    .with_suggestion(
+                        "Use list_accounts to see which connection the account belongs to.",
+                    )
             }
             RoutingError::AccountNotFound(_) => ToolError::new(codes::ACCOUNT_NOT_FOUND, message)
-                .with_suggestion("Use list_accounts para ver as contas disponíveis"),
+                .with_suggestion("Use list_accounts to see the available accounts"),
             RoutingError::Ambiguous { connections, .. } => {
                 let ids: Vec<&str> = connections.iter().map(|(id, _)| id.as_str()).collect();
-                let suggestion =
-                    format!("Informe connection com um destes ids: {}.", ids.join(", "));
+                let suggestion = format!(
+                    "Provide connection with one of these ids: {}.",
+                    ids.join(", ")
+                );
                 let list: Vec<Value> = connections
                     .iter()
                     .map(|(id, name)| json!({ "connection_id": id, "name": name }))
@@ -119,7 +125,7 @@ impl From<RoutingError> for ToolError {
             }
             RoutingError::NeedsReconnect(_) => {
                 ToolError::new(codes::CONNECTION_NEEDS_RECONNECT, message)
-                    .with_suggestion("Reconecte esta conexão no AdsConsole → Conexões.")
+                    .with_suggestion("Reconnect this connection in AdsConsole → Connections.")
             }
             RoutingError::Db(_) => ToolError::new(codes::INTERNAL, message),
         }

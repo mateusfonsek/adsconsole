@@ -43,7 +43,7 @@ const MAX_LIST_NAME_CHARS: usize = 255;
 /// Quantas keywords aparecem no resumo antes do "e mais N".
 const SUMMARY_ITEMS: usize = 5;
 
-pub(crate) const IRREVERSIBLE_WARNING: &str = "Esta mudança não pode ser desfeita.";
+pub(crate) const IRREVERSIBLE_WARNING: &str = "This change cannot be undone.";
 const MATCH_TYPE_WARNING: &str = "O Google não permite trocar o tipo de correspondência; \
                                   a keyword antiga será removida e uma nova criada.";
 

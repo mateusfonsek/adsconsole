@@ -1,4 +1,4 @@
-//! `ServerHandler` do rmcp sobre um `Engine`: uma instância por plataforma.
+//! rmcp `ServerHandler` over an `Engine`: one instance per platform.
 
 use adsconsole_core::Platform;
 use rmcp::model::{
@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::engine::Engine;
 
-const INSTRUCTIONS: &str = "Ferramentas de anúncios do AdsConsole. Toda ferramenta de conta recebe account_id; use list_accounts para ver as contas. Escritas podem aguardar aprovação no AdsConsole (consulte o resultado com get_change_status) e mudanças aplicadas podem ser revertidas com undo_change.";
+const INSTRUCTIONS: &str = "AdsConsole advertising tools. Every account tool takes account_id; use list_accounts to see the accounts. Writes may wait for approval in AdsConsole (check the result with get_change_status) and applied changes can be reverted with undo_change.";
 
 #[derive(Clone)]
 pub struct McpService {
@@ -35,7 +35,7 @@ impl ServerHandler for McpService {
             .with_instructions(INSTRUCTIONS)
     }
 
-    /// Lê a configuração a cada chamada: os toggles valem sem reiniciar.
+    /// Reads the configuration on every call: toggles take effect without a restart.
     async fn list_tools(
         &self,
         _request: Option<PaginatedRequestParams>,

@@ -36,8 +36,8 @@ async fn setup_with(
     (engine, db)
 }
 
-/// Fake que cede a vez entre o snapshot e o execute, para que escritas concorrentes
-/// sem o mutex da conta se intercalem de verdade.
+/// Fake that yields between the snapshot and the execute, so that concurrent writes
+/// without the account mutex really interleave.
 struct YieldingFake(Arc<FakePlatform>, std::time::Duration);
 
 #[async_trait::async_trait]
@@ -83,7 +83,7 @@ impl PlatformAdapter for YieldingFake {
     }
 }
 
-/// Entradas do log do fake depois das `skip` primeiras (as do setup).
+/// Entries of the fake's log after the first `skip` (the setup ones).
 fn log_since(fake: &FakePlatform, skip: usize) -> Vec<String> {
     fake.log().into_iter().skip(skip).collect()
 }
@@ -91,7 +91,7 @@ fn log_since(fake: &FakePlatform, skip: usize) -> Vec<String> {
 fn acct(id: &str) -> AccountInfo {
     AccountInfo {
         account_id: id.into(),
-        name: format!("Conta {id}"),
+        name: format!("Account {id}"),
         currency: "BRL".into(),
         timezone: None,
         status: Some("ACTIVE".into()),
@@ -144,7 +144,7 @@ async fn read_only_mode_refuses_without_calling_adapter() {
     assert_eq!(err.code, codes::READ_ONLY_MODE);
     assert_eq!(
         err.message,
-        "O modo de escrita de Google Ads está em só leitura. Mude em AdsConsole → Ferramentas e escrita."
+        "The write mode of Google Ads is read-only. Change it in AdsConsole → Tools."
     );
     assert!(
         log_since(&fake, setup_log).is_empty(),
@@ -168,7 +168,7 @@ async fn read_only_mode_refuses_uncached_account_without_refresh() {
             )
             .await
             .unwrap_err();
-        assert_eq!(err.code, codes::READ_ONLY_MODE, "conta {account}");
+        assert_eq!(err.code, codes::READ_ONLY_MODE, "account {account}");
     }
     assert!(
         log_since(&fake, setup_log).is_empty(),
@@ -228,7 +228,7 @@ async fn irreversible_write_warns() {
         .await
         .unwrap();
     assert_eq!(out["reversible"], false);
-    assert_eq!(out["warning"], "Esta mudança não pode ser desfeita.");
+    assert_eq!(out["warning"], "This change cannot be undone.");
 }
 
 #[tokio::test]
@@ -278,11 +278,11 @@ async fn execution_failure_recorded_as_failed() {
     let id = err.details.as_ref().unwrap()["change_id"].as_str().unwrap();
     let rec = db.get_change(id).unwrap().unwrap();
     assert_eq!(rec.status, ChangeStatus::Failed);
-    let stored = rec.error.expect("error preenchido");
+    let stored = rec.error.expect("error filled in");
     assert_eq!(stored["code"], codes::EXECUTION_FAILED);
     assert_eq!(stored["message"], "API caiu");
     assert!(rec.after.is_none());
-    assert!(!rec.reversible, "mudança que falhou não é reversível");
+    assert!(!rec.reversible, "a change that failed is not reversible");
 }
 
 #[tokio::test]
@@ -296,10 +296,10 @@ async fn disabled_and_hidden_tools() {
     assert_eq!(err.code, codes::TOOL_DISABLED);
     assert_eq!(
         err.suggestion.as_deref(),
-        Some("Ligue em AdsConsole → Ferramentas e escrita")
+        Some("Turn it on in AdsConsole → Tools")
     );
     let err = engine
-        .call_tool("nao_existe", json!({}), by())
+        .call_tool("does_not_exist", json!({}), by())
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::UNKNOWN_TOOL);
@@ -345,7 +345,7 @@ async fn same_account_writes_are_serialized() {
     let created = engine
         .call_tool(
             "create_campaign",
-            json!({"account_id": "111", "name": "inicial", "daily_budget": 30}),
+            json!({"account_id": "111", "name": "initial", "daily_budget": 30}),
             by(),
         )
         .await
@@ -376,7 +376,7 @@ async fn same_account_writes_are_serialized() {
         ids.push(out["change_id"].as_str().unwrap().to_string());
     }
 
-    // (before.name → after.name) precisa formar UMA cadeia a partir de "inicial".
+    // (before.name → after.name) must form ONE chain starting from "initial".
     let mut next: HashMap<String, String> = HashMap::new();
     for id in &ids {
         let rec = db.get_change(id).unwrap().unwrap();
@@ -385,16 +385,19 @@ async fn same_account_writes_are_serialized() {
         let after = rec.after.unwrap()["name"].as_str().unwrap().to_string();
         assert!(
             next.insert(before.clone(), after).is_none(),
-            "dois updates partiram do mesmo estado {before}"
+            "two updates started from the same state {before}"
         );
     }
-    let mut cur = "inicial".to_string();
+    let mut cur = "initial".to_string();
     let mut steps = 0;
     while let Some(n) = next.get(&cur) {
         cur = n.clone();
         steps += 1;
     }
-    assert_eq!(steps, 10, "a cadeia não cobre todos os updates: {next:?}");
+    assert_eq!(
+        steps, 10,
+        "the chain does not cover all the updates: {next:?}"
+    );
 }
 
 #[tokio::test]
@@ -447,14 +450,14 @@ async fn failing_connection_does_not_break_routing() {
     let (engine, fake, _db) = setup(WriteMode::Direct).await;
     fake.fail_list_accounts("conn_b");
     fake.add_account_to("conn_a", acct("555"));
-    // O refresh pula conn_b e acha a 555 em conn_a.
+    // The refresh skips conn_b and finds 555 in conn_a.
     let out = engine
         .call_tool("get_campaigns", json!({"account_id": "555"}), by())
         .await
         .unwrap();
     assert!(out["campaigns"].is_array());
     assert!(engine.refresh_accounts().await.is_ok());
-    // A conta 444 continua no cache antigo de conn_b.
+    // Account 444 stays in conn_b's old cache.
     engine
         .call_tool("get_campaigns", json!({"account_id": "444"}), by())
         .await
@@ -483,7 +486,7 @@ async fn dropped_call_still_finishes_the_change() {
         std::time::Duration::from_millis(100),
     ));
     let (engine, db) = setup_with(WriteMode::Direct, adapter, &fake).await;
-    // O cliente "desconecta" no meio do apply (durante o snapshot lento).
+    // The client "disconnects" in the middle of apply (during the slow snapshot).
     let dropped = tokio::time::timeout(
         std::time::Duration::from_millis(20),
         engine.call_tool(
@@ -493,7 +496,7 @@ async fn dropped_call_still_finishes_the_change() {
         ),
     )
     .await;
-    assert!(dropped.is_err(), "a chamada deveria ter sido cortada");
+    assert!(dropped.is_err(), "the call should have been cut off");
     let id = all_changes(&db)[0].change_id.clone();
     let mut status = None;
     for _ in 0..50 {
@@ -518,7 +521,7 @@ async fn access_denied_triggers_background_refresh() {
     let mut found = false;
     for _ in 0..20 {
         if fake.log().contains(&"list_accounts:conn_a".to_string()) {
-            // o setup já fez um refresh; conta ocorrências
+            // the setup already did a refresh; count occurrences
             if fake
                 .log()
                 .iter()
@@ -532,11 +535,7 @@ async fn access_denied_triggers_background_refresh() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(50)).await;
     }
-    assert!(
-        found,
-        "refresh em segundo plano não aconteceu: {:?}",
-        fake.log()
-    );
+    assert!(found, "background refresh did not happen: {:?}", fake.log());
 }
 
 #[tokio::test]
@@ -563,7 +562,7 @@ async fn access_denied_refresh_is_coalesced() {
         }
         tokio::time::sleep(std::time::Duration::from_millis(25)).await;
     }
-    // Margem para um segundo refresh (indevido) aparecer.
+    // Margin for a second (undue) refresh to show up.
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert_eq!(rounds(), before + 1, "{:?}", fake.log());
 }
@@ -630,7 +629,7 @@ async fn interrupted_change_keeps_created_ids() {
         connection_id: "conn_a".into(),
         tool: "create_campaign".into(),
         input: json!({"account_id": "111", "name": "x", "daily_budget": 30}),
-        summary: "Criar".into(),
+        summary: "Create".into(),
         before: None,
         after: None,
         inverse: None,

@@ -1,18 +1,18 @@
-//! Truncamento genérico de respostas: mantém o maior prefixo de itens cujo JSON cabe.
+//! Generic response truncation: keeps the longest prefix of items whose JSON fits.
 
 use serde::Serialize;
 use serde_json::Value;
 
-/// Limite de bytes de JSON de uma resposta de leitura.
+/// JSON byte limit of a read response.
 pub const MAX_RESPONSE_BYTES: usize = 100_000;
 
-/// Orçamento para a lista de itens: o limite menos uma folga para o resto da resposta
-/// (chaves de envelope, `next_cursor`, `aviso_cota`).
+/// Budget for the item list: the limit minus some slack for the rest of the response
+/// (envelope keys, `next_cursor`, `aviso_cota`).
 pub const ITEMS_BUDGET: usize = MAX_RESPONSE_BYTES - 2_000;
 
-/// Mantém o maior prefixo de `items` cujo array JSON cabe em `max_bytes`, com pelo menos
-/// um item (um item sozinho maior que o limite é devolvido assim mesmo). O booleano é
-/// `true` quando algum item ficou de fora.
+/// Keeps the longest prefix of `items` whose JSON array fits in `max_bytes`, with at least
+/// one item (a single item larger than the limit is returned anyway). The boolean is
+/// `true` when some item was left out.
 pub fn fit(items: Vec<Value>, max_bytes: usize) -> (Vec<Value>, bool) {
     let total = items.len();
     let mut size = 2; // "[]"
@@ -31,7 +31,7 @@ pub fn fit(items: Vec<Value>, max_bytes: usize) -> (Vec<Value>, bool) {
     (items, keep < total)
 }
 
-/// Como [`fit`], para uma lista tipada: corta `items` no lugar e diz se cortou.
+/// Like [`fit`], for a typed list: cuts `items` in place and says whether it cut.
 pub fn fit_items<T: Serialize>(items: &mut Vec<T>, max_bytes: usize) -> bool {
     let values: Vec<Value> = items
         .iter()
@@ -72,7 +72,7 @@ mod tests {
 
     #[test]
     fn fit_counts_brackets_and_commas() {
-        // "[1,2]" são 5 bytes.
+        // "[1,2]" is 5 bytes.
         let v = vec![json!(1), json!(2), json!(3)];
         assert_eq!(fit(v.clone(), 5).0.len(), 2);
         assert_eq!(fit(v.clone(), 4).0.len(), 1);

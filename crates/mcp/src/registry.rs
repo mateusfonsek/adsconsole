@@ -4,7 +4,7 @@ use adsconsole_core::config::ServerSettings;
 
 use crate::adapter::ToolSpec;
 
-/// Ferramentas de uma plataforma, em ordem de registro, com os toggles aplicados.
+/// The tools of a platform, in registration order, with the toggles applied.
 #[derive(Debug, Clone)]
 pub struct ToolRegistry {
     specs: Vec<ToolSpec>,
@@ -16,24 +16,24 @@ impl ToolRegistry {
         let mut index = HashMap::with_capacity(specs.len());
         for (i, s) in specs.iter().enumerate() {
             if index.insert(s.name.clone(), i).is_some() {
-                return Err(format!("Ferramenta duplicada: {}", s.name));
+                return Err(format!("Duplicate tool: {}", s.name));
             }
         }
         Ok(Self { specs, index })
     }
 
-    /// Todas, em ordem de registro (inclui as ocultas).
+    /// All of them, in registration order (includes the hidden ones).
     pub fn specs(&self) -> &[ToolSpec] {
         &self.specs
     }
 
-    /// Inclui as ocultas.
+    /// Includes the hidden ones.
     pub fn get(&self, name: &str) -> Option<&ToolSpec> {
         self.index.get(name).map(|&i| &self.specs[i])
     }
 
-    /// Prioridade: `s.tools[name]` → `s.groups[group]` → `group.default_enabled()`.
-    /// Ferramenta oculta ou desconhecida nunca está habilitada.
+    /// Priority: `s.tools[name]` → `s.groups[group]` → `group.default_enabled()`.
+    /// A hidden or unknown tool is never enabled.
     pub fn is_enabled(&self, name: &str, s: &ServerSettings) -> bool {
         self.get(name)
             .is_some_and(|spec| Self::spec_enabled(spec, s))
@@ -75,10 +75,10 @@ mod tests {
         let r = ToolRegistry::new(FakePlatform::new(Platform::GoogleAds).tools()).unwrap();
         let mut s = ServerSettings::default();
         assert!(r.is_enabled("get_campaigns", &s));
-        assert!(!r.is_enabled("raw_mutate", &s)); // Escape desligado por padrão
+        assert!(!r.is_enabled("raw_mutate", &s)); // Escape is off by default
         s.groups.insert(ToolGroup::Escape, true);
         assert!(r.is_enabled("raw_mutate", &s));
-        s.tools.insert("raw_mutate".into(), false); // toggle da ferramenta vence o do grupo
+        s.tools.insert("raw_mutate".into(), false); // the tool's toggle wins over the group's
         assert!(!r.is_enabled("raw_mutate", &s));
         s.groups.insert(ToolGroup::Edit, false);
         assert!(!r.enabled(&s).iter().any(|t| t.name == "update_campaign"));
@@ -95,7 +95,7 @@ mod tests {
         s.tools.insert("b".into(), true);
         assert!(r.get("b").is_some());
         assert!(!r.is_enabled("b", &s));
-        assert!(!r.is_enabled("nao_existe", &s));
+        assert!(!r.is_enabled("does_not_exist", &s));
         let names: Vec<_> = r.enabled(&s).iter().map(|t| t.name.clone()).collect();
         assert_eq!(names, vec!["a"]);
     }
@@ -118,7 +118,7 @@ mod tests {
         let out = get
             .output_schema
             .clone()
-            .expect("get_campaigns declara output schema");
+            .expect("get_campaigns declares an output schema");
         assert_eq!(out["type"], "object");
         assert!(out["properties"]["campaigns"].is_object());
 
@@ -128,17 +128,12 @@ mod tests {
         assert!(
             rm.description
                 .unwrap()
-                .ends_with(" Atenção: esta mudança não pode ser desfeita.")
+                .ends_with(" Warning: this change cannot be undone.")
         );
 
         let up = r.get("update_campaign").unwrap().to_mcp_tool();
         assert_eq!(up.annotations.clone().unwrap().idempotent_hint, Some(true));
-        assert!(
-            !up.description
-                .clone()
-                .unwrap()
-                .contains("não pode ser desfeita")
-        );
+        assert!(!up.description.clone().unwrap().contains("cannot be undone"));
         let required = up.input_schema["required"].as_array().unwrap();
         assert!(required.iter().any(|v| v == "account_id"));
         assert!(required.iter().any(|v| v == "campaign_id"));

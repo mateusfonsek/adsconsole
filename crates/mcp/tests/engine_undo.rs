@@ -66,7 +66,7 @@ fn set_tool(config: &SharedConfig, tool: &str, on: bool) {
     c.servers.insert(Platform::GoogleAds, s);
 }
 
-/// Cria uma campanha "x" na conta 111; devolve (change_id, campaign_id).
+/// Creates a campaign "x" in account 111; returns (change_id, campaign_id).
 async fn create(engine: &Engine, name: &str) -> (String, String) {
     let out = engine
         .call_tool(
@@ -159,7 +159,7 @@ async fn undo_conflict_then_force() {
     assert_eq!(diffs[0]["actual"], "z");
     assert_eq!(
         err.suggestion.as_deref(),
-        Some("O objeto mudou depois desta alteração. Use force=true para desfazer mesmo assim.")
+        Some("The object changed after this modification. Use force=true to undo anyway.")
     );
     assert_eq!(name_of(&s.fake, &cid), "z");
     assert_eq!(
@@ -183,7 +183,10 @@ async fn undo_twice_refused() {
     assert_eq!(err.code, codes::INVALID_STATE);
     assert_eq!(
         err.message,
-        format!("Já desfeita por {}.", first["change_id"].as_str().unwrap())
+        format!(
+            "Already undone by {}.",
+            first["change_id"].as_str().unwrap()
+        )
     );
     assert_eq!(executes(&s.fake, "update_campaign"), before + 1);
 }
@@ -203,12 +206,12 @@ async fn undo_pending_undo_refused() {
     assert_eq!(pending["status"], "pending");
     let chg = pending["change_id"].as_str().unwrap().to_string();
 
-    // Original ainda pendente: desfazer não se aplica.
+    // Original still pending: undo does not apply.
     let err = s.engine.undo(&chg, false, by()).await.unwrap_err();
     assert_eq!(err.code, codes::INVALID_STATE);
     assert_eq!(
         err.message,
-        "A mudança ainda está pendente. Recuse-a no AdsConsole em vez de desfazer."
+        "The change is still pending. Reject it in AdsConsole instead of undoing it."
     );
 
     let rec = s.engine.approve(&chg).await.unwrap();
@@ -222,7 +225,7 @@ async fn undo_pending_undo_refused() {
     assert_eq!(err.code, codes::INVALID_STATE);
     assert_eq!(
         err.message,
-        format!("Já existe um desfazer pendente: {undo_id}.")
+        format!("An undo is already pending: {undo_id}.")
     );
     assert_eq!(executes(&s.fake, "remove_campaign"), 0);
 }
@@ -258,7 +261,7 @@ async fn undo_unknown_and_failed_refused() {
     let (_, cid) = create(&s.engine, "x").await;
     s.fake.fail_next_execute(adsconsole_mcp::ToolError::new(
         codes::EXECUTION_FAILED,
-        "falhou",
+        "failed",
     ));
     let err = s
         .engine
@@ -293,11 +296,11 @@ async fn undo_respects_read_only() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::READ_ONLY_MODE);
-    // Nada chegou ao adapter: nem current_state, nem precheck.
+    // Nothing reached the adapter: neither current_state nor precheck.
     assert_eq!(s.fake.log()[log_len..], [] as [String; 0]);
     assert_eq!(name_of(&s.fake, &cid), "y");
 
-    // As leituras do histórico seguem funcionando em só leitura.
+    // History reads keep working in read-only mode.
     let list = s
         .engine
         .call_tool("list_changes", json!({}), by())
@@ -373,7 +376,7 @@ async fn undo_change_respects_toggle() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::TOOL_DISABLED);
-    // O toggle da inversa (remove_campaign) não importa para o desfazer.
+    // The inverse's toggle (remove_campaign) does not matter for undo.
     set_tool(&s.config, "undo_change", true);
     set_tool(&s.config, "remove_campaign", false);
     let out = s
@@ -492,7 +495,7 @@ async fn list_changes_limit_capped_and_scoped_to_platform() {
     for i in 0..3 {
         create(&s.engine, &format!("c{i}")).await;
     }
-    // Uma mudança de outra plataforma no mesmo banco não aparece.
+    // A change from another platform in the same database does not show up.
     let mut other =
         s.db.get_change(&create(&s.engine, "m").await.0)
             .unwrap()
@@ -528,7 +531,7 @@ fn orphan(platform: Platform) -> ChangeRecord {
         connection_id: "conn_a".into(),
         tool: "update_campaign".into(),
         input: json!({"account_id": "111", "campaign_id": "c1", "name": "y"}),
-        summary: "Alterar a campanha c1".into(),
+        summary: "Update campaign c1".into(),
         before: None,
         after: None,
         inverse: None,
@@ -564,7 +567,7 @@ async fn orphaned_approved_marked_failed_on_start() {
     assert_eq!(error["code"], codes::EXECUTION_FAILED);
     assert_eq!(
         error["message"],
-        "Execução interrompida; confira o estado na plataforma antes de repetir."
+        "Execution interrupted; check the state on the platform before retrying."
     );
     let other = db.get_change(&theirs.change_id).unwrap().unwrap();
     assert_eq!(other.status, ChangeStatus::Approved);
@@ -584,7 +587,7 @@ async fn concurrent_undos_direct_execute_once() {
     );
     let (ok, err) = match (a, b) {
         (Ok(ok), Err(err)) | (Err(err), Ok(ok)) => (ok, err),
-        other => panic!("esperava um sucesso e uma recusa: {other:?}"),
+        other => panic!("expected one success and one refusal: {other:?}"),
     };
     assert_eq!(ok["status"], "applied", "{ok}");
     assert_eq!(err.code, codes::INVALID_STATE, "{err:?}");
@@ -628,8 +631,8 @@ async fn two_pending_undos_approved_execute_once() {
         ChangeStatus::Applied
     );
 
-    // Um desfazer pela via normal e um segundo inserido direto (como se as checagens
-    // do undo tivessem corrido em paralelo).
+    // One undo through the normal path and a second inserted directly (as if the undo
+    // checks had run in parallel).
     let first = s.engine.undo(&upd, false, by()).await.unwrap();
     assert_eq!(first["status"], "pending", "{first}");
     let u1 = first["change_id"].as_str().unwrap().to_string();
@@ -664,14 +667,14 @@ async fn two_pending_undos_approved_execute_once() {
     };
     assert_eq!(
         error["message"],
-        format!("Já desfeita por {}.", applied.change_id)
+        format!("Already undone by {}.", applied.change_id)
     );
     assert_eq!(executes(&s.fake, "update_campaign"), before + 1);
     assert_eq!(name_of(&s.fake, &cid), "x");
 }
 
-/// Modo aprovação: cria "x", renomeia para "y" (ambas aprovadas) e devolve
-/// (id da renomeação, id da campanha).
+/// Approval mode: creates "x", renames it to "y" (both approved) and returns
+/// (rename id, campaign id).
 async fn approved_rename(s: &Setup) -> (String, String) {
     let created = s
         .engine
@@ -716,7 +719,7 @@ async fn pending_undo_rechecks_conflict_on_approve() {
     assert_eq!(pending["status"], "pending", "{pending}");
     let undo_id = pending["change_id"].as_str().unwrap().to_string();
 
-    // Edição externa enquanto o desfazer espera na fila.
+    // External edit while the undo waits in the queue.
     s.fake.set_campaign_name_externally("111", &cid, "z");
     let before = executes(&s.fake, "update_campaign");
     let rec = s.engine.approve(&undo_id).await.unwrap();
@@ -732,7 +735,7 @@ async fn pending_undo_rechecks_conflict_on_approve() {
     assert_eq!(diffs[0]["actual"], "z");
     assert_eq!(
         error["suggestion"],
-        "O objeto mudou depois desta alteração. Use force=true para desfazer mesmo assim."
+        "The object changed after this modification. Use force=true to undo anyway."
     );
     assert_eq!(executes(&s.fake, "update_campaign"), before);
     assert_eq!(name_of(&s.fake, &cid), "z");

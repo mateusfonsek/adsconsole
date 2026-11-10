@@ -1,4 +1,4 @@
-//! Ponto único de despacho das ferramentas: roteamento de conta, leitura e escrita.
+//! Single dispatch point for the tools: account routing, reads and writes.
 
 mod approval;
 mod history;
@@ -26,19 +26,19 @@ pub use approval::PENDING_TTL;
 
 pub type SharedConfig = Arc<RwLock<Config>>;
 
-/// Intervalo mínimo entre dois refresh de contas disparados por `ACCESS_DENIED`
-/// (no Google, cada refresh gasta operações da cota do projeto).
+/// Minimum interval between two account refreshes triggered by `ACCESS_DENIED`
+/// (on Google, each refresh spends operations from the project quota).
 const ACCESS_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
-/// Um refresh por `ACCESS_DENIED` por vez, e nenhum a menos de
-/// [`ACCESS_REFRESH_INTERVAL`] do início do anterior.
+/// One refresh per `ACCESS_DENIED` at a time, and none sooner than
+/// [`ACCESS_REFRESH_INTERVAL`] after the start of the previous one.
 #[derive(Default)]
 struct RefreshGate {
     running: AtomicBool,
     last_start: Mutex<Option<Instant>>,
 }
 
-/// Libera o [`RefreshGate`] ao terminar (inclusive em pânico).
+/// Releases the [`RefreshGate`] when done (including on panic).
 struct RefreshPermit(Arc<RefreshGate>);
 
 impl Drop for RefreshPermit {
@@ -94,9 +94,9 @@ pub struct Engine {
     access_refresh: Arc<RefreshGate>,
 }
 
-/// Erro interno (banco, serialização) convertido para o cliente.
+/// Internal error (database, serialization) converted for the client.
 pub(crate) fn internal(e: impl std::fmt::Display) -> ToolError {
-    ToolError::new(codes::INTERNAL, format!("Erro interno: {e}"))
+    ToolError::new(codes::INTERNAL, format!("Internal error: {e}"))
 }
 
 impl Engine {
@@ -122,11 +122,11 @@ impl Engine {
         Ok(engine)
     }
 
-    /// Mudanças desta plataforma que ficaram em `Approved` (execução interrompida por
-    /// queda ou erro do banco depois da aprovação) viram `Failed`: não dá para saber
-    /// se chegaram à plataforma.
-    /// Se a escrita já tinha criado objetos (progresso gravado), eles vão no erro, em
-    /// `details.orphaned_ids`.
+    /// Changes of this platform left in `Approved` (execution interrupted by a crash
+    /// or a database error after approval) become `Failed`: there is no way to know
+    /// whether they reached the platform.
+    /// If the write had already created objects (progress recorded), they go in the
+    /// error, in `details.orphaned_ids`.
     fn fail_interrupted(&self) -> Result<(), ToolError> {
         let filter = ChangeFilter {
             platform: Some(self.platform()),
@@ -166,7 +166,7 @@ impl Engine {
         self.events.subscribe()
     }
 
-    /// Configuração atual do servidor desta plataforma (cópia; nada fica travado).
+    /// Current server configuration for this platform (a copy; nothing stays locked).
     pub(crate) fn settings(&self) -> ServerSettings {
         self.config
             .read()
@@ -174,7 +174,7 @@ impl Engine {
             .server(self.platform())
     }
 
-    /// Enviar sem receptor não é erro.
+    /// Sending without a receiver is not an error.
     pub(crate) fn emit(&self, event: EngineEvent) {
         let _ = self.events.send(event);
     }
@@ -189,26 +189,21 @@ impl Engine {
             .registry
             .get(name)
             .filter(|s| s.exposed)
-            .ok_or_else(|| {
-                ToolError::new(
-                    codes::UNKNOWN_TOOL,
-                    format!("Ferramenta desconhecida: {name}"),
-                )
-            })?;
+            .ok_or_else(|| ToolError::new(codes::UNKNOWN_TOOL, format!("Unknown tool: {name}")))?;
         if !self.registry.is_enabled(name, &self.settings()) {
             return Err(ToolError::new(
                 codes::TOOL_DISABLED,
-                format!("A ferramenta {name} está desligada."),
+                format!("The tool {name} is turned off."),
             )
-            .with_suggestion("Ligue em AdsConsole → Ferramentas e escrita"));
+            .with_suggestion("Turn it on in AdsConsole → Tools"));
         }
-        // Ruling C: as de histórico são do engine (sem conta); o undo_change passa
-        // pela checagem de só leitura dentro de submit_write.
+        // Ruling C: the history tools belong to the engine (no account); undo_change goes
+        // through the read-only check inside submit_write.
         if history::is_history_tool(name) {
             return self.call_history(name, input, requested_by).await;
         }
         if spec.kind == ToolKind::Write {
-            // Antes do roteamento: em só leitura, nem o refresh de contas chama o adapter.
+            // Before routing: in read-only mode, not even the account refresh calls the adapter.
             self.ensure_writable()?;
         }
         let call = self.route(spec, input).await?;
@@ -216,9 +211,9 @@ impl Engine {
             ToolKind::Read => self.adapter.read(&call).await,
             ToolKind::Write => self.submit_write(call, spec, requested_by, None).await,
         };
-        // Acesso negado costuma ser a conta que saiu da conexão: atualiza o cache em
-        // segundo plano, sem esperar e sem mexer no erro devolvido. Limitado pelo
-        // RefreshGate, porque erros em sequência pediriam um refresh cada.
+        // Access denied is usually an account that left the connection: refresh the cache
+        // in the background, without waiting and without touching the returned error.
+        // Limited by the RefreshGate, because consecutive errors would each ask for a refresh.
         if matches!(&result, Err(e) if e.code == codes::ACCESS_DENIED)
             && let Some(permit) = self.access_refresh.try_start()
         {
@@ -231,7 +226,7 @@ impl Engine {
         result
     }
 
-    /// Normaliza o `account_id` e escolhe a conexão. Ferramentas sem conta vão com ids vazios.
+    /// Normalizes the `account_id` and picks the connection. Tools without an account go with empty ids.
     async fn route(&self, spec: &ToolSpec, mut input: Value) -> Result<Call, ToolError> {
         if !spec.takes_account {
             return Ok(Call {
@@ -244,7 +239,7 @@ impl Engine {
         let account: AccountRef = serde_json::from_value(input.clone()).map_err(|e| {
             ToolError::new(
                 codes::INVALID_INPUT,
-                format!("account_id ausente ou inválido: {e}"),
+                format!("account_id missing or invalid: {e}"),
             )
             .with_field("account_id")
         })?;
@@ -256,7 +251,7 @@ impl Engine {
         let explicit = account.connection.as_deref();
         let connection_id = match resolve_connection(&self.db, platform, &account_id, explicit) {
             Err(RoutingError::AccountNotFound(_) | RoutingError::AccountNotInConnection { .. }) => {
-                // Falha no refresh não importa aqui: o erro de roteamento real é o que vale.
+                // A refresh failure does not matter here: the real routing error is what counts.
                 let _ = self.refresh_accounts().await;
                 resolve_connection(&self.db, platform, &account_id, explicit)?
             }
@@ -270,8 +265,8 @@ impl Engine {
         })
     }
 
-    /// Atualiza o cache de contas de cada conexão. Uma conexão que falha é pulada
-    /// (mantém o cache antigo); só devolve erro se todas falharem.
+    /// Refreshes the account cache of each connection. A connection that fails is skipped
+    /// (keeps the old cache); returns an error only if all of them fail.
     pub async fn refresh_accounts(&self) -> Result<usize, ToolError> {
         let connections = self.adapter.connections();
         refresh_connections(
@@ -284,9 +279,9 @@ impl Engine {
     }
 }
 
-/// Atualiza o cache de contas de cada conexão. Uma conexão que falha é pulada
-/// (mantém o cache antigo); só devolve erro se todas falharem. Devolve o total de
-/// contas gravadas.
+/// Refreshes the account cache of each connection. A connection that fails is skipped
+/// (keeps the old cache); returns an error only if all of them fail. Returns the total
+/// number of accounts stored.
 pub(crate) async fn refresh_connections(
     adapter: &dyn PlatformAdapter,
     db: &Db,
@@ -311,7 +306,7 @@ pub(crate) async fn refresh_connections(
                     platform = platform.as_str(),
                     connection_id = connection_id.as_str(),
                     error = %e,
-                    "falha ao atualizar contas da conexão"
+                    "failed to refresh connection accounts"
                 );
                 failures += 1;
                 last_err = Some(e);
@@ -324,7 +319,7 @@ pub(crate) async fn refresh_connections(
     }
 }
 
-/// Erro de uma mudança interrompida, com os ids que o progresso registrou.
+/// Error of an interrupted change, with the ids that the progress recorded.
 fn interrupted_error(change: &ChangeRecord) -> ToolError {
     let orphans: Vec<String> = change
         .progress
@@ -340,16 +335,16 @@ fn interrupted_error(change: &ChangeRecord) -> ToolError {
     if orphans.is_empty() {
         return ToolError::new(
             codes::EXECUTION_FAILED,
-            "Execução interrompida; confira o estado na plataforma antes de repetir.",
+            "Execution interrupted; check the state on the platform before retrying.",
         );
     }
     ToolError::new(
         codes::EXECUTION_FAILED,
         format!(
-            "O AdsConsole foi fechado no meio desta mudança. Estes objetos podem ter ficado na conta: {}.",
+            "AdsConsole was closed in the middle of this change. These objects may have been left in the account: {}.",
             orphans.join(", ")
         ),
     )
     .with_details(serde_json::json!({ "orphaned_ids": orphans }))
-    .with_suggestion("Confira esses objetos na plataforma e apague os que não quiser.")
+    .with_suggestion("Check these objects on the platform and delete the ones you do not want.")
 }

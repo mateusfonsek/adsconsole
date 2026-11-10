@@ -1,5 +1,5 @@
-// `ToolError` (contrato público, campos fixos) passa do limite do lint; o contrato
-// devolve `Result<_, ToolError>` em toda parte, e erro de ferramenta não é caminho quente.
+// `ToolError` (public contract, fixed fields) exceeds the lint limit; the contract
+// returns `Result<_, ToolError>` everywhere, and a tool error is not a hot path.
 #![allow(clippy::result_large_err)]
 
 pub mod adapter;

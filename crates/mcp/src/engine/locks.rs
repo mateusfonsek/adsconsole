@@ -6,7 +6,7 @@ use tokio::sync::OwnedMutexGuard;
 
 type AccountKey = (Platform, String);
 
-/// Um mutex por conta: escritas na mesma conta rodam uma de cada vez.
+/// One mutex per account: writes to the same account run one at a time.
 #[derive(Default)]
 pub(crate) struct AccountLocks {
     map: Mutex<HashMap<AccountKey, Arc<tokio::sync::Mutex<()>>>>,
@@ -32,7 +32,7 @@ mod tests {
     async fn same_account_shares_lock_other_accounts_do_not() {
         let locks = AccountLocks::default();
         let _g = locks.lock(Platform::GoogleAds, "111").await;
-        // Outra conta e outra plataforma não esperam.
+        // Another account and another platform do not wait.
         let _o = locks.lock(Platform::GoogleAds, "222").await;
         let _m = locks.lock(Platform::MetaAds, "111").await;
         let again = tokio::time::timeout(
@@ -40,6 +40,6 @@ mod tests {
             locks.lock(Platform::GoogleAds, "111"),
         )
         .await;
-        assert!(again.is_err(), "a mesma conta deveria esperar");
+        assert!(again.is_err(), "the same account should wait");
     }
 }

@@ -1,4 +1,4 @@
-//! Plataforma fake, em memória: base dos testes do engine e modo demo do app.
+//! In-memory fake platform: the base of the engine tests and the app demo mode.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -36,7 +36,7 @@ impl FakeCampaign {
 
 #[derive(Debug, Deserialize, JsonSchema)]
 struct ListAccountsInput {
-    /// Id da conexão; sem ele, lista as contas de todas.
+    /// Connection id; without it, lists the accounts of all of them.
     #[serde(default)]
     #[allow(dead_code)]
     connection: Option<String>,
@@ -70,7 +70,7 @@ struct CreateCampaignInput {
     #[allow(dead_code)]
     account: AccountRef,
     name: String,
-    /// Orçamento diário na moeda da conta.
+    /// Daily budget in the account currency.
     #[serde(with = "rust_decimal::serde::float")]
     #[schemars(with = "f64")]
     daily_budget: Decimal,
@@ -118,7 +118,7 @@ struct FakeState {
     fail_next_current_state: Option<ToolError>,
     fail_next_read: Option<ToolError>,
     failing_connections: BTreeSet<String>,
-    /// `execute_in_steps`: ids a "criar" em passos e, opcional, o passo que falha.
+    /// `execute_in_steps`: ids to "create" in steps and, optionally, the step that fails.
     steps: Option<(Vec<String>, Option<usize>)>,
     log: Vec<String>,
 }
@@ -146,20 +146,19 @@ pub struct FakePlatform {
 }
 
 fn not_found(id: &str) -> ToolError {
-    ToolError::new(codes::NOT_FOUND, format!("Campanha {id} não encontrada"))
-        .with_field("campaign_id")
+    ToolError::new(codes::NOT_FOUND, format!("Campaign {id} not found")).with_field("campaign_id")
 }
 
 fn parse<T: DeserializeOwned>(input: &Value) -> Result<T, ToolError> {
     serde_json::from_value(input.clone())
-        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Entrada inválida: {e}")))
+        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Invalid input: {e}")))
 }
 
 fn check_name(name: &str) -> Result<(), ToolError> {
     if name.trim().is_empty() || name.chars().count() > NAME_MAX_CHARS {
         return Err(ToolError::new(
             codes::INVALID_INPUT,
-            format!("O nome deve ter entre 1 e {NAME_MAX_CHARS} caracteres"),
+            format!("The name must be between 1 and {NAME_MAX_CHARS} characters"),
         )
         .with_field("name"));
     }
@@ -171,24 +170,21 @@ fn check_budget(budget: Decimal) -> Result<(), ToolError> {
     if budget < min {
         return Err(ToolError::new(
             codes::BUDGET_TOO_LOW,
-            format!("Orçamento diário {budget} abaixo do mínimo"),
+            format!("Daily budget {budget} is below the minimum"),
         )
         .with_field("daily_budget")
-        .with_suggestion("O mínimo diário é 25,40 na moeda da conta"));
+        .with_suggestion("The daily minimum is 25.40 in the account currency"));
     }
     Ok(())
 }
 
 fn unknown_tool(tool: &str) -> ToolError {
-    ToolError::new(
-        codes::UNKNOWN_TOOL,
-        format!("Ferramenta desconhecida: {tool}"),
-    )
+    ToolError::new(codes::UNKNOWN_TOOL, format!("Unknown tool: {tool}"))
 }
 
 impl FakePlatform {
-    /// Já semeada: `conn_a` com 111 (ACTIVE, BRL), 222 (CLOSED, BRL) e 333 (ACTIVE, USD);
-    /// `conn_b` com 333 e 444 (ACTIVE, BRL). Em Meta, os ids levam o prefixo `act_`.
+    /// Already seeded: `conn_a` with 111 (ACTIVE, BRL), 222 (CLOSED, BRL) and 333 (ACTIVE, USD);
+    /// `conn_b` with 333 and 444 (ACTIVE, BRL). On Meta, the ids carry the `act_` prefix.
     pub fn new(p: Platform) -> Arc<FakePlatform> {
         let id = |raw: &str| match p {
             Platform::GoogleAds => raw.to_string(),
@@ -196,7 +192,7 @@ impl FakePlatform {
         };
         let acct = |raw: &str, status: &str, currency: &str| AccountInfo {
             account_id: id(raw),
-            name: format!("Conta {raw}"),
+            name: format!("Account {raw}"),
             currency: currency.into(),
             timezone: Some("America/Sao_Paulo".into()),
             status: Some(status.into()),
@@ -229,9 +225,9 @@ impl FakePlatform {
         state.log.push(format!("{step}:{tool}"));
     }
 
-    /// Grava `conn_a` e `conn_b` em `connections_meta` (status Ok, sem padrão).
+    /// Writes `conn_a` and `conn_b` to `connections_meta` (status Ok, no default).
     pub fn seed_connections(&self, db: &Db) -> Result<(), CoreError> {
-        for (cid, name) in [("conn_a", "Conexão A"), ("conn_b", "Conexão B")] {
+        for (cid, name) in [("conn_a", "Connection A"), ("conn_b", "Connection B")] {
             db.upsert_connection(&ConnectionMeta {
                 connection_id: cid.into(),
                 platform: self.platform,
@@ -250,35 +246,35 @@ impl FakePlatform {
         self.lock().campaign(account, id).cloned()
     }
 
-    /// Simula uma edição feita fora do app (para testar conflito no desfazer).
+    /// Simulates an edit made outside the app (to test an undo conflict).
     pub fn set_campaign_name_externally(&self, account: &str, id: &str, name: &str) {
         if let Some(c) = self.lock().campaign_mut(account, id) {
             c.name = name.into();
         }
     }
 
-    /// O próximo `execute` falha com `e`.
+    /// The next `execute` fails with `e`.
     pub fn fail_next_execute(&self, e: ToolError) {
         self.lock().fail_next = Some(e);
     }
 
-    /// O próximo `execute` "cria" `ids` um por passo, chamando `progress.created` a cada
-    /// um; com `fail_after = Some(n)`, falha depois de criar `n`.
+    /// The next `execute` "creates" `ids` one per step, calling `progress.created` after
+    /// each one; with `fail_after = Some(n)`, it fails after creating `n`.
     pub fn execute_in_steps(&self, ids: Vec<&str>, fail_after: Option<usize>) {
         self.lock().steps = Some((ids.into_iter().map(str::to_string).collect(), fail_after));
     }
 
-    /// O próximo `current_state` falha com `e`.
+    /// The next `current_state` fails with `e`.
     pub fn fail_next_current_state(&self, e: ToolError) {
         self.lock().fail_next_current_state = Some(e);
     }
 
-    /// A próxima leitura falha com `e`.
+    /// The next read fails with `e`.
     pub fn fail_next_read(&self, e: ToolError) {
         self.lock().fail_next_read = Some(e);
     }
 
-    /// Daqui em diante, `list_accounts` da conexão falha (como um token expirado).
+    /// From now on, `list_accounts` of the connection fails (like an expired token).
     pub fn fail_list_accounts(&self, connection: &str) {
         self.lock()
             .failing_connections
@@ -299,8 +295,8 @@ impl FakePlatform {
             .push(a);
     }
 
-    /// Entradas como `"validate:create_campaign"`, `"execute:update_campaign"`,
-    /// `"list_accounts:conn_a"` e `"current_state:c1"`.
+    /// Entries such as `"validate:create_campaign"`, `"execute:update_campaign"`,
+    /// `"list_accounts:conn_a"` and `"current_state:c1"`.
     pub fn log(&self) -> Vec<String> {
         self.lock().log.clone()
     }
@@ -309,7 +305,7 @@ impl FakePlatform {
         state.accounts.get(connection_id).cloned().ok_or_else(|| {
             ToolError::new(
                 codes::UNKNOWN_CONNECTION,
-                format!("Conexão desconhecida: {connection_id}"),
+                format!("Unknown connection: {connection_id}"),
             )
         })
     }
@@ -325,39 +321,39 @@ impl PlatformAdapter for FakePlatform {
         vec![
             ToolSpec::read::<ListAccountsInput>(
                 "list_accounts",
-                "Lista as contas de anúncios da conexão informada ou de todas.",
+                "Lists the ad accounts of the given connection or of all of them.",
                 ToolGroup::Read,
             )
             .no_account(),
             ToolSpec::read::<GetCampaignsInput>(
                 "get_campaigns",
-                "Lista as campanhas da conta.",
+                "Lists the account's campaigns.",
                 ToolGroup::Read,
             )
             .output::<GetCampaignsOutput>(),
             ToolSpec::write::<CreateCampaignInput>(
                 "create_campaign",
-                "Cria uma campanha pausada.",
+                "Creates a paused campaign.",
                 ToolGroup::Create,
                 true,
             ),
             ToolSpec::write::<UpdateCampaignInput>(
                 "update_campaign",
-                "Altera nome, status ou orçamento diário de uma campanha.",
+                "Changes the name, status or daily budget of a campaign.",
                 ToolGroup::Edit,
                 true,
             )
             .idempotent(),
             ToolSpec::write::<RemoveCampaignInput>(
                 "remove_campaign",
-                "Remove uma campanha.",
+                "Removes a campaign.",
                 ToolGroup::Edit,
                 false,
             )
             .destructive(),
             ToolSpec::write::<RawMutateInput>(
                 "raw_mutate",
-                "Envia uma mutação crua para a plataforma.",
+                "Sends a raw mutation to the platform.",
                 ToolGroup::Escape,
                 false,
             ),
@@ -370,7 +366,7 @@ impl PlatformAdapter for FakePlatform {
         if st.failing_connections.contains(connection_id) {
             return Err(ToolError::new(
                 codes::CONNECTION_NEEDS_RECONNECT,
-                format!("A conexão {connection_id} precisa ser reconectada"),
+                format!("Connection {connection_id} needs to be reconnected"),
             ));
         }
         Self::accounts_of(&st, connection_id)
@@ -420,7 +416,7 @@ impl PlatformAdapter for FakePlatform {
             .ok_or_else(|| {
                 ToolError::new(
                     codes::ACCOUNT_NOT_FOUND,
-                    format!("Conta {} não encontrada", call.account_id),
+                    format!("Account {} not found", call.account_id),
                 )
             })?;
         match account.status.as_deref() {
@@ -428,9 +424,9 @@ impl PlatformAdapter for FakePlatform {
             other => Err(ToolError::new(
                 codes::ACCOUNT_NOT_ACTIVE,
                 format!(
-                    "A conta {} não está ativa (status {})",
+                    "Account {} is not active (status {})",
                     call.account_id,
-                    other.unwrap_or("desconhecido")
+                    other.unwrap_or("unknown")
                 ),
             )),
         }
@@ -445,7 +441,7 @@ impl PlatformAdapter for FakePlatform {
                 check_name(&i.name)?;
                 check_budget(i.daily_budget)?;
                 format!(
-                    "Criar campanha \"{}\" (pausada) com orçamento diário de {}",
+                    "Create campaign \"{}\" (paused) with a daily budget of {}",
                     i.name, i.daily_budget
                 )
             }
@@ -458,16 +454,16 @@ impl PlatformAdapter for FakePlatform {
                 if let Some(b) = i.daily_budget {
                     check_budget(b)?;
                 }
-                format!("Alterar a campanha {}", i.campaign_id)
+                format!("Update campaign {}", i.campaign_id)
             }
             "remove_campaign" => {
                 let i: RemoveCampaignInput = parse(&call.input)?;
                 st.existing(&call.account_id, &i.campaign_id)?;
-                format!("Remover a campanha {}", i.campaign_id)
+                format!("Remove campaign {}", i.campaign_id)
             }
             "raw_mutate" => {
                 parse::<RawMutateInput>(&call.input)?;
-                "Mutação crua".to_string()
+                "Raw mutation".to_string()
             }
             other => return Err(unknown_tool(other)),
         };
@@ -506,9 +502,9 @@ impl PlatformAdapter for FakePlatform {
             let mut created = Vec::new();
             for (i, id) in ids.iter().enumerate() {
                 if fail_after == Some(i) {
-                    return Err(ToolError::new(codes::EXECUTION_FAILED, "passo falhou"));
+                    return Err(ToolError::new(codes::EXECUTION_FAILED, "step failed"));
                 }
-                created.push(json!({ "key": format!("passo{i}"), "id": id, "kind": "fake" }));
+                created.push(json!({ "key": format!("step{i}"), "id": id, "kind": "fake" }));
                 progress.created(&Value::Array(created.clone()));
             }
         }
@@ -617,7 +613,7 @@ impl PlatformAdapter for FakePlatform {
     }
 }
 
-/// `campaign_id` mais os valores atuais dos campos que o update vai mudar.
+/// `campaign_id` plus the current values of the fields the update will change.
 fn changed_fields(c: &FakeCampaign, i: &UpdateCampaignInput) -> Value {
     let full = c.to_value();
     let mut out = Map::new();
@@ -665,7 +661,7 @@ mod tests {
         assert_eq!(e.field.as_deref(), Some("daily_budget"));
         assert_eq!(
             e.suggestion.as_deref(),
-            Some("O mínimo diário é 25,40 na moeda da conta")
+            Some("The daily minimum is 25.40 in the account currency")
         );
 
         let c = call(
@@ -723,7 +719,7 @@ mod tests {
         let c = call(
             "111",
             "create_campaign",
-            json!({"account_id": "111", "name": "Nova", "daily_budget": 30.5}),
+            json!({"account_id": "111", "name": "New", "daily_budget": 30.5}),
         );
         let before = f.snapshot(&c).await.unwrap();
         assert_eq!(before, json!({}));
@@ -769,14 +765,14 @@ mod tests {
         assert_eq!(inv.input, json!({"campaign_id": id, "name": "A"}));
         assert_eq!(inv.target, json!({"campaign_id": id}));
 
-        f.set_campaign_name_externally("111", &id, "Externo");
+        f.set_campaign_name_externally("111", &id, "External");
         let state = f
             .current_state("conn_a", "111", &json!({"campaign_id": id}))
             .await
             .unwrap();
         assert_eq!(
             state,
-            json!({"campaign_id": id, "name": "Externo", "status": "PAUSED", "daily_budget": 30.0})
+            json!({"campaign_id": id, "name": "External", "status": "PAUSED", "daily_budget": 30.0})
         );
         let missing = f
             .current_state("conn_a", "111", &json!({"campaign_id": "c999"}))
@@ -815,7 +811,7 @@ mod tests {
             "conn_b",
             AccountInfo {
                 account_id: "555".into(),
-                name: "Nova".into(),
+                name: "New".into(),
                 currency: "BRL".into(),
                 timezone: None,
                 status: Some("ACTIVE".into()),
@@ -831,7 +827,7 @@ mod tests {
             .collect();
         assert_eq!(ids, vec!["333", "555"]);
 
-        // list_accounts como ferramenta: sem conexão, todas.
+        // list_accounts as a tool: without a connection, all of them.
         let all = g
             .read(&Call {
                 connection_id: "".into(),
@@ -843,7 +839,7 @@ mod tests {
             .unwrap();
         assert_eq!(all["accounts"].as_array().unwrap().len(), 5);
 
-        g.fail_next_execute(ToolError::new(codes::EXECUTION_FAILED, "falhou"));
+        g.fail_next_execute(ToolError::new(codes::EXECUTION_FAILED, "failed"));
         let c = call("111", "raw_mutate", json!({"account_id": "111", "x": 1}));
         assert_eq!(
             g.execute(&c, &json!({})).await.unwrap_err().code,
@@ -867,13 +863,13 @@ mod tests {
         assert_eq!(e.code, codes::ACCOUNT_NOT_FOUND);
         assert_eq!(
             e.suggestion.as_deref(),
-            Some("Use list_accounts para ver as contas disponíveis")
+            Some("Use list_accounts to see the available accounts")
         );
         let e: ToolError = RoutingError::Ambiguous {
             account_id: "1".into(),
             connections: vec![
-                ("conn_a".into(), "Conexão A".into()),
-                ("conn_b".into(), "Conexão B".into()),
+                ("conn_a".into(), "Connection A".into()),
+                ("conn_b".into(), "Connection B".into()),
             ],
         }
         .into();
@@ -882,24 +878,24 @@ mod tests {
         assert_eq!(
             e.details,
             Some(json!({"connections": [
-                {"connection_id": "conn_a", "name": "Conexão A"},
-                {"connection_id": "conn_b", "name": "Conexão B"},
+                {"connection_id": "conn_a", "name": "Connection A"},
+                {"connection_id": "conn_b", "name": "Connection B"},
             ]}))
         );
         assert_eq!(
             e.suggestion.as_deref(),
-            Some("Informe connection com um destes ids: conn_a, conn_b.")
+            Some("Provide connection with one of these ids: conn_a, conn_b.")
         );
         let e: ToolError = RoutingError::NeedsReconnect("conn_a".into()).into();
         assert_eq!(e.code, codes::CONNECTION_NEEDS_RECONNECT);
         assert_eq!(
             e.suggestion.as_deref(),
-            Some("Reconecte esta conexão no AdsConsole → Conexões.")
+            Some("Reconnect this connection in AdsConsole → Connections.")
         );
         let e: ToolError = RoutingError::UnknownConnection("x".into()).into();
         assert_eq!(
             e.suggestion.as_deref(),
-            Some("Use list_accounts para ver as conexões e contas disponíveis.")
+            Some("Use list_accounts to see the available connections and accounts.")
         );
         let e: ToolError = RoutingError::Ambiguous {
             account_id: "1".into(),

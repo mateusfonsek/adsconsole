@@ -1,4 +1,4 @@
-//! Ferramentas de histórico do próprio engine: list_changes, get_change_status e undo_change.
+//! The engine's own history tools: list_changes, get_change_status and undo_change.
 
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::db::{ChangeFilter, ChangeRecord, ChangeStatus};
@@ -22,31 +22,31 @@ const MAX_LIMIT: u32 = 100;
 
 #[derive(Deserialize, JsonSchema)]
 struct ListChangesInput {
-    /// Só as mudanças desta conta.
+    /// Only the changes of this account.
     #[serde(default)]
     account_id: Option<String>,
-    /// Só as mudanças com este status: pending, approved, applied, rejected, expired, failed ou undone.
+    /// Only the changes with this status: pending, approved, applied, rejected, expired, failed or undone.
     #[serde(default)]
     status: Option<String>,
-    /// Quantas mudanças devolver (padrão 20, máximo 100).
+    /// How many changes to return (default 20, maximum 100).
     #[serde(default)]
     limit: Option<u32>,
-    /// O `next_cursor` da página anterior.
+    /// The `next_cursor` of the previous page.
     #[serde(default)]
     cursor: Option<String>,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct ChangeIdInput {
-    /// Id da mudança (`chg_…`).
+    /// Change id (`chg_…`).
     change_id: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
 struct UndoChangeInput {
-    /// Id da mudança a desfazer (`chg_…`).
+    /// Id of the change to undo (`chg_…`).
     change_id: String,
-    /// Desfaz mesmo que o objeto tenha mudado depois da alteração.
+    /// Undoes even if the object changed after the modification.
     #[serde(default)]
     force: bool,
 }
@@ -55,24 +55,24 @@ pub(super) fn is_history_tool(name: &str) -> bool {
     matches!(name, LIST_CHANGES | GET_CHANGE_STATUS | UNDO_CHANGE)
 }
 
-/// As três ferramentas, registradas junto com as da plataforma.
+/// The three tools, registered together with the platform's.
 pub(super) fn history_tools() -> Vec<ToolSpec> {
     vec![
         ToolSpec::read::<ListChangesInput>(
             LIST_CHANGES,
-            "Lista as mudanças feitas por este servidor, mais novas primeiro.",
+            "Lists the changes made by this server, newest first.",
             ToolGroup::History,
         )
         .no_account(),
         ToolSpec::read::<ChangeIdInput>(
             GET_CHANGE_STATUS,
-            "Mostra uma mudança completa: status, antes, depois e erro.",
+            "Shows one change in full: status, before, after and error.",
             ToolGroup::History,
         )
         .no_account(),
         ToolSpec::write::<UndoChangeInput>(
             UNDO_CHANGE,
-            "Desfaz uma mudança aplicada. Recusa se o objeto mudou depois dela, a menos que force=true.",
+            "Undoes an applied change. Refuses if the object changed after it, unless force=true.",
             ToolGroup::History,
             true,
         )
@@ -82,11 +82,11 @@ pub(super) fn history_tools() -> Vec<ToolSpec> {
 
 fn parse<T: DeserializeOwned>(input: Value) -> Result<T, ToolError> {
     serde_json::from_value(input)
-        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Entrada inválida: {e}")))
+        .map_err(|e| ToolError::new(codes::INVALID_INPUT, format!("Invalid input: {e}")))
 }
 
 impl Engine {
-    /// Despacha uma ferramenta de histórico (ver [`is_history_tool`]).
+    /// Dispatches a history tool (see [`is_history_tool`]).
     pub(super) async fn call_history(
         &self,
         name: &str,
@@ -100,7 +100,7 @@ impl Engine {
                 let i: UndoChangeInput = parse(input)?;
                 self.undo(&i.change_id, i.force, requested_by).await
             }
-            other => Err(internal(format!("{other} não é ferramenta de histórico"))),
+            other => Err(internal(format!("{other} is not a history tool"))),
         }
     }
 
@@ -114,14 +114,14 @@ impl Engine {
             .map_err(|_| {
                 ToolError::new(
                     codes::INVALID_INPUT,
-                    "status inválido. Use pending, approved, applied, rejected, expired, failed ou undone.",
+                    "Invalid status. Use pending, approved, applied, rejected, expired, failed or undone.",
                 )
                 .with_field("status")
             })?;
         let offset = match i.cursor.as_deref() {
             None => 0,
             Some(c) => c.parse::<u32>().map_err(|_| {
-                ToolError::new(codes::INVALID_INPUT, "cursor inválido.").with_field("cursor")
+                ToolError::new(codes::INVALID_INPUT, "Invalid cursor.").with_field("cursor")
             })?,
         };
         let limit = i.limit.unwrap_or(DEFAULT_LIMIT).clamp(1, MAX_LIMIT);
@@ -168,7 +168,7 @@ fn list_item(c: &ChangeRecord) -> Value {
     })
 }
 
-/// RFC 3339 UTC com microssegundos.
+/// RFC 3339 UTC with microseconds.
 fn timestamp(t: &DateTime<Utc>) -> String {
     t.to_rfc3339_opts(SecondsFormat::Micros, true)
 }

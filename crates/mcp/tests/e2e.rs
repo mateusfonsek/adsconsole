@@ -156,10 +156,7 @@ async fn rejects_missing_token_and_browser_origin() {
         .await
         .unwrap();
     assert_eq!(r.status(), 403);
-    assert_eq!(
-        error_message(r).await,
-        "Requests de navegador não são aceitos."
-    );
+    assert_eq!(error_message(r).await, "Browser requests are not accepted.");
 
     let r = post(&url)
         .header("authorization", "Bearer errado")
@@ -291,7 +288,7 @@ async fn paused_platform_returns_503() {
     assert_eq!(r.status(), 503);
     assert_eq!(
         error_message(r).await,
-        "O MCP de Meta Ads está pausado no AdsConsole."
+        "The Meta Ads MCP is paused in AdsConsole."
     );
 
     let r = post(&h.url(Platform::GoogleAds))
@@ -325,7 +322,7 @@ async fn port_in_use_is_reported() {
     assert_eq!(
         err.to_string(),
         format!(
-            "A porta {port} já está em uso. Feche o outro programa ou mude a porta em AdsConsole → MCPs (ou ADSCONSOLE_PORT)."
+            "Port {port} is already in use. Close the other program or change the port in AdsConsole → MCPs (or ADSCONSOLE_PORT)."
         )
     );
 }

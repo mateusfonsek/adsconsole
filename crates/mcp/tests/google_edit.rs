@@ -1307,10 +1307,7 @@ async fn remove_is_irreversible() {
         ))
         .await
         .unwrap();
-    assert_eq!(
-        v.warning.as_deref(),
-        Some("Esta mudança não pode ser desfeita.")
-    );
+    assert_eq!(v.warning.as_deref(), Some("This change cannot be undone."));
     let out = applied(
         &engine,
         "manage_keywords",
@@ -1319,7 +1316,7 @@ async fn remove_is_irreversible() {
     )
     .await;
     assert_eq!(out["reversible"], false);
-    assert_eq!(out["warning"], "Esta mudança não pode ser desfeita.");
+    assert_eq!(out["warning"], "This change cannot be undone.");
     assert_eq!(removes(&last_applied_ops(&h).await), vec![KW44, KW45]);
     assert!(g.state.lock().unwrap().get(KW44).is_none());
     let changes = h.db.list_changes(&ChangeFilter::default()).unwrap();
@@ -1361,7 +1358,7 @@ async fn change_match_type_one_mutate() {
     assert_eq!(
         out["warning"],
         "O Google não permite trocar o tipo de correspondência; a keyword antiga será \
-         removida e uma nova criada. Esta mudança não pode ser desfeita."
+         removida e uma nova criada. This change cannot be undone."
     );
     let v = h
         .adapter
@@ -1589,7 +1586,7 @@ async fn negatives_remove_is_irreversible() {
     )
     .await;
     assert_eq!(out["reversible"], false);
-    assert_eq!(out["warning"], "Esta mudança não pode ser desfeita.");
+    assert_eq!(out["warning"], "This change cannot be undone.");
     assert_eq!(removes(&last_applied_ops(&h).await), vec![neg]);
     assert!(g.state.lock().unwrap().get(neg).is_none());
     assert_eq!(
@@ -2211,7 +2208,7 @@ async fn targeting_remove_checks_kind_and_is_irreversible() {
     )
     .await;
     assert_eq!(out["reversible"], false);
-    assert_eq!(out["warning"], "Esta mudança não pode ser desfeita.");
+    assert_eq!(out["warning"], "This change cannot be undone.");
     assert_eq!(removes(&last_applied_ops(&h).await), vec![CC_LOC, CC_LANG]);
     assert!(g.state.lock().unwrap().get(CC_LOC).is_none());
     assert!(g.state.lock().unwrap().contains_key(CC_DEV));
@@ -2502,7 +2499,7 @@ async fn asset_group_minimums_enforced() {
         ))
         .await
         .unwrap();
-    assert!(v.warning.unwrap().contains("não pode ser desfeita"));
+    assert!(v.warning.unwrap().contains("cannot be undone"));
     assert!(
         mutate_bodies(&h)
             .await

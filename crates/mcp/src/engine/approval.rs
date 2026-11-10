@@ -1,7 +1,7 @@
-//! Fila de aprovação: espera da resposta, decisão única (aprovar/recusar) e expiração.
+//! Approval queue: waiting for the answer, a single decision (approve/reject) and expiry.
 //!
-//! Toda decisão passa por `transition_status` (compare-and-set) a partir de `Pending`,
-//! então só uma delas vence, mesmo com chamadas concorrentes ou depois de um reinício.
+//! Every decision goes through `transition_status` (compare-and-set) from `Pending`,
+//! so only one of them wins, even with concurrent calls or after a restart.
 
 use adsconsole_core::db::{ChangeRecord, ChangeStatus, PendingApproval};
 use chrono::{DateTime, Utc};
@@ -12,15 +12,15 @@ use super::write::change_outcome;
 use super::{Engine, EngineEvent, internal};
 use crate::error::{ToolError, codes};
 
-/// Quanto tempo uma pendência espera por uma decisão antes de expirar.
+/// How long a pending change waits for a decision before expiring.
 pub const PENDING_TTL: chrono::Duration = chrono::Duration::hours(24);
 
 const PENDING_MESSAGE: &str =
-    "Aguardando aprovação no AdsConsole. Consulte o resultado com get_change_status.";
+    "Waiting for approval in AdsConsole. Check the result with get_change_status.";
 
 impl Engine {
-    /// Aprova e executa uma mudança pendente. Devolve o registro final; se a execução
-    /// falhar, o registro vem com status `Failed` (a aprovação em si foi feita).
+    /// Approves and executes a pending change. Returns the final record; if execution
+    /// fails, the record comes back with status `Failed` (the approval itself was done).
     pub async fn approve(&self, change_id: &str) -> Result<ChangeRecord, ToolError> {
         self.load_change(change_id)?;
         let now = Utc::now();
@@ -49,7 +49,7 @@ impl Engine {
         self.apply_detached(change).await
     }
 
-    /// Recusa uma mudança pendente; nada é executado.
+    /// Rejects a pending change; nothing is executed.
     pub async fn reject(&self, change_id: &str) -> Result<ChangeRecord, ToolError> {
         self.load_change(change_id)?;
         if !self
@@ -66,14 +66,14 @@ impl Engine {
         self.load_change(change_id)
     }
 
-    /// Pendências desta plataforma, mais novas primeiro.
+    /// Pending changes of this platform, newest first.
     pub fn pending(&self) -> Result<Vec<PendingApproval>, ToolError> {
         self.db
             .list_pending(Some(self.platform()))
             .map_err(internal)
     }
 
-    /// Expira as pendências desta plataforma vencidas antes de `now`; devolve os ids expirados.
+    /// Expires the pending changes of this platform that are overdue before `now`; returns the expired ids.
     pub fn expire_stale(&self, now: DateTime<Utc>) -> Result<Vec<String>, ToolError> {
         let mut expired = Vec::new();
         for id in self.db.pending_expired_before(now).map_err(internal)? {
@@ -86,14 +86,14 @@ impl Engine {
             if self.expire(&id)? {
                 expired.push(id);
             } else if change.status != ChangeStatus::Pending {
-                // Já decidida por outro caminho: a linha da fila não serve mais.
+                // Already decided by another path: the queue row is no longer needed.
                 self.db.delete_pending(&id).map_err(internal)?;
             }
         }
         Ok(expired)
     }
 
-    /// `Pending → Expired`, remove da fila e avisa. `false` se já tinha sido decidida.
+    /// `Pending → Expired`, removes it from the queue and notifies. `false` if it had already been decided.
     fn expire(&self, change_id: &str) -> Result<bool, ToolError> {
         if !self
             .db
@@ -109,9 +109,9 @@ impl Engine {
         Ok(true)
     }
 
-    /// Grava a mudança como pendente e espera a decisão por até `approval_wait_secs`.
-    /// `events` precisa ter sido assinado antes da gravação, para não perder uma
-    /// aprovação rápida. Se o future for descartado, a pendência continua na fila.
+    /// Records the change as pending and waits for the decision for up to `approval_wait_secs`.
+    /// `events` must have been subscribed before the write, so a quick approval is not
+    /// missed. If the future is dropped, the pending change stays in the queue.
     pub(super) async fn queue_and_wait(
         &self,
         change: ChangeRecord,
@@ -125,8 +125,8 @@ impl Engine {
             change.created_at + PENDING_TTL,
             warning.as_deref(),
         ) {
-            // Sem linha na fila a pendência nunca seria decidida nem expiraria. Ninguém
-            // mais conhece este id (nem evento saiu), então dá para sobrescrever direto.
+            // Without a queue row the pending change would never be decided or expire. Nobody
+            // else knows this id (no event went out either), so it can be overwritten directly.
             let err = internal(e);
             let mut failed = change;
             failed.status = ChangeStatus::Failed;
@@ -136,7 +136,7 @@ impl Engine {
                 tracing::error!(
                     change_id = change_id.as_str(),
                     error = %update_err,
-                    "falha ao marcar como falha a mudança que não entrou na fila"
+                    "failed to mark as failed the change that did not enter the queue"
                 );
             }
             return Err(err);
@@ -149,14 +149,14 @@ impl Engine {
         });
 
         let wait = std::time::Duration::from_secs(self.settings().approval_wait_secs);
-        // Tempo esgotado não é erro: cai na leitura do banco abaixo.
+        // A timeout is not an error: falls through to the database read below.
         if let Ok(result) =
             tokio::time::timeout(wait, self.wait_decision(&mut events, &change_id)).await
         {
             result?;
         }
 
-        // Lê o banco mesmo no tempo esgotado: pode ter sido decidida no limite.
+        // Read the database even on timeout: it may have been decided right at the limit.
         let change = self.load_change(&change_id)?;
         match change.status {
             ChangeStatus::Applied | ChangeStatus::Failed => {
@@ -164,7 +164,7 @@ impl Engine {
             }
             ChangeStatus::Rejected => Err(ToolError::new(
                 codes::APPROVAL_REJECTED,
-                "O usuário recusou esta mudança no AdsConsole.",
+                "The user rejected this change in AdsConsole.",
             )
             .with_details(json!({ "change_id": change_id }))),
             ChangeStatus::Expired => Err(expired_error(&change_id)),
@@ -177,7 +177,7 @@ impl Engine {
         }
     }
 
-    /// Espera um evento final desta mudança.
+    /// Waits for a final event of this change.
     async fn wait_decision(
         &self,
         events: &mut broadcast::Receiver<EngineEvent>,
@@ -192,7 +192,7 @@ impl Engine {
                     | EngineEvent::ChangeExpired { change_id: id },
                 ) if id == change_id => return Ok(()),
                 Ok(_) => {}
-                // Eventos perdidos: o banco diz se já houve decisão.
+                // Lost events: the database says whether a decision has been made.
                 Err(broadcast::error::RecvError::Lagged(_)) => {
                     if self.is_decided(change_id)? {
                         return Ok(());
@@ -210,7 +210,7 @@ impl Engine {
         ))
     }
 
-    /// A mudança desta plataforma, ou `CHANGE_NOT_FOUND`.
+    /// The change of this platform, or `CHANGE_NOT_FOUND`.
     pub(super) fn load_change(&self, change_id: &str) -> Result<ChangeRecord, ToolError> {
         self.db
             .get_change(change_id)
@@ -219,7 +219,7 @@ impl Engine {
             .ok_or_else(|| {
                 ToolError::new(
                     codes::CHANGE_NOT_FOUND,
-                    format!("Mudança {change_id} não encontrada."),
+                    format!("Change {change_id} not found."),
                 )
                 .with_details(json!({ "change_id": change_id }))
             })
@@ -229,7 +229,7 @@ impl Engine {
         let status = self.load_change(change_id)?.status;
         Ok(ToolError::new(
             codes::INVALID_STATE,
-            format!("Esta mudança já foi decidida: {}.", status.as_str()),
+            format!("This change has already been decided: {}.", status.as_str()),
         )
         .with_details(json!({ "change_id": change_id, "status": status.as_str() })))
     }
@@ -238,7 +238,7 @@ impl Engine {
 fn expired_error(change_id: &str) -> ToolError {
     ToolError::new(
         codes::APPROVAL_EXPIRED,
-        "A aprovação desta mudança expirou sem decisão.",
+        "The approval of this change expired without a decision.",
     )
     .with_details(json!({ "change_id": change_id }))
 }

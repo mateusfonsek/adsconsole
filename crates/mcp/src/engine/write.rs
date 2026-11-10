@@ -1,4 +1,4 @@
-//! Fluxo de escrita: checagens, histórico e aplicação sob o mutex da conta.
+//! Write flow: checks, history and application under the account mutex.
 
 use adsconsole_core::config::WriteMode;
 use adsconsole_core::db::{ChangeRecord, ChangeStatus, Db, new_change_id};
@@ -9,18 +9,18 @@ use super::{Engine, EngineEvent, internal};
 use crate::adapter::{Call, Progress, ToolSpec, Validated};
 use crate::error::{ToolError, codes};
 
-const IRREVERSIBLE_WARNING: &str = "Esta mudança não pode ser desfeita.";
+const IRREVERSIBLE_WARNING: &str = "This change cannot be undone.";
 
-/// Marca uma escrita como desfazer de outra mudança.
+/// Marks a write as the undo of another change.
 pub(crate) struct UndoOf {
     pub change_id: String,
-    /// Aplica mesmo se o objeto mudou depois da original.
+    /// Applies even if the object changed after the original.
     pub force: bool,
 }
 
 impl Engine {
-    /// Checa o modo de escrita, faz `precheck` e `validate` (sem gravar nada se falharem)
-    /// e segue conforme o modo. `undo` marca a mudança como desfazer de outra.
+    /// Checks the write mode, runs `precheck` and `validate` (recording nothing if they fail)
+    /// and proceeds according to the mode. `undo` marks the change as the undo of another.
     pub(crate) async fn submit_write(
         &self,
         call: Call,
@@ -28,7 +28,7 @@ impl Engine {
         requested_by: Option<String>,
         undo: Option<UndoOf>,
     ) -> Result<Value, ToolError> {
-        // Ruling B: também aqui (o desfazer da Task 10 entra direto), antes do precheck.
+        // Ruling B: here too (the Task 10 undo comes in directly), before the precheck.
         let mode = self.settings().write_mode;
         if mode == WriteMode::ReadOnly {
             return Err(self.read_only_error());
@@ -50,7 +50,7 @@ impl Engine {
                 change_outcome(&change, validated.warning.as_deref())
             }
             WriteMode::Approval => {
-                // Prévia do "antes" para o diff na tela; `apply` tira outro na execução.
+                // Preview of the "before" for the on-screen diff; `apply` takes another at execution.
                 let before = self.adapter.snapshot(&call).await?;
                 let mut change = self.new_change(
                     call,
@@ -66,15 +66,15 @@ impl Engine {
                     (Some(w), false) => Some(format!("{w} {IRREVERSIBLE_WARNING}")),
                     (None, false) => Some(IRREVERSIBLE_WARNING.to_string()),
                 };
-                // Assina antes de gravar, para não perder uma aprovação rápida.
+                // Subscribe before recording, so a quick approval is not missed.
                 let events = self.subscribe();
                 self.queue_and_wait(change, warning, events).await
             }
-            WriteMode::ReadOnly => unreachable!("tratado acima"),
+            WriteMode::ReadOnly => unreachable!("handled above"),
         }
     }
 
-    /// `READ_ONLY_MODE` quando a plataforma está em só leitura.
+    /// `READ_ONLY_MODE` when the platform is in read-only mode.
     pub(crate) fn ensure_writable(&self) -> Result<(), ToolError> {
         if self.settings().write_mode == WriteMode::ReadOnly {
             return Err(self.read_only_error());
@@ -86,7 +86,7 @@ impl Engine {
         ToolError::new(
             codes::READ_ONLY_MODE,
             format!(
-                "O modo de escrita de {} está em só leitura. Mude em AdsConsole → Ferramentas e escrita.",
+                "The write mode of {} is read-only. Change it in AdsConsole → Tools.",
                 self.platform().display_name()
             ),
         )
@@ -130,8 +130,8 @@ impl Engine {
         }
     }
 
-    /// Roda `apply` numa task própria: se o cliente desconectar e o future de quem chamou
-    /// for descartado, a mudança termina e o histórico fica certo.
+    /// Runs `apply` in its own task: if the client disconnects and the caller's future
+    /// is dropped, the change still finishes and the history stays correct.
     pub(crate) async fn apply_detached(
         &self,
         change: ChangeRecord,
@@ -142,8 +142,8 @@ impl Engine {
             .map_err(internal)?
     }
 
-    /// Aplica uma mudança já aprovada, sob o mutex da conta, e grava o resultado.
-    /// Devolve o registro final (`Applied` ou `Failed`); `Err` só para falha interna.
+    /// Applies an already-approved change, under the account mutex, and records the result.
+    /// Returns the final record (`Applied` or `Failed`); `Err` only for an internal failure.
     pub(crate) async fn apply(&self, mut change: ChangeRecord) -> Result<ChangeRecord, ToolError> {
         let _guard = self.locks.lock(change.platform, &change.account_id).await;
         let call = Call {
@@ -152,8 +152,8 @@ impl Engine {
             tool: change.tool.clone(),
             input: change.input.clone(),
         };
-        // Desfazer: sob o mutex da conta, confere de novo o que o `undo` checou antes
-        // (outro desfazer pode ter vencido, ou o objeto pode ter mudado na espera).
+        // Undo: under the account mutex, re-checks what `undo` checked earlier
+        // (another undo may have won, or the object may have changed while waiting).
         let outcome = match self.undo_blocked(&change).await? {
             Some(e) => Err(e),
             None => self.run(&call, &mut change).await,
@@ -182,7 +182,7 @@ impl Engine {
         Ok(change)
     }
 
-    /// `precheck` de novo (a aprovação pode ter vindo horas depois), snapshot e execute.
+    /// `precheck` again (the approval may have come hours later), snapshot and execute.
     async fn run(&self, call: &Call, change: &mut ChangeRecord) -> Result<(), ToolError> {
         self.adapter.precheck(call).await?;
         let before = self.adapter.snapshot(call).await?;
@@ -201,9 +201,9 @@ impl Engine {
         Ok(())
     }
 
-    /// Motivo para não aplicar `change`, se ela desfaz outra: `INVALID_STATE` se a
-    /// original não está mais `Applied`; `UNDO_CONFLICT` (sem `force`) se o objeto
-    /// mudou depois da original.
+    /// Reason not to apply `change`, if it undoes another: `INVALID_STATE` if the
+    /// original is no longer `Applied`; `UNDO_CONFLICT` (without `force`) if the object
+    /// changed after the original.
     async fn undo_blocked(&self, change: &ChangeRecord) -> Result<Option<ToolError>, ToolError> {
         let Some(orig_id) = &change.undo_of else {
             return Ok(None);
@@ -213,7 +213,7 @@ impl Engine {
         };
         if orig.status == ChangeStatus::Applied {
             return Ok(match (&orig.inverse, change.undo_force) {
-                // Falha ao ler o estado atual também impede a execução (vira `Failed`).
+                // A failure to read the current state also blocks execution (becomes `Failed`).
                 (Some(inverse), false) => self
                     .undo_conflict(&orig, inverse)
                     .await
@@ -226,14 +226,14 @@ impl Engine {
             ChangeStatus::Undone => Some(ToolError::new(
                 codes::INVALID_STATE,
                 format!(
-                    "Já desfeita por {}.",
-                    orig.undone_by.as_deref().unwrap_or("outra mudança")
+                    "Already undone by {}.",
+                    orig.undone_by.as_deref().unwrap_or("another change")
                 ),
             )),
             other => Some(ToolError::new(
                 codes::INVALID_STATE,
                 format!(
-                    "A mudança {orig_id} não pode mais ser desfeita: status {}.",
+                    "Change {orig_id} can no longer be undone: status {}.",
                     other.as_str()
                 ),
             )),
@@ -249,8 +249,8 @@ impl Engine {
     }
 }
 
-/// Grava o progresso de uma escrita em vários passos na própria mudança. Erro de
-/// gravação não derruba a escrita em andamento.
+/// Records the progress of a multi-step write on the change itself. A recording
+/// error does not abort the write in progress.
 struct DbProgress<'a> {
     db: &'a Db,
     change_id: &'a str,
@@ -262,17 +262,14 @@ impl Progress for DbProgress<'_> {
             .db
             .record_progress(self.change_id, &json!({ "created": ids }))
         {
-            tracing::error!(
-                change_id = self.change_id,
-                "falha ao gravar o progresso: {e}"
-            );
+            tracing::error!(change_id = self.change_id, "failed to record progress: {e}");
         }
     }
 }
 
-/// Resposta da ferramenta para um registro final: corpo de sucesso para `Applied`
-/// (com os avisos do `validate` em `warning`), o erro original (com
-/// `details.change_id`) para `Failed`.
+/// Tool response for a final record: a success body for `Applied` (with the
+/// `validate` warnings in `warning`), the original error (with `details.change_id`)
+/// for `Failed`.
 pub(crate) fn change_outcome(
     change: &ChangeRecord,
     warning: Option<&str>,
@@ -287,7 +284,7 @@ pub(crate) fn change_outcome(
                 "result": change.after.clone().unwrap_or(Value::Null),
             });
             let mut warnings: Vec<&str> = warning.into_iter().collect();
-            // O aviso da fila (modo aprovação) já pode trazer o de irreversível.
+            // The queue warning (approval mode) may already carry the irreversible one.
             if !change.reversible && !warnings.iter().any(|w| w.contains(IRREVERSIBLE_WARNING)) {
                 warnings.push(IRREVERSIBLE_WARNING);
             }
@@ -302,7 +299,7 @@ pub(crate) fn change_outcome(
                 .clone()
                 .and_then(|v| serde_json::from_value::<ToolError>(v).ok())
                 .unwrap_or_else(|| {
-                    ToolError::new(codes::EXECUTION_FAILED, "A mudança falhou ao ser aplicada.")
+                    ToolError::new(codes::EXECUTION_FAILED, "The change failed to apply.")
                 });
             let mut details = match err.details.take() {
                 Some(Value::Object(m)) => m,
@@ -319,11 +316,7 @@ pub(crate) fn change_outcome(
         }
         other => Err(ToolError::new(
             codes::INVALID_STATE,
-            format!(
-                "A mudança {} está com status {}.",
-                change.change_id,
-                other.as_str()
-            ),
+            format!("Change {} has status {}.", change.change_id, other.as_str()),
         )
         .with_details(json!({ "change_id": change.change_id }))),
     }

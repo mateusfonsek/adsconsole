@@ -1,4 +1,4 @@
-//! Servidor HTTP local: um endpoint MCP por plataforma, atrás do middleware de acesso.
+//! Local HTTP server: one MCP endpoint per platform, behind the access middleware.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -21,32 +21,32 @@ use tokio_util::sync::CancellationToken;
 use crate::engine::{Engine, SharedConfig};
 use crate::server::McpService;
 
-/// Intervalo entre as varreduras de pendências vencidas.
+/// Interval between sweeps for expired pending changes.
 const EXPIRE_EVERY: Duration = Duration::from_secs(60);
 
 pub struct ServerOptions {
-    /// 0 escolhe uma porta livre (usado nos testes).
+    /// 0 picks a free port (used in tests).
     pub port: u16,
     pub token: String,
-    /// Aceita `port: 0` (porta livre escolhida pelo sistema); só os testes usam.
+    /// Accepts `port: 0` (a free port chosen by the system); only tests use it.
     pub allow_ephemeral_port: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum StartError {
     #[error(
-        "A porta {0} já está em uso. Feche o outro programa ou mude a porta em AdsConsole → MCPs (ou ADSCONSOLE_PORT)."
+        "Port {0} is already in use. Close the other program or change the port in AdsConsole → MCPs (or ADSCONSOLE_PORT)."
     )]
     PortInUse(u16),
     #[error(
-        "O token do MCP está vazio. Defina um token em ADSCONSOLE_TOKEN ou deixe o AdsConsole gerar um."
+        "The MCP token is empty. Set a token in ADSCONSOLE_TOKEN or let AdsConsole generate one."
     )]
     EmptyToken,
-    #[error("Porta inválida: {0}. Use um número de 1 a 65535.")]
+    #[error("Invalid port: {0}. Use a number from 1 to 65535.")]
     InvalidPort(u16),
-    #[error("Duas instâncias do MCP de {} no mesmo servidor.", .0.display_name())]
+    #[error("Two {} MCP instances on the same server.", .0.display_name())]
     DuplicatePlatform(Platform),
-    #[error("Falha ao iniciar o servidor MCP: {0}")]
+    #[error("Failed to start the MCP server: {0}")]
     Io(#[from] std::io::Error),
 }
 
@@ -58,7 +58,7 @@ pub struct RunningServer {
 }
 
 impl RunningServer {
-    /// Horário da última requisição com token válido, em qualquer endpoint.
+    /// Time of the last request with a valid token, on any endpoint.
     pub fn last_request_at(&self) -> Option<DateTime<Utc>> {
         match self.last_request.load(Ordering::Relaxed) {
             0 => None,
@@ -66,12 +66,12 @@ impl RunningServer {
         }
     }
 
-    /// Fecha as sessões MCP, para de aceitar conexões e espera o servidor terminar.
+    /// Closes the MCP sessions, stops accepting connections and waits for the server to finish.
     pub async fn shutdown(mut self) {
         self.cancel.cancel();
         for task in std::mem::take(&mut self.tasks) {
             if let Err(e) = task.await {
-                tracing::error!(error = %e, "tarefa do servidor MCP terminou com erro");
+                tracing::error!(error = %e, "mcp server task ended with an error");
             }
         }
     }
@@ -94,7 +94,7 @@ pub async fn start(
     config: SharedConfig,
     opts: ServerOptions,
 ) -> Result<RunningServer, StartError> {
-    // Token vazio aceitaria `Authorization: Bearer ` de qualquer processo local.
+    // An empty token would accept `Authorization: Bearer ` from any local process.
     if opts.token.trim().is_empty() {
         return Err(StartError::EmptyToken);
     }
@@ -141,13 +141,13 @@ pub async fn start(
             .with_graceful_shutdown(stop.cancelled_owned())
             .await;
         if let Err(e) = served {
-            tracing::error!(error = %e, "servidor MCP parou com erro");
+            tracing::error!(error = %e, "mcp server stopped with an error");
         }
     }));
     for engine in engines {
         tasks.push(tokio::spawn(expire_loop(engine, cancel.clone())));
     }
-    tracing::info!(%addr, "servidor MCP ouvindo");
+    tracing::info!(%addr, "mcp server listening");
     Ok(RunningServer {
         addr,
         last_request,
@@ -156,7 +156,7 @@ pub async fn start(
     })
 }
 
-/// Expira as pendências vencidas agora e a cada `EXPIRE_EVERY`, até o cancelamento.
+/// Expires the stale pending changes now and every `EXPIRE_EVERY`, until cancelled.
 async fn expire_loop(engine: Engine, cancel: CancellationToken) {
     let mut tick = tokio::time::interval(EXPIRE_EVERY);
     loop {
@@ -164,20 +164,20 @@ async fn expire_loop(engine: Engine, cancel: CancellationToken) {
             _ = cancel.cancelled() => return,
             _ = tick.tick() => {
                 if let Err(e) = engine.expire_stale(Utc::now()) {
-                    tracing::warn!(platform = engine.platform().as_str(), error = %e, "falha ao expirar pendências");
+                    tracing::warn!(platform = engine.platform().as_str(), error = %e, "failed to expire pending changes");
                 }
             }
         }
     }
 }
 
-/// Ordem: navegador (403) → token (401) → plataforma pausada (503).
+/// Order: browser (403) → token (401) → paused platform (503).
 async fn check_access(State(guard): State<Arc<Guard>>, req: Request, next: Next) -> Response {
     let headers = req.headers();
     if headers.contains_key(header::ORIGIN) {
         return reject(
             StatusCode::FORBIDDEN,
-            "Requests de navegador não são aceitos.".into(),
+            "Browser requests are not accepted.".into(),
         );
     }
     let authorized = headers
@@ -187,7 +187,7 @@ async fn check_access(State(guard): State<Arc<Guard>>, req: Request, next: Next)
     if !authorized {
         let mut resp = reject(
             StatusCode::UNAUTHORIZED,
-            "Token ausente ou inválido. Copie o token em AdsConsole → MCPs.".into(),
+            "Missing or invalid token. Copy the token from AdsConsole → MCPs.".into(),
         );
         resp.headers_mut()
             .insert(header::WWW_AUTHENTICATE, HeaderValue::from_static("Bearer"));
@@ -206,7 +206,7 @@ async fn check_access(State(guard): State<Arc<Guard>>, req: Request, next: Next)
         if !enabled {
             return reject(
                 StatusCode::SERVICE_UNAVAILABLE,
-                format!("O MCP de {} está pausado no AdsConsole.", p.display_name()),
+                format!("The {} MCP is paused in AdsConsole.", p.display_name()),
             );
         }
     }
@@ -224,7 +224,7 @@ fn reject(status: StatusCode, message: String) -> Response {
     (status, axum::Json(json!({ "error": message }))).into_response()
 }
 
-/// Comparação em tempo constante para o mesmo tamanho (o tamanho em si não é segredo).
+/// Constant-time comparison for equal lengths (the length itself is not a secret).
 fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     if a.len() != b.len() {
         return false;
@@ -259,7 +259,7 @@ mod tests {
         assert!(
             StartError::EmptyToken
                 .to_string()
-                .starts_with("O token do MCP está vazio.")
+                .starts_with("The MCP token is empty.")
         );
     }
 

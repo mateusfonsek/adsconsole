@@ -29,7 +29,7 @@ async fn engine_on(fake: Arc<FakePlatform>, db: Arc<Db>, wait_secs: u64) -> Engi
     engine
 }
 
-/// Modo aprovação sobre um banco em arquivo (o teste de reinício reabre o mesmo arquivo).
+/// Approval mode over a file-backed database (the restart test reopens the same file).
 async fn setup_approval(wait_secs: u64) -> (Engine, Arc<FakePlatform>, Arc<Db>, TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let db = Arc::new(Db::open(&dir.path().join("adsconsole.db")).unwrap());
@@ -43,19 +43,19 @@ fn create_input(name: &str) -> Value {
     json!({"account_id": "111", "name": name, "daily_budget": 30})
 }
 
-/// Chama a ferramenta esperando o corpo `pending` e devolve o `change_id`.
+/// Calls the tool expecting the `pending` body and returns the `change_id`.
 async fn submit_pending(engine: &Engine, tool: &str, input: Value) -> String {
     let out = engine.call_tool(tool, input, by()).await.unwrap();
     assert_eq!(out["status"], "pending", "{out}");
     assert_eq!(
         out["message"],
-        "Aguardando aprovação no AdsConsole. Consulte o resultado com get_change_status."
+        "Waiting for approval in AdsConsole. Check the result with get_change_status."
     );
     assert!(out["summary"].is_string());
     out["change_id"].as_str().unwrap().to_string()
 }
 
-/// Cria uma campanha passando pela fila e devolve o id dela na fake.
+/// Creates a campaign through the queue and returns its id in the fake.
 async fn create_approved(engine: &Engine, name: &str) -> String {
     let id = submit_pending(engine, "create_campaign", create_input(name)).await;
     let rec = engine.approve(&id).await.unwrap();
@@ -71,7 +71,7 @@ fn executes(fake: &FakePlatform, tool: &str) -> usize {
     fake.log().iter().filter(|l| **l == entry).count()
 }
 
-/// Responde a cada `ApprovalRequested` com `decide(engine, id)`.
+/// Answers each `ApprovalRequested` with `decide(engine, id)`.
 fn auto_decide(engine: &Engine, approve: bool) -> tokio::task::JoinHandle<()> {
     let mut rx = engine.subscribe();
     let engine = engine.clone();
@@ -113,7 +113,7 @@ async fn reject_while_waiting() {
         .await
         .unwrap_err();
     assert_eq!(err.code, codes::APPROVAL_REJECTED);
-    assert_eq!(err.message, "O usuário recusou esta mudança no AdsConsole.");
+    assert_eq!(err.message, "The user rejected this change in AdsConsole.");
     decider.await.unwrap();
     assert!(!fake.log().iter().any(|l| l.starts_with("execute:")));
     let id = err.details.unwrap()["change_id"]
@@ -130,7 +130,7 @@ async fn reject_while_waiting() {
 #[tokio::test]
 async fn approve_after_timeout_executes() {
     let (engine, fake, db, _dir) = setup_approval(1).await;
-    let id = submit_pending(&engine, "create_campaign", create_input("Depois")).await;
+    let id = submit_pending(&engine, "create_campaign", create_input("Later")).await;
     assert_eq!(executes(&fake, "create_campaign"), 0);
     let pend = engine.pending().unwrap();
     assert_eq!(pend.len(), 1);
@@ -139,7 +139,7 @@ async fn approve_after_timeout_executes() {
 
     let rec = engine.approve(&id).await.unwrap();
     assert_eq!(rec.status, ChangeStatus::Applied);
-    // Ruling H: get_change_status chega na Task 10; o banco mostra o resultado.
+    // Ruling H: get_change_status arrives in Task 10; the database shows the result.
     let stored = db.get_change(&id).unwrap().unwrap();
     assert_eq!(stored.status, ChangeStatus::Applied);
     assert_eq!(executes(&fake, "create_campaign"), 1);
@@ -157,7 +157,8 @@ async fn double_approve_executes_once() {
     let err = errs.into_iter().next().unwrap().unwrap_err();
     assert_eq!(err.code, codes::INVALID_STATE);
     assert!(
-        err.message.starts_with("Esta mudança já foi decidida: "),
+        err.message
+            .starts_with("This change has already been decided: "),
         "{}",
         err.message
     );
@@ -172,7 +173,10 @@ async fn approve_after_reject_fails() {
     assert_eq!(rec.status, ChangeStatus::Rejected);
     let err = engine.approve(&id).await.unwrap_err();
     assert_eq!(err.code, codes::INVALID_STATE);
-    assert_eq!(err.message, "Esta mudança já foi decidida: rejected.");
+    assert_eq!(
+        err.message,
+        "This change has already been decided: rejected."
+    );
     assert_eq!(
         engine.reject(&id).await.unwrap_err().code,
         codes::INVALID_STATE
@@ -212,10 +216,13 @@ async fn approve_expired_fails() {
     ));
     let err = engine.approve(&id).await.unwrap_err();
     assert_eq!(err.code, codes::INVALID_STATE);
-    assert_eq!(err.message, "Esta mudança já foi decidida: expired.");
+    assert_eq!(
+        err.message,
+        "This change has already been decided: expired."
+    );
     assert!(db.list_pending(None).unwrap().is_empty());
     assert_eq!(executes(&fake, "create_campaign"), 0);
-    // Nada mais a expirar.
+    // Nothing left to expire.
     assert!(
         engine
             .expire_stale(Utc::now() + Duration::hours(25))
@@ -227,7 +234,7 @@ async fn approve_expired_fails() {
 #[tokio::test]
 async fn expire_stale_keeps_fresh_pending() {
     let (engine, _fake, _db, _dir) = setup_approval(0).await;
-    submit_pending(&engine, "create_campaign", create_input("Nova")).await;
+    submit_pending(&engine, "create_campaign", create_input("New")).await;
     assert!(engine.expire_stale(Utc::now()).unwrap().is_empty());
     assert_eq!(engine.pending().unwrap().len(), 1);
 }
@@ -258,7 +265,7 @@ async fn waiting_call_sees_expiration() {
 #[tokio::test]
 async fn approve_after_restart() {
     let (engine1, fake, db1, dir) = setup_approval(1).await;
-    let id = submit_pending(&engine1, "create_campaign", create_input("Reinício")).await;
+    let id = submit_pending(&engine1, "create_campaign", create_input("Restart")).await;
     drop(engine1);
     drop(db1);
 
@@ -273,23 +280,23 @@ async fn approve_after_restart() {
         .as_str()
         .unwrap()
         .to_string();
-    assert_eq!(fake.campaign("111", &cid).unwrap().name, "Reinício");
+    assert_eq!(fake.campaign("111", &cid).unwrap().name, "Restart");
 }
 
 #[tokio::test]
 async fn pending_snapshot_and_warning() {
     let (engine, _fake, _db, _dir) = setup_approval(0).await;
-    let cid = create_approved(&engine, "Nome antigo").await;
+    let cid = create_approved(&engine, "Old name").await;
 
     let upd = submit_pending(
         &engine,
         "update_campaign",
-        json!({"account_id": "111", "campaign_id": cid, "name": "Nome novo"}),
+        json!({"account_id": "111", "campaign_id": cid, "name": "New name"}),
     )
     .await;
     let pend = engine.pending().unwrap();
     let p = pend.iter().find(|p| p.change.change_id == upd).unwrap();
-    assert_eq!(p.change.before.as_ref().unwrap()["name"], "Nome antigo");
+    assert_eq!(p.change.before.as_ref().unwrap()["name"], "Old name");
     assert!(p.warning.is_none(), "{:?}", p.warning);
     engine.reject(&upd).await.unwrap();
 
@@ -302,10 +309,7 @@ async fn pending_snapshot_and_warning() {
     let pend = engine.pending().unwrap();
     let p = pend.iter().find(|p| p.change.change_id == rem).unwrap();
     assert!(
-        p.warning
-            .as_deref()
-            .unwrap()
-            .contains("não pode ser desfeita"),
+        p.warning.as_deref().unwrap().contains("cannot be undone"),
         "{:?}",
         p.warning
     );
@@ -314,7 +318,7 @@ async fn pending_snapshot_and_warning() {
 #[tokio::test]
 async fn failed_execution_after_approval_is_ok_with_failed_record() {
     let (engine, fake, db, _dir) = setup_approval(0).await;
-    let id = submit_pending(&engine, "create_campaign", create_input("Falha")).await;
+    let id = submit_pending(&engine, "create_campaign", create_input("Failure")).await;
     fake.fail_next_execute(adsconsole_mcp::ToolError::new(
         codes::EXECUTION_FAILED,
         "boom",

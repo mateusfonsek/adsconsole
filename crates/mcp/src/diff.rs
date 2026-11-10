@@ -1,9 +1,9 @@
-//! Comparação do estado esperado com o atual (conflito no desfazer).
+//! Comparison of the expected state with the current one (undo conflict).
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-/// Campo cujo valor atual difere do esperado. `path` é um JSON Pointer (`""` = o todo).
+/// Field whose current value differs from the expected one. `path` is a JSON Pointer (`""` = the whole).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FieldDiff {
     pub path: String,
@@ -11,9 +11,9 @@ pub struct FieldDiff {
     pub actual: Value,
 }
 
-/// Diferenças de `actual` em relação a `expected`. Em objetos, só as chaves de
-/// `expected` contam (chave ausente vale `null`); arrays e escalares são comparados
-/// inteiros, e números pelo valor (`1 == 1.0`).
+/// Differences of `actual` relative to `expected`. In objects, only the keys of
+/// `expected` count (a missing key is `null`); arrays and scalars are compared
+/// whole, and numbers by value (`1 == 1.0`).
 pub fn diff(expected: &Value, actual: &Value) -> Vec<FieldDiff> {
     let mut out = Vec::new();
     walk(String::new(), expected, actual, &mut out);
@@ -37,7 +37,7 @@ fn walk(path: String, expected: &Value, actual: &Value, out: &mut Vec<FieldDiff>
     }
 }
 
-/// Igualdade com números comparados como `f64`.
+/// Equality with numbers compared as `f64`.
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
@@ -51,7 +51,7 @@ fn same(a: &Value, b: &Value) -> bool {
     }
 }
 
-/// Escape de um segmento de JSON Pointer (RFC 6901).
+/// Escape of a JSON Pointer segment (RFC 6901).
 fn escape(key: &str) -> String {
     key.replace('~', "~0").replace('/', "~1")
 }
