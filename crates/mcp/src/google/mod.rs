@@ -491,7 +491,7 @@ impl PlatformAdapter for GoogleAdapter {
         if let Some(warning) = quota_warning(&ctx)
             && let Some(obj) = out.as_object_mut()
         {
-            obj.insert("aviso_cota".into(), Value::String(warning));
+            obj.insert("quota_warning".into(), Value::String(warning));
         }
         Ok(out)
     }
@@ -658,11 +658,11 @@ mod tests {
         let out = adapter(2304).read(&echo_call()).await.unwrap();
         assert_eq!(out["customer"], "111");
         assert_eq!(
-            out["aviso_cota"],
+            out["quota_warning"],
             "This connection has used 2304 of 2880 operations in the last 24 h (Explorer access level)."
         );
         let out = adapter(2000).read(&echo_call()).await.unwrap();
-        assert!(out.get("aviso_cota").is_none(), "{out}");
+        assert!(out.get("quota_warning").is_none(), "{out}");
     }
 
     /// Store that, on the first refresh token read, simulates a concurrent reconnect:

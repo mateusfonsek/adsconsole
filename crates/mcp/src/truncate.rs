@@ -7,7 +7,7 @@ use serde_json::Value;
 pub const MAX_RESPONSE_BYTES: usize = 100_000;
 
 /// Budget for the item list: the limit minus some slack for the rest of the response
-/// (envelope keys, `next_cursor`, `aviso_cota`).
+/// (envelope keys, `next_cursor`, `quota_warning`).
 pub const ITEMS_BUDGET: usize = MAX_RESPONSE_BYTES - 2_000;
 
 /// Keeps the longest prefix of `items` whose JSON array fits in `max_bytes`, with at least
