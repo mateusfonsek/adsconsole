@@ -12,6 +12,7 @@ import {
 import { commands } from "../../bindings";
 import { useCmd } from "../../lib/ipc";
 import { href, type RouteName } from "../../lib/route";
+import { BrandMark } from "../BrandMark";
 import { CountBadge } from "../ui/Status";
 
 const ITEMS: [RouteName, LucideIcon][] = [
@@ -47,9 +48,7 @@ export function Sidebar({ route, version }: { route: RouteName; version?: string
   return (
     <nav aria-label="AdsConsole" className="flex w-[196px] shrink-0 flex-col border-r border-line bg-bg px-3 pb-3 pt-4">
       <div className="mb-5 flex items-center gap-2 px-2.5" data-tauri-drag-region>
-        <span aria-hidden className="grid h-5 w-5 place-items-center rounded-[4px] bg-fg font-mono text-[11px] font-medium text-bg">
-          A
-        </span>
+        <BrandMark />
         <span className="text-[13px] font-semibold tracking-tight">{t("app.name")}</span>
       </div>
       <div className="flex flex-col gap-0.5">

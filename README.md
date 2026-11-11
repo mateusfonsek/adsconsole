@@ -1,4 +1,9 @@
-# AdsConsole
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/horizontal-reversed.svg">
+    <img src="docs/brand/horizontal.svg" alt="AdsConsole" height="48">
+  </picture>
+</h1>
 
 Desktop app that connects your AI agent (Claude Code, Claude Desktop, Codex, Gemini CLI, Cursor) to your Google Ads and Meta Ads accounts. The AI reads accounts, campaigns and metrics and proposes changes. Every write goes through your approval in the app.
 

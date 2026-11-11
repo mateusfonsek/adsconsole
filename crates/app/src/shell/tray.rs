@@ -20,12 +20,17 @@ pub fn create(app: &AppHandle) -> tauri::Result<TrayIcon> {
         .menu(&menu)
         .show_menu_on_left_click(true)
         .on_menu_event(|app, event| on_menu(app, event.id.as_ref()));
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
+    // macOS: a monochrome template image, so the menu bar tints it for light and dark
+    // modes as Apple's guidelines ask. Elsewhere the colored app icon reads better.
     #[cfg(target_os = "macos")]
     {
-        builder = builder.icon_as_template(false);
+        let icon =
+            tauri::image::Image::from_bytes(include_bytes!("../../icons/tray-template.png"))?;
+        builder = builder.icon(icon).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
+    if let Some(icon) = app.default_window_icon() {
+        builder = builder.icon(icon.clone());
     }
     builder.build(app)
 }

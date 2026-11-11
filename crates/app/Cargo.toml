@@ -20,7 +20,7 @@ adsconsole-core = { path = "../core", features = ["specta"] }
 adsconsole-google-ads = { path = "../google-ads" }
 adsconsole-meta-ads = { path = "../meta-ads" }
 adsconsole-mcp = { path = "../mcp" }
-tauri = { version = "2", features = ["tray-icon"] }
+tauri = { version = "2", features = ["tray-icon", "image-png"] }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
