@@ -1,28 +1,66 @@
 name: Release
 
+# Releases happen only when a version tag is pushed (vX.Y.Z, or vX.Y.Z-beta.1 for a
+# pre-release). Pushing commits to main never publishes anything.
 on:
   push:
-    tags: ["v*"]
+    tags: ["v[0-9]+.[0-9]+.[0-9]+*"]
 
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
-  release:
+  version:
+    name: Check version
+    runs-on: ubuntu-22.04
+    outputs:
+      prerelease: ${{ steps.check.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag matches the app version
+        id: check
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          conf=$(jq -r .version crates/app/tauri.conf.json)
+          npm=$(jq -r .version ui/package.json)
+          cargo=$(sed -n 's/^version = "\(.*\)"/\1/p' crates/app/Cargo.toml | head -1)
+          echo "tag=$tag tauri.conf.json=$conf ui/package.json=$npm crates/app/Cargo.toml=$cargo"
+          if [ "$tag" != "$conf" ] || [ "$tag" != "$npm" ] || [ "$tag" != "$cargo" ]; then
+            echo "::error::Tag v$tag does not match the version in the app files. Bump all three, commit, and tag again."
+            exit 1
+          fi
+          if [[ "$tag" == *-* ]]; then echo "prerelease=true" >> "$GITHUB_OUTPUT"; else echo "prerelease=false" >> "$GITHUB_OUTPUT"; fi
+
+  checks:
+    name: Checks
+    needs: version
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: [version, checks]
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         include:
-          - os: macos-latest
+          - name: macOS Apple Silicon
+            os: macos-latest
             args: --target aarch64-apple-darwin
             target: aarch64-apple-darwin
-          - os: macos-latest
+          - name: macOS Intel
+            os: macos-latest
             args: --target x86_64-apple-darwin
             target: x86_64-apple-darwin
-          - os: windows-latest
+          - name: Windows
+            os: windows-latest
             args: ""
             target: ""
-          - os: ubuntu-22.04
+          - name: Linux
+            os: ubuntu-22.04
             args: ""
             target: ""
     runs-on: ${{ matrix.os }}
@@ -43,6 +81,7 @@ jobs:
           cache: npm
           cache-dependency-path: ui/package-lock.json
       - run: npm --prefix ui ci
+      # Every platform uploads to the same draft; the publish job releases it once all succeed.
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -54,11 +93,30 @@ jobs:
           tagName: ${{ github.ref_name }}
           releaseName: AdsConsole ${{ github.ref_name }}
           releaseDraft: true
-          prerelease: false
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           releaseBody: |
             AdsConsole ${{ github.ref_name }} installers for macOS (Apple Silicon and Intel), Windows and Linux.
+
+            | Platform | File |
+            |---|---|
+            | macOS (Apple Silicon) | `AdsConsole_*_aarch64.dmg` |
+            | macOS (Intel) | `AdsConsole_*_x64.dmg` |
+            | Windows | `AdsConsole_*_x64-setup.exe` or `.msi` |
+            | Linux | `.AppImage` (make it executable), `.deb` or `.rpm` |
 
             The app is not signed yet. On first launch:
             - macOS: open System Settings → Privacy & Security and click Open Anyway next to AdsConsole (macOS 14 or earlier: right-click the app → Open).
             - Windows: at "Windows protected your PC", click More info → Run anyway.
-            - Linux: use the .AppImage (make it executable) or install the .deb.
+
+  publish:
+    name: Publish
+    needs: [version, build]
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          latest=true
+          if [ "${{ needs.version.outputs.prerelease }}" = "true" ]; then latest=false; fi
+          gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft=false --latest=$latest

@@ -1,12 +1,27 @@
 # How to publish a release
 
-1. Update the version in `crates/app/Cargo.toml`, `crates/app/tauri.conf.json` and `ui/package.json`.
-2. Run the tests: `cargo test --workspace`, `npm --prefix ui test` and `npm --prefix ui run e2e`.
-3. Create the `vX.Y.Z` tag on `main` and push it (`git push origin vX.Y.Z`). The **Release** workflow builds the installers and creates a draft release.
-4. Go through the checklist below with the draft's installers.
-5. Publish the draft. From then on, the installed app announces the new version.
+Releases are automatic and happen **only when a version tag is pushed**. Commits pushed to `main` run CI but never publish anything, so work in progress is safe.
 
-## Manual checklist (macOS, Windows and Linux)
+1. Update the version in `crates/app/Cargo.toml`, `crates/app/tauri.conf.json` and `ui/package.json` (same `X.Y.Z` in all three), and commit it.
+2. Create the tag on that commit and push it:
+   ```bash
+   git tag vX.Y.Z
+   git push origin vX.Y.Z
+   ```
+3. The **Release** workflow then:
+   - checks that the tag matches the version in the three files (it stops if not);
+   - runs the same checks as CI (Rust, UI, builds on the three systems);
+   - builds the installers for macOS (Apple Silicon and Intel), Windows and Linux;
+   - publishes the GitHub release with all installers once every platform succeeded. If any step fails, nothing is published.
+4. Installed apps announce the new version on their next check.
+
+Tags with a suffix, such as `v1.2.0-beta.1`, are published as **pre-releases**: they can be downloaded but are not offered as an update.
+
+The installers can only be downloaded by everyone, and the update check only works, while the repository is public.
+
+To undo a bad release, delete it on GitHub and delete the tag (`git push origin :refs/tags/vX.Y.Z`), then fix and tag a new version.
+
+## Manual checklist before tagging a big release (macOS, Windows and Linux)
 
 - [ ] Install and open for the first time on a clean Mac with the `.dmg` downloaded from the release (Gatekeeper: System Settings → Privacy & Security → Open Anyway; it must not say "damaged"), and on Windows (SmartScreen).
 - [ ] Connect Google Ads with a real project (wizard, client JSON, browser login).
