@@ -26,7 +26,7 @@ use crate::google::ctx::Ctx;
 
 /// Maximum size, in UTF-8 bytes, of a campaign, budget or ad group name.
 pub(crate) const MAX_NAME_BYTES: usize = 255;
-const MAX_SITELINKS: usize = 20;
+pub(crate) const MAX_SITELINKS: usize = 20;
 const SITELINK_TEXT_CHARS: usize = 25;
 const SITELINK_DESCRIPTION_CHARS: usize = 35;
 const EU_POLITICAL: &str = "DOES_NOT_CONTAIN_EU_POLITICAL_ADVERTISING";
@@ -403,6 +403,44 @@ pub(crate) struct SitelinkIn {
     pub description2: Option<String>,
 }
 
+/// Body of the `create` of sitelink `i` (`finalUrls` + `sitelinkAsset`, without a
+/// name). Errors point at `sitelinks[i].<field>`.
+pub(crate) fn sitelink_asset(i: usize, s: &SitelinkIn) -> Result<Value, ToolError> {
+    let f = |name: &str| format!("sitelinks[{i}].{name}");
+    let mut asset = json!({
+        "linkText": bounded_text(&s.link_text, SITELINK_TEXT_CHARS, &f("link_text"))?
+    });
+    match (&s.description1, &s.description2) {
+        (Some(d1), Some(d2)) => {
+            asset["description1"] = json!(bounded_text(
+                d1,
+                SITELINK_DESCRIPTION_CHARS,
+                &f("description1")
+            )?);
+            asset["description2"] = json!(bounded_text(
+                d2,
+                SITELINK_DESCRIPTION_CHARS,
+                &f("description2")
+            )?);
+        }
+        (None, None) => {}
+        (Some(_), None) | (None, Some(_)) => {
+            let missing = f(if s.description1.is_none() {
+                "description1"
+            } else {
+                "description2"
+            });
+            return Err(invalid(format!(
+                "sitelinks[{i}]: provide both description lines or neither."
+            ))
+            .with_field(missing));
+        }
+    }
+    let url = s.final_url.trim();
+    final_url(url, &f("final_url"))?;
+    Ok(json!({ "finalUrls": [url], "sitelinkAsset": asset }))
+}
+
 /// For each sitelink (up to 20): the asset (`sitelinkAsset` + `finalUrls`, with a
 /// temporary id) and the `campaignAsset` link with `fieldType: SITELINK`. Errors point
 /// at `sitelinks[i].<field>`.
@@ -420,44 +458,10 @@ pub(crate) fn sitelink_ops(
     }
     let mut ops = Vec::new();
     for (i, s) in sitelinks.iter().enumerate() {
-        let f = |name: &str| format!("sitelinks[{i}].{name}");
-        let mut asset = json!({
-            "linkText": bounded_text(&s.link_text, SITELINK_TEXT_CHARS, &f("link_text"))?
-        });
-        match (&s.description1, &s.description2) {
-            (Some(d1), Some(d2)) => {
-                asset["description1"] = json!(bounded_text(
-                    d1,
-                    SITELINK_DESCRIPTION_CHARS,
-                    &f("description1")
-                )?);
-                asset["description2"] = json!(bounded_text(
-                    d2,
-                    SITELINK_DESCRIPTION_CHARS,
-                    &f("description2")
-                )?);
-            }
-            (None, None) => {}
-            (Some(_), None) | (None, Some(_)) => {
-                let missing = f(if s.description1.is_none() {
-                    "description1"
-                } else {
-                    "description2"
-                });
-                return Err(invalid(format!(
-                    "sitelinks[{i}]: provide both description lines or neither."
-                ))
-                .with_field(missing));
-            }
-        }
-        let url = s.final_url.trim();
-        final_url(url, &f("final_url"))?;
+        let mut asset = sitelink_asset(i, s)?;
         let asset_rn = temps.next("assets");
-        ops.push(json!({ "assetOperation": { "create": {
-            "resourceName": asset_rn,
-            "finalUrls": [url],
-            "sitelinkAsset": asset,
-        } } }));
+        asset["resourceName"] = json!(asset_rn);
+        ops.push(json!({ "assetOperation": { "create": asset } }));
         ops.push(create_unnamed(
             "campaignAssetOperation",
             json!({ "campaign": campaign_rn, "asset": asset_rn, "fieldType": "SITELINK" }),

@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use reqwest::Method;
 use serde::Deserialize;
@@ -142,6 +143,43 @@ impl GoogleAdsClient {
             }
         }
         rows.truncate(max_rows);
+        Ok(rows)
+    }
+
+    /// `GoogleAdsFieldService.SearchGoogleAdsFields`: the GAQL field catalog (no account,
+    /// no `login-customer-id`). Follows the pages. The catalog only changes with the API
+    /// version, so results are kept in memory per URL and query for the life of the process.
+    pub async fn search_fields(&self, query: &str) -> Result<Vec<Value>, GoogleError> {
+        const MAX_PAGES: usize = 20;
+        static CACHE: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
+        let url = format!("{}/googleAdsFields:search", self.endpoints.api_base);
+        let key = format!("{url}\n{query}");
+        let cache = CACHE.get_or_init(Default::default);
+        if let Some(hit) = cache.lock().unwrap_or_else(|e| e.into_inner()).get(&key) {
+            return Ok(hit.clone());
+        }
+        let mut rows = Vec::new();
+        let mut token: Option<String> = None;
+        for _ in 0..MAX_PAGES {
+            let mut body = json!({ "query": query });
+            if let Some(t) = &token {
+                body["pageToken"] = json!(t);
+            }
+            let v = self
+                .send(Method::POST, &url, None, Some(&body), CallKind::Read)
+                .await?;
+            let raw: RawSearch = serde_json::from_value(v)
+                .map_err(|_| GoogleError::Decode("malformed field search response".into()))?;
+            rows.extend(raw.results);
+            match raw.next_page_token.filter(|t| !t.is_empty()) {
+                Some(t) => token = Some(t),
+                None => break,
+            }
+        }
+        cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(key, rows.clone());
         Ok(rows)
     }
 

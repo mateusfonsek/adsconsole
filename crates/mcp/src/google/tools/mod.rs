@@ -10,10 +10,14 @@ pub(crate) mod create_pmax;
 pub(crate) mod create_search;
 pub(crate) mod edit;
 pub(crate) mod escape;
+pub(crate) mod extensions;
 pub(crate) mod gaql;
+pub(crate) mod gaql_fields;
 pub(crate) mod hidden;
 pub(crate) mod keyword_planner;
 pub(crate) mod keywords;
+pub(crate) mod labels;
+pub(crate) mod links;
 pub(crate) mod recommendations;
 pub(crate) mod reports;
 pub(crate) mod targeting;
@@ -76,7 +80,7 @@ impl GTool {
 /// Tools that take an account. `list_accounts` is not here: it has no `Ctx` and is
 /// handled directly in the adapter's `read` (see [`accounts`]).
 pub(crate) fn all() -> Vec<GTool> {
-    let mut tools = vec![gaql::tool()];
+    let mut tools = vec![gaql::tool(), gaql_fields::tool()];
     tools.extend(reports::tools());
     tools.extend(keyword_planner::tools());
     tools.extend(edit::tools());
@@ -88,8 +92,11 @@ pub(crate) fn all() -> Vec<GTool> {
     tools.extend(create_pmax::tools());
     tools.extend(create_demand_gen::tools());
     tools.extend(create_display::tools());
+    tools.extend(labels::tools());
+    tools.extend(extensions::tools());
     tools.extend(assets::tools());
     tools.extend(hidden::hidden());
+    tools.extend(links::hidden());
     tools.push(escape::mutate());
     tools
 }

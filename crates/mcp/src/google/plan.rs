@@ -23,6 +23,7 @@ use crate::error::{ToolError, codes};
 pub(crate) const RESTORE_FIELDS: &str = "restore_fields";
 pub(crate) const REMOVE_RESOURCES: &str = "remove_resources";
 pub(crate) const REMOVE_YOUTUBE_UPLOAD: &str = "remove_youtube_upload";
+pub(crate) const RESTORE_LINKS: &str = "restore_links";
 
 /// What a write will do, built by [`super::tools::WriteTool::plan`].
 pub(crate) struct WritePlan {
@@ -64,6 +65,12 @@ pub(crate) enum InverseSpec {
     /// be temporary.
     RemoveCreated {
         order: Vec<String>,
+    },
+    /// Creates again the links this write removes (`restore_links`): labels attached to
+    /// campaigns, ad groups, ads and keywords, and assets linked to the account, a
+    /// campaign or an ad group (see [`super::tools::links`]). The names are real.
+    RecreateLinks {
+        names: Vec<String>,
     },
     None,
 }
@@ -120,13 +127,27 @@ fn wire_ops(operations: &[Value]) -> Vec<Value> {
         .iter()
         .map(|op| {
             let mut op = op.clone();
-            let collection = created_name(&op)
-                .filter(|n| is_temp(n))
-                .and_then(|n| n.split('/').nth(2))
-                .map(str::to_string);
-            let Some(collection) = collection else {
+            let Some((collection, temp)) = created_name(&op)
+                .and_then(|n| n.split('/').nth(2).map(|c| (c.to_string(), is_temp(n))))
+            else {
                 return op;
             };
+            // Link ids are derived from the parent and the linked resource: the name never
+            // goes to the API, temporary or real.
+            if super::tools::links::is_link_collection(&collection) {
+                if let Some(create) = op
+                    .as_object_mut()
+                    .and_then(|m| m.values_mut().next())
+                    .and_then(|inner| inner.get_mut("create"))
+                    .and_then(Value::as_object_mut)
+                {
+                    create.remove("resourceName");
+                }
+                return op;
+            }
+            if !temp {
+                return op;
+            }
             if let Some(create) = op
                 .as_object_mut()
                 .and_then(|m| m.values_mut().next())
@@ -309,6 +330,11 @@ fn check(plan: &WritePlan) -> Result<(), ToolError> {
     }
     match &plan.inverse {
         InverseSpec::RemoveCreated { order } => refs.extend(order.iter().map(String::as_str)),
+        InverseSpec::RecreateLinks { names } => {
+            if let Some(t) = names.iter().find(|n| is_temp(n)) {
+                return Err(internal_plan(format!("temporary link to recreate: {t}")));
+            }
+        }
         InverseSpec::RestoreFields | InverseSpec::None => {}
     }
     if let Some(t) = refs
@@ -503,6 +529,10 @@ fn resolve_plan(
                 json!({ "resource_names": names }),
             ))
         }
+        InverseSpec::RecreateLinks { names } => Some((
+            RESTORE_LINKS.to_string(),
+            json!({ "resource_names": names }),
+        )),
         InverseSpec::None => None,
     };
     Ok((targets, inverse))

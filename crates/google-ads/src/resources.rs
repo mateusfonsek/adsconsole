@@ -45,6 +45,12 @@ const OP_KEYS: &[(&str, &str)] = &[
     ("sharedCriteria", "sharedCriterionOperation"),
     ("campaignSharedSets", "campaignSharedSetOperation"),
     ("adGroupAssets", "adGroupAssetOperation"),
+    ("customerAssets", "customerAssetOperation"),
+    ("labels", "labelOperation"),
+    ("campaignLabels", "campaignLabelOperation"),
+    ("adGroupLabels", "adGroupLabelOperation"),
+    ("adGroupAdLabels", "adGroupAdLabelOperation"),
+    ("adGroupCriterionLabels", "adGroupCriterionLabelOperation"),
 ];
 
 /// `MutateOperation` key from `customers/{c}/{collection}/{id}`.
