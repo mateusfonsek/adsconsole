@@ -177,6 +177,21 @@ pub const FIELDS: &[EditableField] = &[
         ["finalUrls"],
         Text
     ),
+    field!("label.name", "label", "name", ["name"], Text),
+    field!(
+        "label.text_label.description",
+        "label",
+        "text_label.description",
+        ["textLabel", "description"],
+        Text
+    ),
+    field!(
+        "label.text_label.background_color",
+        "label",
+        "text_label.background_color",
+        ["textLabel", "backgroundColor"],
+        Text
+    ),
     // Read-only: has no update (see `is_read_only`).
     field!(
         "you_tube_video_upload.state",

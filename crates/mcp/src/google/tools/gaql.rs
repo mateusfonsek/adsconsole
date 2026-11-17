@@ -17,6 +17,28 @@ use crate::truncate::{ITEMS_BUDGET, fit};
 
 pub(crate) const NAME: &str = "gaql_search";
 
+const DESCRIPTION: &str = "Runs a GAQL query (SELECT only) on the account. Large responses are \
+cut, with truncated: true and next_cursor; call again with the cursor to continue.
+
+Rules that avoid failed or misleading queries:
+- Use full field names (campaign.id, not id), no SELECT *, no OR, no JOIN. Fields of other \
+resources, segments and metrics must be compatible with the FROM resource: look them up \
+with get_gaql_fields instead of guessing.
+- Dates are 'YYYY-MM-DD' with both ends (segments.date BETWEEN '2026-01-01' AND \
+'2026-01-31') or a preset (segments.date DURING LAST_30_DAYS).
+- Status fields hold the current status, not the status during the period. When summing \
+metrics over a period, do not filter on status (paused or removed items would drop out and \
+understate cost and conversions); drop rows with zero impressions instead.
+- Money fields are in micros of the account currency (divide by 1,000,000).
+- change_event needs a LIMIT of at most 10000 and a change_event.change_date_time filter \
+within the last 30 days.
+- Search terms: search_term_view; keyword metrics: keyword_view; ad metrics: ad_group_ad; \
+conversions by action: segments.conversion_action_name with metrics.conversions.";
+
+/// Suggestion added to query errors: most come from a wrong or incompatible field.
+const FIELDS_HINT: &str =
+    "Check the field names and their compatibility with the FROM resource using get_gaql_fields.";
+
 pub(crate) fn tool() -> GTool {
     GTool::Read(Box::new(GaqlSearch))
 }
@@ -78,18 +100,28 @@ fn is_select(query: &str) -> bool {
         && q[6..].starts_with(|c: char| c.is_whitespace())
 }
 
+/// A query rejected by Google (`queryError`, e.g. an unknown or incompatible field) gets
+/// [`FIELDS_HINT`] when it has no suggestion of its own.
+fn with_fields_hint(e: ToolError) -> ToolError {
+    let query_error = e.code == codes::API_ERROR
+        && e.details
+            .as_ref()
+            .and_then(|d| d.get("errors"))
+            .and_then(Value::as_array)
+            .is_some_and(|errs| errs.iter().any(|x| x["category"] == "queryError"));
+    if query_error && e.suggestion.is_none() {
+        return e.with_suggestion(FIELDS_HINT);
+    }
+    e
+}
+
 struct GaqlSearch;
 
 #[async_trait]
 impl ReadTool for GaqlSearch {
     fn spec(&self) -> ToolSpec {
-        ToolSpec::read::<GaqlSearchInput>(
-            NAME,
-            "Runs a GAQL query (SELECT only) on the account. Large responses are cut, with \
-             truncated: true and next_cursor; call again with the cursor to continue.",
-            ToolGroup::Read,
-        )
-        .output::<GaqlSearchOutput>()
+        ToolSpec::read::<GaqlSearchInput>(NAME, DESCRIPTION, ToolGroup::Read)
+            .output::<GaqlSearchOutput>()
     }
 
     async fn run(&self, ctx: &Ctx, input: &Value) -> Result<Value, ToolError> {
@@ -120,7 +152,7 @@ impl ReadTool for GaqlSearch {
                     token.as_deref(),
                 )
                 .await
-                .map_err(|e| translate(e, Some(ctx), NAME))?;
+                .map_err(|e| with_fields_hint(translate(e, Some(ctx), NAME)))?;
             let remaining: Vec<Value> = page.results.into_iter().skip(skip).collect();
             if remaining.is_empty() {
                 // Page used up (or empty): move to the next one, if any.

@@ -138,6 +138,16 @@ const VERIFY: &[(&str, &str)] = &[
         "V22",
         "upload_video: session URL with the same origin as upload_base",
     ),
+    (
+        "V23",
+        "label links created without resourceName; detach undone by recreating the link",
+    ),
+    (
+        "V24",
+        "asset links (callout, snippet, sitelink) created without resourceName; unlink undone \
+         by recreating the link",
+    ),
+    ("V25", "googleAdsFields:search answers get_gaql_fields"),
 ];
 
 // ---------------------------------------------------------------- arguments
@@ -225,7 +235,9 @@ fn planned_writes(args: &Args) -> Vec<String> {
                 "search: create_search_campaign paused; update_campaign (name, budget, \
                  end_date, start_date; v26: *_date_time), update_ad_group, update_ad, manage_keywords (add, pause, \
                  set_bid), manage_negatives (add, create_list x2, attach_list), manage_targeting \
-                 (add location and schedule, set_bid_modifier); conflict with two update_campaign; \
+                 (add location and schedule, set_bid_modifier); manage_labels (create, update), \
+                 apply_labels (attach, detach + undo), manage_extensions (add callouts, snippet \
+                 and sitelink, remove + undo); conflict with two update_campaign; \
                  undoes everything in reverse order and the campaign ends up REMOVED"
                     .to_string()
             }
@@ -413,6 +425,11 @@ fn find_rn(body: &Value, collection: &str) -> Option<String> {
     resource_keys(body)
         .into_iter()
         .find(|k| k.contains(&needle))
+}
+
+/// Id part of a resource name (`.../campaignAssets/5~7~CALLOUT` → `5~7~CALLOUT`).
+fn last_segment(rn: &str) -> &str {
+    rn.rsplit('/').next().unwrap_or_default()
 }
 
 /// Last id of a resource name (`.../campaigns/12` → 12, `.../x/5~7` → 7).
@@ -901,6 +918,25 @@ impl Checklist {
         )
         .await;
         self.gaql_with_cursor().await;
+        let fields = self
+            .read(
+                s,
+                "get_gaql_fields",
+                json!({ "resource": "campaign", "filter": "status" }),
+            )
+            .await;
+        self.evidence(
+            "V25",
+            match &fields {
+                Some(v) => format!(
+                    "{} attributes, {} segments, {} metrics",
+                    v["attributes"].as_array().map_or(0, Vec::len),
+                    v["segments"].as_array().map_or(0, Vec::len),
+                    v["metrics"].as_array().map_or(0, Vec::len)
+                ),
+                None => "get_gaql_fields failed".into(),
+            },
+        );
         self.read(s, "list_changes", json!({ "limit": 5 })).await;
     }
 
@@ -1491,6 +1527,9 @@ impl Checklist {
         }
         self.negatives(&campaign).await;
         self.targeting(&campaign).await;
+        self.labels(&campaign, ag.as_deref(), ad.as_deref(), keywords.first())
+            .await;
+        self.extensions(&campaign, ag.as_deref()).await;
 
         // Undo the edits (only the creation is left).
         self.unwind_to(1).await;
@@ -1601,6 +1640,158 @@ impl Checklist {
             Err(e) => err_evidence(e),
         };
         self.evidence("V6", text);
+    }
+
+    /// Label created, edited, attached to the campaign's objects and detached from the
+    /// campaign; the detach is undone right away (recreates the link).
+    async fn labels(
+        &mut self,
+        campaign: &str,
+        ag: Option<&str>,
+        ad: Option<&str>,
+        keyword: Option<&String>,
+    ) {
+        let s = "search";
+        let r = self
+            .write(
+                s,
+                "manage_labels",
+                "manage_labels create",
+                json!({ "action": "create", "labels": [{
+                    "name": format!("checklist {}", self.stamp),
+                    "description": "AdsConsole checklist", "background_color": "#3366CC" }] }),
+                AfterUndo::Nothing,
+            )
+            .await;
+        let Some(label) = r.as_ref().ok().and_then(|v| find_rn(v, "labels")) else {
+            self.skip(s, "apply_labels", "label not created");
+            self.evidence("V23", "not exercised: manage_labels create failed");
+            return;
+        };
+        let label = last_id(&label);
+        self.write(
+            s,
+            "manage_labels",
+            "manage_labels update",
+            json!({ "action": "update", "labels": [{ "label_id": label, "background_color": "#CC3333" }] }),
+            AfterUndo::Nothing,
+        )
+        .await
+        .ok();
+        let mut attach =
+            json!({ "action": "attach", "label_ids": [label], "campaign_ids": [campaign] });
+        if let Some(ag) = ag {
+            attach["ad_group_ids"] = json!([ag]);
+            if let Some(ad) = ad {
+                attach["ads"] = json!([{ "ad_group_id": ag, "ad_id": ad }]);
+            }
+            if let Some(k) = keyword {
+                attach["keywords"] = json!([{ "ad_group_id": ag, "criterion_id": k }]);
+            }
+        }
+        let r = self
+            .write(
+                s,
+                "apply_labels",
+                "apply_labels attach",
+                attach,
+                AfterUndo::Nothing,
+            )
+            .await;
+        let text = match &r {
+            Ok(v) => format!("attach applied: {}", resource_keys(v).join(" ")),
+            Err(e) => err_evidence(e),
+        };
+        self.evidence("V23", text);
+        if r.is_err() {
+            return;
+        }
+        let r = self
+            .write(
+                s,
+                "apply_labels",
+                "apply_labels detach",
+                json!({ "action": "detach", "label_ids": [label], "campaign_ids": [campaign] }),
+                AfterUndo::Nothing,
+            )
+            .await;
+        if r.is_ok() {
+            let undone = self.undo_last().await;
+            self.evidence("V23", format!("undo of detach (restore_links): {undone}"));
+        }
+        self.gaql_evidence(
+            "V23",
+            "campaign labels after undoing the detach",
+            &format!(
+                "SELECT campaign_label.resource_name FROM campaign_label WHERE campaign.id = {campaign}"
+            ),
+        )
+        .await;
+    }
+
+    /// Callouts and a snippet on the campaign, a sitelink on the ad group; one callout
+    /// unlinked and the unlink undone right away.
+    async fn extensions(&mut self, campaign: &str, ag: Option<&str>) {
+        let s = "search";
+        let t = "manage_extensions";
+        let r = self
+            .write(
+                s,
+                t,
+                "manage_extensions add campaign",
+                json!({ "action": "add", "campaign_id": campaign,
+                        "callouts": ["Free shipping", "Checklist"],
+                        "structured_snippets": [{ "header": "Brands", "values": ["Alpha", "Beta", "Gamma"] }] }),
+                AfterUndo::Nothing,
+            )
+            .await;
+        let text = match &r {
+            Ok(v) => format!("add applied: {}", resource_keys(v).join(" ")),
+            Err(e) => err_evidence(e),
+        };
+        self.evidence("V24", text);
+        if let Some(ag) = ag {
+            self.write(
+                s,
+                t,
+                "manage_extensions add ad group",
+                json!({ "action": "add", "ad_group_id": ag,
+                        "sitelinks": [{ "link_text": "Checklist", "final_url": "https://example.com/checklist" }] }),
+                AfterUndo::Nothing,
+            )
+            .await
+            .ok();
+        }
+        let Some(link) = r.as_ref().ok().and_then(|v| find_rn(v, "campaignAssets")) else {
+            return;
+        };
+        let parts: Vec<&str> = last_segment(&link).split('~').collect();
+        let [_, asset, field_type] = parts.as_slice() else {
+            return self.fail_msg(s, t, format!("unexpected link name {link}"));
+        };
+        let r = self
+            .write(
+                s,
+                t,
+                "manage_extensions remove",
+                json!({ "action": "remove", "campaign_id": campaign,
+                        "links": [{ "asset_id": asset, "field_type": field_type }] }),
+                AfterUndo::Nothing,
+            )
+            .await;
+        if r.is_ok() {
+            let undone = self.undo_last().await;
+            self.evidence("V24", format!("undo of remove (restore_links): {undone}"));
+        }
+        self.gaql_evidence(
+            "V24",
+            "campaign assets after undoing the unlink",
+            &format!(
+                "SELECT campaign_asset.resource_name, campaign_asset.status FROM campaign_asset \
+                 WHERE campaign.id = {campaign}"
+            ),
+        )
+        .await;
     }
 
     async fn targeting(&mut self, campaign: &str) {

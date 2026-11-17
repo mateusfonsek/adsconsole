@@ -218,6 +218,11 @@ impl Edits {
     }
 
     /// Plan with the `restore_fields` inverse. With no edits, `INVALID_INPUT`.
+    /// How many changes were added so far.
+    pub(crate) fn len(&self) -> usize {
+        self.parts.len()
+    }
+
     pub(crate) fn into_plan(self, warning: Option<String>) -> Result<WritePlan, ToolError> {
         if self.groups.is_empty() {
             return Err(invalid("Provide at least one field to change."));
