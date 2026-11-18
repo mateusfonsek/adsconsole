@@ -80,3 +80,33 @@ Final result of each step, after the fixes.
 - `REMOVED` objects: the test campaigns (Search, Demand Gen, Display and the smoke one) and their budgets, ad groups, criteria, shared lists and links.
 - Assets (irreversible): `img-<hash>` test images (Demand Gen/Display/PMax), text assets and the video assets (the YouTube uploads ended up UNAVAILABLE).
 - No active campaign; nothing is serving.
+
+## v0.2.0 / PR #1 verification (2026-11-17)
+
+Connection: Explorer. Commands: `google_checklist <account> --only reads,search --yes`,
+followed by `google_checklist <account> --only reads` after fixing the history read.
+The full run recorded 61 OK and one failure in `get_change_history`; the final read-only
+run recorded 10 OK, zero failures and three expected skips (no campaign and the two
+Basic-only keyword tools).
+
+| Item | Real API result |
+|---|---|
+| V23 labels | Create and update; attach to campaign, ad group, ad and keyword; detach and undo all passed. The campaign link was read back after restoration. |
+| V24 extensions | Campaign callouts and structured snippet, ad group sitelink, unlink and undo all passed. Restored campaign asset links were read back as ENABLED. |
+| V25 field catalog | `googleAdsFields:search` returned the filtered campaign attributes. |
+| Cleanup | All reversible writes were undone and the paused test campaigns were confirmed REMOVED. Extension assets remain unused in the library, as designed. |
+
+Two issues found during verification were fixed before tagging:
+
+- The V24 evidence query now selects `campaign.id`, required by the real API. Evidence
+  query errors count as failures; failures or incomplete cleanup return a nonzero exit code.
+- Selecting `change_event.changed_fields` returned HTTP 500 / INTERNAL on actual events,
+  while the same query without that field succeeded. `get_change_history` now retries
+  without that detail only on this error and returns an explicit `warning`. Other errors
+  and a failed fallback remain errors. The final real-account read returned 20 events.
+
+Automated validation: workspace formatting, Clippy with warnings denied, all Rust tests,
+UI lint and TypeScript, 45 UI unit tests, production UI build and 12 Playwright tests
+(Chromium and WebKit). The npm production dependency audit found no vulnerabilities;
+the development dependency audit reported nine moderate findings in the ESLint/minimatch
+dependency tree. Clean-machine installer checks were not performed locally.

@@ -292,6 +292,8 @@ async fn change_history_has_date_and_limit() {
     assert_eq!(e["resource_type"], "CAMPAIGN");
     assert_eq!(e["operation"], "UPDATE");
     assert_eq!(e["campaign_id"], "5");
+    assert_eq!(e["changed_fields"], "name");
+    assert!(out.get("warning").is_none());
     let q = &queries(&h).await[0];
     // The API requires a finite range: lower and upper bounds, both datetime.
     let at = |op: &str| {
@@ -313,6 +315,82 @@ async fn change_history_has_date_and_limit() {
         "{q}"
     );
     assert!(q.ends_with("LIMIT 100"), "{q}");
+}
+
+#[tokio::test]
+async fn change_history_internal_error_preserves_events_without_field_detail() {
+    let h = google_harness().await;
+    Mock::given(method("POST"))
+        .and(path(SEARCH))
+        .and(body_string_contains("change_event.changed_fields"))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "error": { "code": 500, "status": "INTERNAL", "message": "Internal error encountered." }
+        })))
+        .with_priority(1)
+        .mount(&h.server)
+        .await;
+    mock_search(
+        &h.server,
+        "111",
+        "FROM change_event",
+        json!([{
+            "changeEvent": {
+                "changeDateTime": "2026-11-17 10:00:00", "changeResourceType": "CAMPAIGN",
+                "changeResourceName": "customers/111/campaigns/5",
+                "resourceChangeOperation": "UPDATE", "campaign": "customers/111/campaigns/5"
+            }
+        }]),
+    )
+    .await;
+    let out = read(&h, "get_change_history", json!({ "days": 3, "limit": 20 }))
+        .await
+        .unwrap();
+    assert_eq!(out["events"].as_array().unwrap().len(), 1);
+    assert_eq!(out["events"][0]["campaign_id"], "5");
+    assert!(out["events"][0]["changed_fields"].is_null());
+    assert!(out["warning"].as_str().unwrap().contains("changed_fields"));
+    let queries = queries(&h).await;
+    let original = &queries[0];
+    let fallback = queries.last().unwrap();
+    assert_eq!(
+        fallback,
+        &original.replace("change_event.changed_fields, ", "")
+    );
+    assert!(fallback.ends_with("LIMIT 20"));
+}
+
+#[tokio::test]
+async fn change_history_permission_error_does_not_fallback() {
+    let h = google_harness().await;
+    Mock::given(method("POST"))
+        .and(path(SEARCH))
+        .respond_with(ResponseTemplate::new(403).set_body_json(json!({
+            "error": { "code": 403, "status": "PERMISSION_DENIED", "message": "Access denied." }
+        })))
+        .expect(1)
+        .mount(&h.server)
+        .await;
+    assert!(read(&h, "get_change_history", json!({})).await.is_err());
+    assert_eq!(queries(&h).await.len(), 1);
+}
+
+#[tokio::test]
+async fn change_history_failed_fallback_remains_an_error() {
+    let h = google_harness().await;
+    Mock::given(method("POST"))
+        .and(path(SEARCH))
+        .respond_with(ResponseTemplate::new(500).set_body_json(json!({
+            "error": { "code": 500, "status": "INTERNAL", "message": "Internal error encountered." }
+        })))
+        .mount(&h.server)
+        .await;
+    assert!(read(&h, "get_change_history", json!({})).await.is_err());
+    assert!(
+        queries(&h)
+            .await
+            .iter()
+            .any(|q| !q.contains("change_event.changed_fields"))
+    );
 }
 
 #[tokio::test]

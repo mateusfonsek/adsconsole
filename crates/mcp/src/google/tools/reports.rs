@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 use adsconsole_core::Status;
 use adsconsole_core::config::ToolGroup;
 use adsconsole_core::money::{self, Decimal};
+use adsconsole_google_ads::error::GoogleError;
 use adsconsole_google_ads::fields;
 use adsconsole_google_ads::gaql::{self, DatePreset, DateRange};
 use adsconsole_google_ads::resources;
@@ -1174,6 +1175,9 @@ struct ChangeEventOut {
 struct GetChangeHistoryOutput {
     events: Vec<ChangeEventOut>,
     truncated: bool,
+    /// Google could not return the changed-field detail; the events are still included.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    warning: Option<String>,
 }
 
 struct GetChangeHistory;
@@ -1211,7 +1215,31 @@ impl ReadTool for GetChangeHistory {
             gaql::quote(&since),
             gaql::quote(&until)
         );
-        let rows = search(ctx, CHANGE_HISTORY_TOOL, &query, limit as usize).await?;
+        let (rows, warning) = match ctx
+            .client
+            .search_all(
+                &ctx.customer_id,
+                ctx.login.as_deref(),
+                &query,
+                limit as usize,
+            )
+            .await
+        {
+            Ok(rows) => (rows, None),
+            // Observed on v26 with real change events: selecting changed_fields can
+            // return INTERNAL while the same query without it succeeds. Keep the
+            // events and explicitly report the missing detail instead of hiding it.
+            Err(GoogleError::Api {
+                http_status: 500,
+                ref status,
+                ..
+            }) if status == "INTERNAL" => {
+                let query = query.replace("change_event.changed_fields, ", "");
+                let rows = search(ctx, CHANGE_HISTORY_TOOL, &query, limit as usize).await?;
+                (rows, Some("Google could not return changed_fields (internal error). Events were fetched without that detail; changed_fields is unavailable.".into()))
+            }
+            Err(error) => return Err(translate(error, Some(ctx), CHANGE_HISTORY_TOOL)),
+        };
         let mut events: Vec<ChangeEventOut> = rows
             .iter()
             .map(|r| ChangeEventOut {
@@ -1227,6 +1255,10 @@ impl ReadTool for GetChangeHistory {
             })
             .collect();
         let truncated = fit_items(&mut events, ITEMS_BUDGET);
-        to_json(GetChangeHistoryOutput { events, truncated })
+        to_json(GetChangeHistoryOutput {
+            events,
+            truncated,
+            warning,
+        })
     }
 }

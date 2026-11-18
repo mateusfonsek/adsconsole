@@ -586,7 +586,10 @@ impl Checklist {
     async fn gaql_evidence(&mut self, item: &'static str, what: &str, query: &str) {
         let text = match self.gaql(query).await {
             Ok(r) => format!("{what}: {}", Value::Array(r)),
-            Err(e) => format!("{what}: error {}", err_evidence(&e)),
+            Err(e) => {
+                self.fail("evidence", "gaql_search", &e);
+                format!("{what}: error {}", err_evidence(&e))
+            }
         };
         self.evidence(item, text);
     }
@@ -1787,7 +1790,7 @@ impl Checklist {
             "V24",
             "campaign assets after undoing the unlink",
             &format!(
-                "SELECT campaign_asset.resource_name, campaign_asset.status FROM campaign_asset \
+                "SELECT campaign.id, campaign_asset.resource_name, campaign_asset.status FROM campaign_asset \
                  WHERE campaign.id = {campaign}"
             ),
         )
@@ -2377,6 +2380,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if interrupted {
         drop(_log);
         std::process::exit(130);
+    }
+    if c.lines.iter().any(|l| l.mark == Mark::Fail) || !c.left_behind.is_empty() {
+        return Err("checklist failed; see the results and cleanup report above".into());
     }
     Ok(())
 }
